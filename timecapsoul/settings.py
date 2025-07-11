@@ -10,7 +10,10 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 import os
+from datetime import timedelta
 from pathlib import Path
+from decouple import config
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -37,15 +40,34 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django.contrib.sites',        
+
     'corsheaders',
-    'website',
+    'drf_spectacular',
+    # Third-party apps
+    'rest_framework',
+    'dj_rest_auth',
+    'rest_framework.authtoken',
+    'dj_rest_auth.registration',
+    'allauth',
+    'allauth.account',
+    'allauth.socialaccount',
+    'allauth.socialaccount.providers.google',  # google social auth 
+  
+    # custom-apps
+    'userauth',
+    'memory_room',
+   
 ]
+    
+
+SITE_ID = 1
 
 MIDDLEWARE = [
-    "whitenoise.middleware.WhiteNoiseMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware', # cors-middleware
+    "corsheaders.middleware.CorsMiddleware",  
+    'allauth.account.middleware.AccountMiddleware',  
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -55,10 +77,12 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'timecapsoul.urls'
 
+AUTH_USER_MODEL = 'userauth.User' 
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR /'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -115,17 +139,28 @@ USE_I18N = True
 USE_TZ = True
 
 
+
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.2/howto/static-files/
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 
 STATIC_URL = '/static/'
+MEDIA_URL = '/media/'
+if DEBUG:
+    MEDIA_ROOT = BASE_DIR /'media'
+
+
 
 # STATICFILES_DIRS = [
 #     BASE_DIR / 'static',
 #  ]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+if not  DEBUG:
+    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+else:
+    STATICFILES_DIRS = [BASE_DIR / "static"]
+
+
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
 
@@ -138,3 +173,109 @@ CORS_ALLOWED_ORIGINS = [
 
 # allow all origin 
 # CORS_ALLOW_ALL_ORIGINS = True
+
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ),
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+
+}
+
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS = True
+EMAIL_HOST_USER = config('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
+
+
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'Time CapSoul API',
+    'DESCRIPTION': 'API documentation for time capsoul.',
+    'VERSION': '1.0.0',
+    # Optional: show all components inline instead of referenced
+    'COMPONENT_SPLIT_REQUEST': True,
+}
+
+
+ACCOUNT_AUTHENTICATION_METHOD = "email"  # Use Email / Password authentication
+ACCOUNT_USERNAME_REQUIRED = False
+ACCOUNT_EMAIL_REQUIRED = True
+ACCOUNT_EMAIL_VERIFICATION = "none" # Do not require email confirmation
+
+
+# Google OAuth
+GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID")
+GOOGLE_OAUTH_CLIENT_SECRET = config("GOOGLE_OAUTH_CLIENT_SECRET")
+GOOGLE_OAUTH_CALLBACK_URL = config("GOOGLE_OAUTH_CALLBACK_URL")
+
+
+# django-allauth (social)
+# Authenticate if local account with this email address already exists
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+# Connect local account and social account if local account with that email address already exists
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
+
+SOCIALACCOUNT_PROVIDERS = {
+    "google": {
+        "APPS": [
+            {
+                "client_id": GOOGLE_OAUTH_CLIENT_ID,
+                "secret": GOOGLE_OAUTH_CLIENT_SECRET,
+                "key": "",
+            },
+        ],
+        "SCOPE": ["profile", "email"],
+        "AUTH_PARAMS": {
+            "access_type": "online",
+        },
+    }
+}
+
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # React/Next.js dev server
+
+]
+
+SOCIALACCOUNT_ADAPTER = "userauth.apis.helpers.google_adapter.CustomSocialAccountAdapter"
+
+# allow all origin 
+CORS_ALLOW_ALL_ORIGINS = True
+
+REST_USE_JWT = True
+
+
+REST_FRAMEWORK = {
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+
+    'DEFAULT_AUTHENTICATION_CLASSES': (
+        'dj_rest_auth.jwt_auth.JWTCookieAuthentication',
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+        
+    ),
+}
+
+SIMPLE_JWT = {
+    'AUTH_HEADER_TYPES': ('JWT', 'Bearer'),
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+}
+DJRESTAUTH_TOKEN_MODEL = None
+
+FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:3000")
+
+DJREST_AUTH = {
+    "USE_JWT": True,       # tells dj-rest-auth to return JWTs
+    "TOKEN_MODEL": "rest_framework.authtoken.models.Token",  # token auth desabled
+    "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}/",  # relative URL for frontend
+    "SEND_PASSWORD_RESET_EMAIL": True,
+
+}

@@ -1,0 +1,49 @@
+
+from django.urls import path, include
+from django.urls import include, path, re_path
+
+
+from userauth.apis.views.views import (
+    LoginView, RegistrationView, UpdateUserProfileView,
+    GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,
+    CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView
+    
+)
+from rest_framework_simplejwt.views import TokenVerifyView
+
+
+
+urlpatterns = [
+    path('contact-us/', ContactUsAPIView.as_view(), name='contact-us'),
+    path('register/', RegistrationView.as_view(), name='register'),
+    path('login/', LoginView.as_view(), name='login'),
+    path('profile/update/', UpdateUserProfileView.as_view(), name='profile-update'),
+    path('user/dashboard/', DashboardAPIView.as_view(), name='user-dashboard'),
+
+
+    path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
+    path('generate-jwt/', GenerateJWTTokenView.as_view(), name='generate-jwt'),
+
+    # google auth urls(login, registeration)
+    path("google/auth/", GoogleAuthView.as_view(), name="google_login"),
+
+    # password reset
+    path('password/reset/', CustomPasswordResetView.as_view(), name='password_reset'),
+    path('password/reset/confirm/', CustomPasswordResetConfirmView.as_view(), name='password_reset_confirm'),
+    path('password/change/', CustomPasswordChangeView.as_view(), name='password_change'),
+
+    path("rest/auth/", include("dj_rest_auth.urls")),
+    # re_path(r"^api/v1/auth/accounts/", include("allauth.urls")),
+    # path("auth/registration/", include("dj_rest_auth.registration.urls")),
+    # path('generate-jwt/', GenerateJWTTokenView.as_view(), name='generate-jwt'),
+
+    # path("api/v1/auth/google/callback/",GoogleLoginCallback.as_view(),name="google_login_callback",),
+    # path('api/token/refresh/', get_refresh_view().as_view(), name='token_refresh'),
+
+
+
+    
+
+
+
+]
