@@ -14,7 +14,8 @@ from memory_room.models import MemoryRoom,MemoryRoomTemplateDefault, MemoryRoomM
 
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.apis.serializers.memory_room import (
-    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer, MemoryRoomMediaFileSerializer
+    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer, MemoryRoomMediaFileSerializer,
+    
     )
 
 class MemoryRoomCoverView(generics.ListAPIView): 
@@ -53,13 +54,15 @@ class CreateMemoryRoomView(SecuredView):
 class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
     def get(self, request, memory_room_id: int):
+        """List All Media Files of Memory Room """
         user = self.get_current_user(request)
         media_files = MemoryRoomMediaFile.objects.filter(memory_room_id=memory_room_id, user=user)
         serializer = MemoryRoomMediaFileSerializer(media_files, many=True)
-        print(media_files, user, memory_room_id)
         return Response(serializer.data)
 
     def post(self, request, memory_room_id: int):
+        """Post Media Files in Memory Room"""
+
         user = self.get_current_user(request)
 
         # Ensure memory room exists and belongs to user
@@ -76,8 +79,30 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+    def patch(self, request, memory_room_id, media_file_id):
+        """Move Media File to another Memory room"""
+        user  = self.get_current_user(request)
+        # moved to memory room 
+        memory_room = get_object_or_404(
+            MemoryRoom,
+            id=memory_room_id,
+            user=user,
+        )
+        media_file = get_object_or_404(
+            MemoryRoomMediaFile,
+            id=media_file_id,
+            user=user,
+
+        )
+
+        media_file.memory_room = memory_room
+        media_file.save()
+        return Response({'message': "Media files moved successfully"}, status=status.HTTP_200_OK)
+
+    
         
     def delete(self, request, memory_room_id, media_file_id):
+        """Delete Media file"""
         user = self.get_current_user(request)
 
         media_file = get_object_or_404(
@@ -86,8 +111,6 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
             user=user,
             memory_room_id=memory_room_id
         )
-        print(f'Media file deleted: {media_file} user: {user}')
-
         media_file.delete()
-
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
+    

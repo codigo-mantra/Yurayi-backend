@@ -12,8 +12,14 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 import os
 from datetime import timedelta
 from pathlib import Path
+
 from decouple import config
-MODE = config('MODE')
+
+from .utils import load_env
+
+load_env()
+MODE = os.getenv('MODE')
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -192,8 +198,8 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = config('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 
 
 
@@ -213,9 +219,9 @@ ACCOUNT_EMAIL_VERIFICATION = "none" # Do not require email confirmation
 
 
 # Google OAuth
-GOOGLE_OAUTH_CLIENT_ID = config("GOOGLE_OAUTH_CLIENT_ID")
-GOOGLE_OAUTH_CLIENT_SECRET = config("GOOGLE_OAUTH_CLIENT_SECRET")
-GOOGLE_OAUTH_CALLBACK_URL = config("GOOGLE_OAUTH_CALLBACK_URL")
+GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
+GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
+GOOGLE_OAUTH_CALLBACK_URL = os.getenv("GOOGLE_OAUTH_CALLBACK_URL")
 
 
 # django-allauth (social)
@@ -265,16 +271,16 @@ REST_FRAMEWORK = {
 
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('JWT', 'Bearer'),
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
 }
 DJRESTAUTH_TOKEN_MODEL = None
 
-FRONTEND_URL = config("FRONTEND_URL", default="http://localhost:3000")
+FRONTEND_URL = os.getenv("FRONTEND_URL", default="http://localhost:3000")
 
 DJREST_AUTH = {
     "USE_JWT": True,       # tells dj-rest-auth to return JWTs
-    "TOKEN_MODEL": "rest_framework.authtoken.models.Token",  # token auth desabled
+    # "TOKEN_MODEL": "rest_framework.authtoken.models.Token",  # token auth desabled
     "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}/",  # relative URL for frontend
     "SEND_PASSWORD_RESET_EMAIL": True,
 
