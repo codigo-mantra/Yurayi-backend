@@ -1,19 +1,18 @@
-# views.py
-from rest_framework import viewsets
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView
 
+from rest_framework.views import APIView
 from rest_framework import status
 from rest_framework.response import Response
 
 from memory_room.apis.serializers.memory_room import AssetSerializer
 
 from rest_framework import generics, permissions
-from memory_room.models import MemoryRoom,MemoryRoomTemplateDefault
+from memory_room.models import MemoryRoom,MemoryRoomTemplateDefault, MemoryRoomMediaFile, MemoryRoomDetail
 
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.apis.serializers.memory_room import (
-    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer
+    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer, MemoryRoomMediaFileSerializer
     )
 
 class MemoryRoomCoverView(generics.ListAPIView): 
@@ -47,3 +46,37 @@ class CreateMemoryRoomView(SecuredView):
         serialized_data = MemoryRoomSerializer(memory_room).data if memory_room else {}
 
         return Response({'message': 'Memory created successfully', 'memory_room': serialized_data})
+
+class MemoryRoomMediaFileListCreateAPI(SecuredView):
+
+    def get(self, request, memory_room_id: int):
+        user = self.get_current_user(request)
+        media_files = MemoryRoomMediaFile.objects.filter(
+            memory_room_details__memory_room__id=memory_room_id,
+            memory_room_details__memory_room__user=user
+        ).distinct()
+
+        serializer = MemoryRoomMediaFileSerializer(media_files, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, memory_room_id: int):
+        serializer = MemoryRoomMediaFileSerializer(data=request.data)
+        if serializer.is_valid():
+            media_file = serializer.save()
+
+            # Attach to memory room if it exists and belongs to the user
+            try:
+                memory_room_detail = MemoryRoomDetail.objects.get(
+                    memory_room__id=memory_room_id,
+                    memory_room__user=self.get_current_user(request)
+                )
+                memory_room_detail.media_files.add(media_file)
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+            except MemoryRoomDetail.DoesNotExist:
+                media_file.delete()
+                return Response(
+                    {"error": "Memory room not found or unauthorized"},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

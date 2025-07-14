@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from userauth.models import Assets
-from memory_room.models import MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate
+from memory_room.models import MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
 
 class AssetSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -110,3 +110,23 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
                 cover_image=image_asset, default_template=None
             )
             return MemoryRoom.objects.create(user=user, room_template=custom)
+
+
+class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MemoryRoomMediaFile
+        fields = [
+            'id', 'file', 'file_type', 'cover_image', 'description',
+            'is_cover_image', 'file_size'
+        ]
+        read_only_fields = ['file_size']
+
+    def create(self, validated_data):
+        instance = MemoryRoomMediaFile.objects.create(**validated_data)
+        return instance
+
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        return instance

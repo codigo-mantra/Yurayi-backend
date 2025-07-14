@@ -103,7 +103,7 @@ class MemoryRoom(BaseModel):
         verbose_name_plural = "Memory Rooms"
 
     def __str__(self):
-        return f"{self.user.username}'s Memory Room"
+        return f"{self.user.username}'s {self.room_template.name}"
 
 
 FILE_TYPES = (
@@ -120,11 +120,14 @@ FILE_TYPES = (
 
 
 class MemoryRoomMediaFile(BaseModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, blank=True, null=True, related_name='user_media_files')
+    memory_room = models.ForeignKey(MemoryRoom, on_delete=models.CASCADE, blank=True, null=True, related_name='memory_media_files')
+
     file = models.FileField(
         upload_to='memory_room_files/',
         verbose_name="Media File"
     )
-    types = models.CharField(
+    file_type = models.CharField(
         max_length=20,
         choices=FILE_TYPES,
         default='other',
@@ -157,29 +160,7 @@ class MemoryRoomMediaFile(BaseModel):
     def __str__(self):
         return f"{self.file.name}"
     
-    def clean(self):
-        if self.file:
-            self.file_size = self.file.size
 
-            # Ensure memory_room is set through reverse relation
-            memory_rooms = self.memory_room_details.all()
-            if not memory_rooms:
-                return  # Can't validate without memory room context
-
-            # Assume the file belongs to the first memory room it's associated with
-            memory_room = memory_rooms.first().memory_room
-            user_mapper = memory_room.user.usermapper
-
-            if user_mapper.current_storage + self.file_size > user_mapper.max_storage_limit:
-                raise ValidationError("Uploading this file exceeds your storage limit.")
-    
-    def save(self, *args, **kwargs):
-        """autoauto-populate file-size on save"""
-        self.full_clean()  
-
-        if self.file and not self.file_size:
-            self.file_size = self.file.size
-        super().save(*args, **kwargs)
 
 
 class MemoryRoomDetail(BaseModel):
@@ -291,11 +272,14 @@ class TimeCapSoul(BaseModel):
 
 
 class TimeCapSoulMediaFile(BaseModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, blank=True, null=True, related_name='user_timecapsoul_media_files')
+    time_capsoul = models.ForeignKey(TimeCapSoul, on_delete=models.CASCADE, blank=True, null=True, related_name='timecapsoul_media_files')
+
     file = models.FileField(
         upload_to='time_capsoul_media_file/',
         verbose_name="Media File"
     )
-    types = models.CharField(
+    file_type = models.CharField(
         max_length=20,
         choices=FILE_TYPES,
         default='other',

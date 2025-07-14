@@ -68,7 +68,7 @@ class User(AbstractBaseUser, PermissionsMixin):
     phone_number = models.CharField(max_length=13, blank=True, null=True, verbose_name="Phone Number")
     is_active = models.BooleanField(default=True, verbose_name="Is Active")
     is_staff = models.BooleanField(default=False, verbose_name="Is Staff")
-    created_at = models.DateTimeField(default=timezone.now, verbose_name="Created At")
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="Google Id")
     google_id = models.CharField(
         max_length=255,
         blank=True,
