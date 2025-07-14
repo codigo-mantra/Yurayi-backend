@@ -113,20 +113,32 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
 
 
 class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
+    file_url = serializers.SerializerMethodField()
+
     class Meta:
         model = MemoryRoomMediaFile
         fields = [
-            'id', 'file', 'file_type', 'cover_image', 'description',
-            'is_cover_image', 'file_size'
+            'id', 'user', 'memory_room', 'file', 'file_url', 'file_type',
+            'cover_image', 'description', 'is_cover_image', 'file_size'
         ]
-        read_only_fields = ['file_size']
+        read_only_fields = ['id', 'user', 'file_size', 'file_url']
+
+    def get_file_url(self, obj):
+        request = self.context.get('request')
+        if request:
+            return request.build_absolute_uri(obj.file.url)
+        return obj.file.url
 
     def create(self, validated_data):
-        instance = MemoryRoomMediaFile.objects.create(**validated_data)
-        return instance
+        user = self.context['user']
+        file = validated_data.get('file')
+        validated_data['user'] = user
+        if file:
+            validated_data['file_size'] = file.size
+        return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        for attr, value in validated_data.items():
-            setattr(instance, attr, value)
-        instance.save()
-        return instance
+        file = validated_data.get('file')
+        if file:
+            validated_data['file_size'] = file.size
+        return super().update(instance, validated_data)
