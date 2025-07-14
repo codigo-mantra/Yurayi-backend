@@ -13,7 +13,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 from decouple import config
-
+MODE = config('MODE')
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -155,7 +155,7 @@ if DEBUG:
 #     BASE_DIR / 'static',
 #  ]
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
-if not  DEBUG:
+if MODE == 'PROD':
     STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 else:
     STATICFILES_DIRS = [BASE_DIR / "static"]
