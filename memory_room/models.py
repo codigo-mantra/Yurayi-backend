@@ -45,7 +45,7 @@ class MemoryRoomTemplateDefault(BaseModel):
     
     def save(self, *args, **kwargs):
         if not self.slug and self.name:
-            self.slug = generate_unique_slug(self, field_name='slug')
+            self.slug = generate_unique_slug(self)
         super().save(*args, **kwargs)
 
 
@@ -78,7 +78,7 @@ class CustomMemoryRoomTemplate(BaseModel):
         return self.name
     def save(self, *args, **kwargs):
         if not self.slug and self.name:
-            self.slug = generate_unique_slug(self, field_name='slug')
+            self.slug = generate_unique_slug(self)
         super().save(*args, **kwargs)
 
 
@@ -207,7 +207,7 @@ class TimeCapSoulTemplateDefault(BaseModel):
     
     def save(self, *args, **kwargs):
         if not self.slug and self.name:
-            self.slug = generate_unique_slug(self, field_name='slug')
+            self.slug = generate_unique_slug(self)
         super().save(*args, **kwargs)
 
 
@@ -241,7 +241,7 @@ class CustomTimeCapSoulTemplate(BaseModel):
     
     def save(self, *args, **kwargs):
         if not self.slug and self.name:
-            self.slug = generate_unique_slug(self, field_name='slug')
+            self.slug = generate_unique_slug(self)
         super().save(*args, **kwargs)
      
 
