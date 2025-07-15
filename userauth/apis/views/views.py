@@ -94,25 +94,33 @@ class GenerateJWTTokenView(APIView):
 
 class RegistrationView(APIView):
     def post(self, request):
-        return self._handle_normal_register(request)
+        print(f'request is recieved')
 
-    def _handle_normal_register(self, request):
         serializer = RegistrationSerializer(data=request.data)
+
         if serializer.is_valid():
-            user = serializer.save()
-            refresh = RefreshToken.for_user(user)
-            return Response({
-                "message": "Registration successful.",
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-                "user": {
-                    "username": user.username,
-                    "email": user.email,
-                    "first_name": user.first_name,
-                    "last_name": user.last_name,
-                    "phone_number": user.phone_number,
-                }
-            }, status=status.HTTP_201_CREATED)
+            step_no = serializer.validated_data.get('step_no')
+            if step_no ==  2:
+                validated_data = serializer.validated_data
+                validated_data.pop('step_no', None)
+                validated_data.pop('confirm_password', None)
+                user = serializer.save()
+                refresh = RefreshToken.for_user(user)
+                return Response({
+                    "message": "Registration successful.",
+                    "refresh": str(refresh),
+                    "access": str(refresh.access_token),
+                    "user": {
+                        "username": user.username,
+                        "email": user.email,
+                        "first_name": user.first_name,
+                        "last_name": user.last_name,
+                        "phone_number": user.phone_number,
+                    }
+                }, status=status.HTTP_201_CREATED)
+            else:
+                return Response({'message': 'Step-1 is completed', 'data': serializer.data})
+            
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class LoginView(APIView):

@@ -69,14 +69,15 @@ class JWTTokenSerializer(serializers.Serializer):
     
 
 
-
 class RegistrationSerializer(serializers.ModelSerializer):
-    confirm_password = serializers.CharField(write_only=True)
-    password = serializers.CharField(write_only=True)
+    step_no = serializers.IntegerField(write_only=True, required=False)
+    password = serializers.CharField(write_only=True, required=False)
+    confirm_password = serializers.CharField(write_only=True, required=False)
 
     class Meta:
         model = User
         fields = [
+            'step_no',
             'username',
             'email',
             'first_name',
@@ -85,61 +86,67 @@ class RegistrationSerializer(serializers.ModelSerializer):
             'password',
             'confirm_password'
         ]
+        extra_kwargs = {
+            field: {'required': False, 'allow_blank': True}
+            for field in ['username', 'email', 'first_name', 'last_name', 'phone_number']
+        }
 
     def validate(self, data):
-        username = data.get('username', '').strip()
+        step_no = data.get('step_no')
+        errors = {}
+
+        # Common fields
         first_name = data.get('first_name', '').strip()
         last_name = data.get('last_name', '').strip()
         email = data.get('email', '').strip()
         phone_number = data.get('phone_number', '').strip()
-        password = data.get('password')
-        confirm_password = data.get('confirm_password')
 
-        # Check required fields
-        required_fields = {
-            "username": username,
-            "first_name": first_name,
-            "last_name": last_name,
-            "email": email,
-            "password": password,
-            "confirm_password": confirm_password,
-        }
-        for field, value in required_fields.items():
-            if not value:
-                raise serializers.ValidationError({field: f"{field.replace('_', ' ').capitalize()} is required."})
+        # Step 1 or Step 2: Validate name and email
+        if step_no in [1, 2]:
+            required_fields = {
+                "first_name": first_name,
+                "last_name": last_name,
+                "email": email,
+            }
 
-        # Format validations
-        if not first_name.isalpha():
-            raise serializers.ValidationError({"first_name": "First name must contain only letters."})
-        if not last_name.isalpha():
-            raise serializers.ValidationError({"last_name": "Last name must contain only letters."})
-
-        # Uniqueness checks
-        if User.objects.filter(username=username).exists():
-            raise serializers.ValidationError({"username": "Username already exists."})
-        if User.objects.filter(email=email).exists():
-            raise serializers.ValidationError({"email": "Email already exists."})
-
-        # Phone number format
-        if phone_number:
-            if not re.fullmatch(r'\+?\d+', phone_number) or len(phone_number) > 13:
-                raise serializers.ValidationError({
-                    "phone_number": "Phone number must contain only digits and may start with a '+'. Max 13 digits."
+            if step_no == 2:
+                # Additional fields for step 2
+                required_fields.update({
+                    "username": data.get('username', '').strip(),
+                    "password": data.get('password'),
+                    "confirm_password": data.get('confirm_password'),
                 })
 
-        # Password match
-        if password != confirm_password:
-            raise serializers.ValidationError({"password": "Passwords do not match."})
+            for field, value in required_fields.items():
+                if not value:
+                    errors[field] = f"{field.replace('_', ' ').capitalize()} is required."
+
+            if first_name and not first_name.isalpha():
+                errors["first_name"] = "First name must contain only letters."
+            if last_name and not last_name.isalpha():
+                errors["last_name"] = "Last name must contain only letters."
+
+            if step_no == 2:
+                username = data.get('username', '').strip()
+                if username and User.objects.filter(username=username).exists():
+                    errors["username"] = "Username already exists."
+                if email and User.objects.filter(email=email).exists():
+                    errors["email"] = "Email already exists."
+                if data.get('password') != data.get('confirm_password'):
+                    errors["password"] = "Passwords do not match."
+
+            # Validate phone number if given
+            if phone_number:
+                if not re.fullmatch(r'\+?\d+', phone_number) or len(phone_number) > 13:
+                    errors["phone_number"] = "Phone number must contain only digits and may start with a '+'. Max 13 digits."
+
+        else:
+            errors['step_no'] = 'Invalid step number.'
+
+        if errors:
+            raise serializers.ValidationError(errors)
 
         return data
-
-    def create(self, validated_data):
-        validated_data.pop('confirm_password')
-        password = validated_data.pop('password')
-        user = User(**validated_data)
-        user.set_password(password)
-        user.save()
-        return user
 
     
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
