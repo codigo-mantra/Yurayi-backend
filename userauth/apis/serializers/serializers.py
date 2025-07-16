@@ -8,6 +8,11 @@ from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 from django.contrib.auth.forms import PasswordResetForm
 from userauth.models import User
+from django.core.exceptions import ValidationError
+
+from django.core.exceptions import ValidationError as DjangoValidationError
+
+from userauth.apis.helpers.validators import CustomPasswordValidator, UsernameValidator
 
 
 from dj_rest_auth.serializers import (
@@ -69,6 +74,15 @@ class JWTTokenSerializer(serializers.Serializer):
     
 
 
+def validate_username(username):
+    # Only allow alphanumeric usernames, min 5 characters
+    if not re.fullmatch(r'[A-Za-z0-9_]{5,30}', username):
+        raise serializers.ValidationError(
+            "Username must be 5-30 characters long and can only contain letters, numbers, and underscores."
+        )
+    return username
+
+
 class RegistrationSerializer(serializers.ModelSerializer):
     step_no = serializers.IntegerField(write_only=True, required=False)
     password = serializers.CharField(write_only=True, required=False)
@@ -101,47 +115,60 @@ class RegistrationSerializer(serializers.ModelSerializer):
         email = data.get('email', '').strip()
         phone_number = data.get('phone_number', '').strip()
 
-        # Step 1 or Step 2: Validate name and email
+        if step_no not in [1, 2]:
+            raise serializers.ValidationError({'step_no': 'Invalid step number.'})
+
+        # Step-based validation
         if step_no in [1, 2]:
-            required_fields = {
-                "first_name": first_name,
-                "last_name": last_name,
-                "email": email,
-            }
+            if not first_name:
+                errors['first_name'] = "First name is required."
+            elif not first_name.isalpha():
+                errors['first_name'] = "First name must contain only letters."
 
-            if step_no == 2:
-                # Additional fields for step 2
-                required_fields.update({
-                    "username": data.get('username', '').strip(),
-                    "password": data.get('password'),
-                    "confirm_password": data.get('confirm_password'),
-                })
+            if not last_name:
+                errors['last_name'] = "Last name is required."
+            elif not last_name.isalpha():
+                errors['last_name'] = "Last name must contain only letters."
 
-            for field, value in required_fields.items():
-                if not value:
-                    errors[field] = f"{field.replace('_', ' ').capitalize()} is required."
+            if not email:
+                errors['email'] = "Email is required."
+            elif step_no == 2 and User.objects.filter(email=email).exists():
+                errors["email"] = "Email already exists."
 
-            if first_name and not first_name.isalpha():
-                errors["first_name"] = "First name must contain only letters."
-            if last_name and not last_name.isalpha():
-                errors["last_name"] = "Last name must contain only letters."
-
-            if step_no == 2:
-                username = data.get('username', '').strip()
-                if username and User.objects.filter(username=username).exists():
-                    errors["username"] = "Username already exists."
-                if email and User.objects.filter(email=email).exists():
-                    errors["email"] = "Email already exists."
-                if data.get('password') != data.get('confirm_password'):
-                    errors["password"] = "Passwords do not match."
-
-            # Validate phone number if given
             if phone_number:
-                if not re.fullmatch(r'\+?\d+', phone_number) or len(phone_number) > 13:
-                    errors["phone_number"] = "Phone number must contain only digits and may start with a '+'. Max 13 digits."
+                if not re.fullmatch(r'\+?\d{10,13}', phone_number):
+                    errors["phone_number"] = "Enter a valid phone number (10–13 digits, may start with '+')."
 
-        else:
-            errors['step_no'] = 'Invalid step number.'
+        if step_no == 2:
+            username = data.get('username', '').strip()
+            password = data.get('password')
+            confirm_password = data.get('confirm_password')
+
+            if not username:
+                errors["username"] = "Username is required."
+            else:
+                try:
+                    try:
+                        username_validator = UsernameValidator()
+                        username_validator.validate(username=username)
+                    except DjangoValidationError as e:
+                        errors['username'] = list(e.messages)
+                    
+                    if User.objects.filter(username=username).exists():
+                        errors["username"] = "Username already exists."
+                except serializers.ValidationError as e:
+                    errors["username"] = str(e.detail[0])
+
+            if not password or not confirm_password:
+                errors["password"] = "Both password and confirm password are required."
+            elif password != confirm_password:
+                errors["password"] = "Passwords do not match."
+            else:
+                try:
+                    validator = CustomPasswordValidator()
+                    validator.validate(password=password, username=username)
+                except DjangoValidationError as e:
+                    errors["password"] = list(e.messages)
 
         if errors:
             raise serializers.ValidationError(errors)

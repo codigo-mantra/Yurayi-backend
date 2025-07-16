@@ -49,6 +49,14 @@ class CreateMemoryRoomView(SecuredView):
         serialized_data = MemoryRoomSerializer(memory_room).data if memory_room else {}
 
         return Response({'message': 'Memory created successfully', 'memory_room': serialized_data})
+    
+    def delete(self, request,memory_room_id, format=None):
+        """Delete memory room"""
+        user = self.get_current_user(request)
+        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+        memory_room_name = memory_room.room_template.name
+        memory_room.delete()
+        return Response({'message': memory_room_name}, status=status.HTTP_204_NO_CONTENT)
 
 
 class MemoryRoomMediaFileListCreateAPI(SecuredView):
