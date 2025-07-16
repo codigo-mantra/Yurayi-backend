@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from .managers import UserManager
-
+from memory_room.utils import upload_file_to_s3_bucket
 
 class BaseModel(models.Model):
     is_created = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
@@ -44,6 +44,14 @@ class Assets(BaseModel):
         if self.image and hasattr(self.image, 'url'):
             return self.image.url
         return None
+    
+    def save(self, *args, **kwargs):
+        """Upload assets in S3 bucket"""
+        if self.image and not self.s3_url:
+            s3_url = upload_file_to_s3_bucket(self.image, folder="assets")
+            if s3_url:
+                self.s3_url = s3_url
+        super().save(*args, **kwargs)
 
 
 class ContactUs(BaseModel):
