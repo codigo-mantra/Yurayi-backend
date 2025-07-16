@@ -13,15 +13,21 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-from timecapsoul.utils import load_env
+from timecapsoul.utils import load_env, get_aws_secret
 
-load_env()
+
+load_env()  # get credential from env file
+AWS_SECRET = get_aws_secret(os.getenv('AWS_SECRET_MANAGER_NAME')) # get credential from ASW Secret Manager 
+
+print(f'AWS Secret: \n {AWS_SECRET} \n')
+
+
 MODE = os.getenv('MODE')
 print(f'\n Project is running in : {MODE}')
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.getenv('DJANGO_SECRET_KEY')
+SECRET_KEY = AWS_SECRET['DJANGO_SECRET_KEY']
 
 DEBUG = True
 
@@ -120,13 +126,14 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+
 if MODE == 'PROD':
     STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
     AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
     AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-    AWS_STORAGE_BUCKET_NAME = os.getenv('AWS_STORAGE_BUCKET_NAME')
-    AWS_S3_REGION_NAME = os.getenv('AWS_S3_REGION_NAME')
+    AWS_STORAGE_BUCKET_NAME = AWS_SECRET['AWS_STORAGE_BUCKET_NAME']
+    AWS_S3_REGION_NAME = AWS_SECRET['AWS_S3_REGION_NAME']
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
     AWS_S3_URL_PROTOCOL = 'https'
     AWS_S3_USE_SSL = True
@@ -154,11 +161,11 @@ REST_FRAMEWORK = {
 }
 
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', default='smtp.gmail.com')
-EMAIL_PORT = os.getenv('EMAIL_PORT', default=587)
-EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', default=True)
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+EMAIL_HOST = 'smtp.gmail.com'
+EMAIL_PORT = 587
+EMAIL_USE_TLS =True
+EMAIL_HOST_USER = AWS_SECRET['EMAIL_HOST_USER']
+EMAIL_HOST_PASSWORD = AWS_SECRET['EMAIL_HOST_PASSWORD']
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'Time CapSoul API',
@@ -172,9 +179,9 @@ ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = "none"
 
-GOOGLE_OAUTH_CLIENT_ID = os.getenv("GOOGLE_OAUTH_CLIENT_ID")
-GOOGLE_OAUTH_CLIENT_SECRET = os.getenv("GOOGLE_OAUTH_CLIENT_SECRET")
-GOOGLE_OAUTH_CALLBACK_URL = os.getenv("GOOGLE_OAUTH_CALLBACK_URL")
+GOOGLE_OAUTH_CLIENT_ID = AWS_SECRET['GOOGLE_OAUTH_CLIENT_ID']
+GOOGLE_OAUTH_CLIENT_SECRET = AWS_SECRET["GOOGLE_OAUTH_CLIENT_SECRET"]
+GOOGLE_OAUTH_CALLBACK_URL = AWS_SECRET["GOOGLE_OAUTH_CALLBACK_URL"]
 
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
@@ -207,7 +214,7 @@ SIMPLE_JWT = {
 
 DJRESTAUTH_TOKEN_MODEL = None
 
-FRONTEND_URL = os.getenv("FRONTEND_URL", default="http://localhost:3000")
+FRONTEND_URL = AWS_SECRET["FRONTEND_URL"]
 
 DJREST_AUTH = {
     "USE_JWT": True,

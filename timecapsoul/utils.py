@@ -6,6 +6,7 @@ import boto3
 from django.conf import settings
 
 
+
 class MediaRootS3Boto3Storage(S3Boto3Storage):
     location = 'media'  
     file_overwrite = False
@@ -79,3 +80,25 @@ def upload_to_file_s3_bucket():
         bucket_name = settings.AWS_STORAGE_BUCKET_NAME
     except:
         pass
+
+
+import boto3
+import json
+import os
+
+def get_aws_secret(secret_name: str, ):
+    session = boto3.session.Session()
+    client = session.client(
+        service_name='secretsmanager',
+        region_name='ap-south-1'
+    )
+
+    try:
+        get_secret_value_response = client.get_secret_value(SecretId=secret_name)
+    except Exception as e:
+        raise Exception(f"Error retrieving secret {secret_name}: {e}")
+
+    secret = get_secret_value_response.get('SecretString')
+    if secret:
+        return json.loads(secret)
+    raise Exception("Secret not found")

@@ -127,63 +127,63 @@ class MemoryRoomUpdationSerializer(serializers.ModelSerializer):
        
 
 class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
-    file_url = serializers.SerializerMethodField()
+        file_url = serializers.SerializerMethodField()
 
-    class Meta:
-        model = MemoryRoomMediaFile
-        fields = [
-            'id', 'user', 'memory_room', 'file', 'file_url', 'file_type',
-            'cover_image', 'description', 'is_cover_image', 'file_size'
-        ]
-        read_only_fields = ['id', 'user', 'file_size', 'file_url', 'cover_image']
+        class Meta:
+            model = MemoryRoomMediaFile
+            fields = [
+                'id', 'user', 'memory_room', 'file', 'file_url', 'file_type',
+                'cover_image', 'description', 'is_cover_image', 'file_size'
+            ]
+            read_only_fields = ['id', 'user', 'file_size', 'file_url', 'cover_image']
 
-    def get_file_url(self, obj):
-        return obj.s3_url
- 
-    def upload_file_to_s3_bucket(self, file):
-        import io
-        import boto3
-        import mimetypes
+        def get_file_url(self, obj):
+            return obj.s3_url
+    
+        def upload_file_to_s3_bucket(self, file):
+            import io
+            import boto3
+            import mimetypes
 
-        file_content = file.read()  # reads the entire file into memory
-        buffer = io.BytesIO(file_content)  # create a new readable stream
+            file_content = file.read()  # reads the entire file into memory
+            buffer = io.BytesIO(file_content)  # create a new readable stream
 
-        file_name = f"memory_room_files/{file.name}"
-        content_type = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
+            file_name = f"memory_room_files/{file.name}"
+            content_type = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
 
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_S3_REGION_NAME
-        )
-        
-        s3.upload_fileobj(
-            buffer,
-            settings.AWS_STORAGE_BUCKET_NAME,
-            file_name,
-            ExtraArgs={'ContentType': content_type, 'ACL': 'public-read'}
-        )
+            s3 = boto3.client(
+                's3',
+                aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+                region_name=settings.AWS_S3_REGION_NAME
+            )
+            
+            s3.upload_fileobj(
+                buffer,
+                settings.AWS_STORAGE_BUCKET_NAME,
+                file_name,
+                ExtraArgs={'ContentType': content_type, 'ACL': 'public-read'}
+            )
 
-        return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{file_name}"
+            return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{file_name}"
 
-    def create(self, validated_data):
-        user = self.context['user']
-        file = validated_data.get('file')
+        def create(self, validated_data):
+            user = self.context['user']
+            file = validated_data.get('file')
 
-        validated_data['user'] = user
-        if file:
-            validated_data['file_size'] = file.size
-            s3_url = self.upload_file_to_s3_bucket(file)
-            validated_data['s3_url'] = s3_url
-        return super().create(validated_data)
+            validated_data['user'] = user
+            if file:
+                validated_data['file_size'] = file.size
+                s3_url = self.upload_file_to_s3_bucket(file)
+                validated_data['s3_url'] = s3_url
+            return super().create(validated_data)
 
-    def update(self, instance, validated_data):
-        file = validated_data.get('file')
+        def update(self, instance, validated_data):
+            file = validated_data.get('file')
 
-        if file:
-            validated_data['file_size'] = file.size
-            s3_url = self.upload_file_to_s3_bucket(file)
-            validated_data['s3_url'] = s3_url
+            if file:
+                validated_data['file_size'] = file.size
+                s3_url = self.upload_file_to_s3_bucket(file)
+                validated_data['s3_url'] = s3_url
 
-        return super().update(instance, validated_data)
+            return super().update(instance, validated_data)

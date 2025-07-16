@@ -14,9 +14,10 @@ from memory_room.models import MemoryRoom,MemoryRoomTemplateDefault, MemoryRoomM
 
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.apis.serializers.memory_room import (
-    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer, MemoryRoomMediaFileSerializer,MemoryRoomUpdationSerializer
+    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer,MemoryRoomUpdationSerializer, MemoryRoomMediaFileSerializer
     
     )
+
 
 class MemoryRoomCoverView(generics.ListAPIView): 
     permission_classes = [permissions.IsAuthenticated]
@@ -93,7 +94,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         # Ensure memory room exists and belongs to user
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
 
-        data = request.data
+        data = request.data.copy()
         data['user'] = user.id
         data['memory_room'] = memory_room.id
 
