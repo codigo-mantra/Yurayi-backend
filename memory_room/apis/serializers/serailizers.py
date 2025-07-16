@@ -13,14 +13,8 @@ class AssetSerializer(serializers.ModelSerializer):
         fields = ['id', 'title','image_url']
 
     def get_image_url(self, obj):
-        print(f'\n Mode: ',MODE)
-        if MODE != 'PROD':
-            request = self.context.get('request')
-            if obj.image and hasattr(obj.image, 'url'):
-                return request.build_absolute_uri(obj.image.url) if request else obj.image.url
-            else:
-                obj.s3_url
-        return None
+        return obj.s3_url
+        
 class CustomMemoryRoomTemplateSerializer(serializers.ModelSerializer):
     cover_image = AssetSerializer()
     class Meta:
@@ -66,3 +60,4 @@ class MemoryRoomCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return MemoryRoom.objects.create(user=self.context['request'].user, **validated_data)
+

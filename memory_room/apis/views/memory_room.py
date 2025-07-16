@@ -1,138 +1,186 @@
+import boto3
+from botocore.exceptions import ClientError
+from django.conf import settings
+from django.http import StreamingHttpResponse, Http404
+
+from django.shortcuts import get_object_or_404
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser
+
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView
 
-from rest_framework.views import APIView
-from rest_framework import status
-from rest_framework.response import Response
-from django.shortcuts import get_object_or_404
-
-
-from memory_room.apis.serializers.memory_room import AssetSerializer
-
-from rest_framework import generics, permissions
-from memory_room.models import MemoryRoom,MemoryRoomTemplateDefault, MemoryRoomMediaFile, MemoryRoomDetail
-
-from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
+from memory_room.models import (
+    MemoryRoom, MemoryRoomTemplateDefault,
+    MemoryRoomMediaFile
+)
 from memory_room.apis.serializers.memory_room import (
-    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer,MemoryRoomUpdationSerializer, MemoryRoomMediaFileSerializer
-    
-    )
+    AssetSerializer, MemoryRoomCreationSerializer,
+    MemoryRoomTemplateDefaultSerializer, MemoryRoomUpdationSerializer,
+    MemoryRoomMediaFileSerializer, MemoryRoomMediaFileCreationSerializer
+)
+from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 
 
-class MemoryRoomCoverView(generics.ListAPIView): 
+class MemoryRoomCoverView(generics.ListAPIView):
+    """
+    API endpoint to list all assets of type 'Memory Room Cover'.
+    Only authenticated users can access this.
+    """
     permission_classes = [permissions.IsAuthenticated]
-    queryset = Assets.objects.all()
     serializer_class = AssetSerializer
 
     def get_queryset(self):
-        return Assets.objects.filter(asset_types = 'Memory Room Cover').order_by('-is_created')
-        
+        """
+        Returns all memory room cover assets ordered by creation date.
+        """
+        return Assets.objects.filter(asset_types='Memory Room Cover').order_by('-is_created')
+
 
 class UserMemoryRoomListView(generics.ListAPIView):
-    serializer_class = MemoryRoomSerializer
+    """
+    API endpoint to list all non-deleted memory rooms of the current user.
+    """
     permission_classes = [permissions.IsAuthenticated]
+    serializer_class = MemoryRoomSerializer
 
     def get_queryset(self):
+        """
+        Returns all memory rooms for the current user that are not deleted.
+        """
         return MemoryRoom.objects.filter(user=self.request.user, is_deleted=False).order_by('-is_created')
 
+
 class MemoryRoomTemplateDefaultViewSet(generics.ListAPIView):
+    """
+    API endpoint to list all default memory room templates.
+    """
     permission_classes = [permissions.IsAuthenticated]
-    queryset = MemoryRoomTemplateDefault.objects.filter(is_deleted = False).order_by('-is_created')
     serializer_class = MemoryRoomTemplateDefaultSerializer
+
+    def get_queryset(self):
+        """
+        Returns all non-deleted default memory room templates ordered by creation.
+        """
+        return MemoryRoomTemplateDefault.objects.filter(is_deleted=False).order_by('-is_created')
 
 
 class CreateMemoryRoomView(SecuredView):
+    """
+    API view to create, update, or delete a memory room.
+    Inherits authentication logic from `SecuredView`.
+    """
+
     def post(self, request, format=None):
+        """
+        Create a new memory room.
+        """
         user = self.get_current_user(request)
         serializer = MemoryRoomCreationSerializer(data=request.data, context={'user': user})
         serializer.is_valid(raise_exception=True)
         memory_room = serializer.validated_data.get('memory_room')
         serialized_data = MemoryRoomSerializer(memory_room).data if memory_room else {}
 
-        return Response({'message': 'Memory created successfully', 'memory_room': serialized_data})
-    
-    def delete(self, request,memory_room_id, format=None):
-        """Delete memory room"""
+        return Response({
+            'message': 'Memory created successfully',
+            'memory_room': serialized_data
+        })
+
+    def delete(self, request, memory_room_id, format=None):
+        """
+        Delete an existing memory room.
+        """
         user = self.get_current_user(request)
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
-        memory_room_name = memory_room.room_template.name
+        room_name = memory_room.room_template.name
         memory_room.delete()
-        return Response({'message': f'Memory deleted successfully named as : {memory_room_name}'}, status=status.HTTP_204_NO_CONTENT)
-    
+        return Response(
+            {'message': f'Memory deleted successfully named as : {room_name}'},
+            status=status.HTTP_204_NO_CONTENT
+        )
+
     def patch(self, request, memory_room_id):
+        """
+        Partially update fields of a memory room.
+        """
         user = self.get_current_user(request)
-        try:
-            memory_room = MemoryRoom.objects.get(id=memory_room_id, user=user)
-        except MemoryRoom.DoesNotExist:
-            return Response({"detail": "MemoryRoom not found."}, status=status.HTTP_404_NOT_FOUND)
+        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+        serializer = MemoryRoomUpdationSerializer(instance=memory_room, data=request.data, partial=True)
 
-        serializer = MemoryRoomUpdationSerializer(instance = memory_room, data=request.data, partial=True)
         if serializer.is_valid():
-            memory_room = serializer.save()
-            memory_room_serializer = MemoryRoomSerializer(memory_room)
-            
-            return Response(memory_room_serializer.data)
+            updated_room = serializer.save()
+            return Response(MemoryRoomSerializer(updated_room).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 
 
 class MemoryRoomMediaFileListCreateAPI(SecuredView):
+    """
+    API view to manage (list, add, move, delete) media files within a memory room.
+    """
+    parser_classes = [MultiPartParser]
 
-    def get(self, request, memory_room_id: int):
-        """List All Media Files of Memory Room """
+    def get_memory_room(self, user, memory_room_id):
+        """
+        Utility method to get a memory room owned by the user.
+        """
+        return get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+
+    def get(self, request, memory_room_id):
+        """
+        List all media files of a memory room.
+        """
         user = self.get_current_user(request)
-        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+        memory_room = self.get_memory_room(user, memory_room_id)
         media_files = MemoryRoomMediaFile.objects.filter(memory_room=memory_room, user=user).order_by('-is_created')
-        serializer = MemoryRoomMediaFileSerializer(media_files, many=True)
-        return Response(serializer.data)
+        return Response(MemoryRoomMediaFileSerializer(media_files, many=True).data)
 
-    def post(self, request, memory_room_id: int):
-        """Post Media Files in Memory Room"""
-
-        user = self.get_current_user(request)
-
-        # Ensure memory room exists and belongs to user
-        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
-
-        data = request.data.copy()
-        data['user'] = user.id
-        data['memory_room'] = memory_room.id
-
-        serializer = MemoryRoomMediaFileSerializer(data=data, context={'user': user})
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
+    def post(self, request, memory_room_id):
+        """
+        Upload multiple media files to a memory room.
+        """
+        user = self.get_current_user(request)
+        memory_room = self.get_memory_room(user, memory_room_id)
+
+        files = request.FILES.getlist('file')
+        created_objects = []
+
+        for uploaded_file in files:
+            serializer = MemoryRoomMediaFileCreationSerializer(
+                data={**request.data, 'file': uploaded_file},
+                context={'user': user, 'memory_room': memory_room}
+            )
+            if serializer.is_valid():
+                media_file = serializer.save()
+                created_objects.append(media_file)
+            else:
+                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # Serialize all successfully created files
+        return Response(
+            MemoryRoomMediaFileSerializer(created_objects, many=True).data,
+            status=status.HTTP_201_CREATED
+        )
+
     def patch(self, request, memory_room_id, media_file_id):
-        """Move Media File to another Memory room"""
-        user  = self.get_current_user(request)
-        # moved to memory room 
-        memory_room = get_object_or_404(
-            MemoryRoom,
-            id=memory_room_id,
-            user=user,
-        )
-        media_file = get_object_or_404(
-            MemoryRoomMediaFile,
-            id=media_file_id,
-            user=user,
+        """
+        Move a media file to another memory room.
+        """
+        user = self.get_current_user(request)
+        new_room = self.get_memory_room(user, memory_room_id)
+        media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user=user)
 
-        )
-
-        media_file.memory_room = memory_room
+        media_file.memory_room = new_room
         media_file.save()
         return Response({'message': "Media files moved successfully"}, status=status.HTTP_200_OK)
 
-    
-        
     def delete(self, request, memory_room_id, media_file_id):
-        """Delete Media file"""
+        """
+        Delete a media file from a memory room.
+        """
         user = self.get_current_user(request)
-        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
-
-
+        memory_room = self.get_memory_room(user, memory_room_id)
         media_file = get_object_or_404(
             MemoryRoomMediaFile,
             id=media_file_id,
@@ -141,4 +189,47 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         )
         media_file.delete()
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
-    
+
+
+class MediaFileDownloadView(SecuredView):
+
+    def get(self, request, memory_room_id, media_file_id):
+        """
+        Securely stream media file from S3 by file ID.
+        """
+        try:
+            user = self.get_current_user(request)
+            memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+            media_file = get_object_or_404(
+                MemoryRoomMediaFile,
+                id=media_file_id,
+                user=user,
+                memory_room=memory_room
+            )
+        except MemoryRoomMediaFile.DoesNotExist:
+            raise Http404("Media file not found.")
+
+        s3_key = media_file.s3_url.split(f"{settings.AWS_STORAGE_BUCKET_NAME}/")[-1]
+
+        s3 = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION_NAME
+        )
+
+
+        try:
+            s3_response = s3.get_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key='memory_room_files/audio/memory_media_files')
+            file_stream = s3_response['Body']
+            content_type = s3_response['ContentType']
+
+
+            response = StreamingHttpResponse(
+                streaming_content=file_stream,
+                content_type=content_type
+            )
+            response['Content-Disposition'] = f'attachment; filename="{s3_key.split("/")[-1]}"'
+            return response
+        except ClientError as e:
+            raise Http404(f"Could not retrieve file: {e}")

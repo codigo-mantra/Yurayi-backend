@@ -108,13 +108,9 @@ class MemoryRoom(BaseModel):
 
 FILE_TYPES = (
     ('image', 'Image'),
-    ('pdf', 'PDF'),
     ('video', 'Video'),
     ('audio', 'Audio'),
     ('document', 'Document'),
-    ('archive', 'Archive'),
-    ('code', 'Code File'),
-    ('art', 'Art & Scans'),
     ('other', 'Other'),
 )
 
@@ -161,8 +157,6 @@ class MemoryRoomMediaFile(BaseModel):
 
     def __str__(self):
         return f"{self.file.name}"
-    
-
 
 
 class MemoryRoomDetail(BaseModel):

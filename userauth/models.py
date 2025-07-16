@@ -47,10 +47,10 @@ class Assets(BaseModel):
     
     def save(self, *args, **kwargs):
         """Upload assets in S3 bucket"""
-        if self.image and not self.s3_url:
-            s3_url = upload_file_to_s3_bucket(self.image, folder="assets")
-            if s3_url:
-                self.s3_url = s3_url
+        if self.image and (not self.s3_url or self.image != self._original_image):
+            uploaded_data = upload_file_to_s3_bucket(self.image, folder="assets")
+            if uploaded_data:
+                self.s3_url = uploaded_data[0]
         super().save(*args, **kwargs)
 
 

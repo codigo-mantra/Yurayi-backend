@@ -18,7 +18,6 @@ import environ
 env = environ.Env()
 environ.Env.read_env()
 
-# BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -33,7 +32,6 @@ MODE = env('MODE')
 print(f'\n Project is running in : {MODE}')
 
 SECRET_KEY = 'django-insecure-xv5_(#zp+y*ixeerilyq^!$2mo$q6y139znuj+jqte4k1pa=89'
-print(f'secret\n ',SECRET_KEY)
 
 DEBUG = True
 

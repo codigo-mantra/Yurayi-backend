@@ -1,3 +1,6 @@
+import io
+import boto3
+import mimetypes
 import string, random
 from django.conf import settings
 from django.utils.text import slugify
@@ -19,39 +22,67 @@ def generate_unique_slug(instance, queryset=None):
         slug = slugify(slug + random.choice(str_letters) + str(random.randint(1,9)))
     
     return slug
-# utils/s3_upload.py
 
-import io
-import boto3
-import mimetypes
-from django.conf import settings
+def get_file_category(file_name):
+    import mimetypes
 
-def upload_file_to_s3_bucket(file, folder="media"):
-    """Upload file to S3 and return the S3 URL."""
-    file_content = file.read()
-    buffer = io.BytesIO(file_content)
+    content_type = mimetypes.guess_type(file_name)[0] or ''
+    if content_type.startswith('image/'):
+        return 'image'
+    elif content_type.startswith('video/'):
+        return 'video'
+    elif content_type.startswith('audio/'):
+        return 'audio'
+    elif content_type in ['application/pdf', 'application/msword',
+                          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                          'application/vnd.ms-excel']:
+        return 'document'
+    else:
+        return 'other'
+    
+def upload_file_to_s3_bucket(file, folder=None):
+    import io
+    import boto3
+    import mimetypes
+    from django.conf import settings
 
-    file_name = f"{folder}/{file.name}"
-    content_type = mimetypes.guess_type(file.name)[0] or 'application/octet-stream'
+    # Step 1: Setup file name and content type
+    original_file_name = file.name
+    if folder:
+        file_name = f"{folder}/{original_file_name}"
+    else:
+        file_name = original_file_name
 
+    file_category = get_file_category(original_file_name)
+    s3_key = f"{file_category}/{file_name}"
+    content_type = mimetypes.guess_type(original_file_name)[0] or 'application/octet-stream'
+
+    # Step 2: Prepare file buffer
+    file.seek(0)
+    buffer = io.BytesIO(file.read())
+
+    # Step 3: Upload to S3
     s3 = boto3.client(
         's3',
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        region_name=settings.AWS_S3_REGION_NAME,
+        region_name=settings.AWS_S3_REGION_NAME
     )
 
     try:
         s3.upload_fileobj(
             buffer,
             settings.AWS_STORAGE_BUCKET_NAME,
-            file_name,
-            ExtraArgs={'ContentType': content_type, 'ACL': 'public-read'}
+            s3_key,
+            ExtraArgs={
+                'ContentType': content_type,
+                'ACL': 'public-read'  # Change to 'private' if needed
+            }
         )
     except Exception as e:
-        print(f'Exception while uploading file to S3: {e}')
-        return None
-    else:
-        s3_file_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{file_name}"
+        raise Exception(f"S3 upload failed: {str(e)}")
 
-    return s3_file_url
+    # Step 4: Build full S3 URL
+    s3_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"
+
+    return (s3_url, file_category, s3_key)
