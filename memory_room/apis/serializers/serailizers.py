@@ -1,11 +1,31 @@
 # serializers.py
 from rest_framework import serializers
+from userauth.models import Assets
 from memory_room.models import MemoryRoom, TimeCapSoul, CustomMemoryRoomTemplate, CustomTimeCapSoulTemplate
+from django.conf import settings
+MODE = settings.MODE
 
+class AssetSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Assets
+        fields = ['id', 'title','image_url']
+
+    def get_image_url(self, obj):
+        print(f'\n Mode: ',MODE)
+        if MODE != 'PROD':
+            request = self.context.get('request')
+            if obj.image and hasattr(obj.image, 'url'):
+                return request.build_absolute_uri(obj.image.url) if request else obj.image.url
+            else:
+                obj.s3_url
+        return None
 class CustomMemoryRoomTemplateSerializer(serializers.ModelSerializer):
+    cover_image = AssetSerializer()
     class Meta:
         model = CustomMemoryRoomTemplate
-        fields = ['id', 'name', 'slug', 'summary']
+        fields = ['id', 'name', 'slug', 'summary', 'cover_image']
 
 class MemoryRoomSerializer(serializers.ModelSerializer):
     room_template = CustomMemoryRoomTemplateSerializer()

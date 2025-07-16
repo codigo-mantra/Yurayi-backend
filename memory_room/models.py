@@ -151,6 +151,8 @@ class MemoryRoomMediaFile(BaseModel):
         verbose_name="Use as Cover"
     )
     file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
+    s3_url = models.URLField(blank=True, null=True)
+
 
 
     class Meta:
@@ -176,6 +178,8 @@ class MemoryRoomDetail(BaseModel):
         related_name="memory_room_details",
         verbose_name="Media Files"
     )
+    occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul")
+
 
     class Meta:
         verbose_name = "Memory Room Detail"
@@ -303,6 +307,8 @@ class TimeCapSoulMediaFile(BaseModel):
         verbose_name="Use as Cover"
     )
     file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
+    s3_url = models.URLField(blank=True, null=True)
+
 
 
     class Meta:
@@ -338,26 +344,29 @@ class TimeCapSoulMediaFile(BaseModel):
 
 
 class TimeCapSoulDetail(BaseModel):
-     time_capsoul = models.OneToOneField(
-         TimeCapSoul,
-         on_delete=models.CASCADE,
-         related_name="details",
-         verbose_name="TimeCapSoul"
-     )
-     media_files = models.ManyToManyField(
-         TimeCapSoulMediaFile,
-         blank=True,
-         related_name="timecapsoul_details",
-         verbose_name="Media Files"
-     )
-     unlock_date = models.DateTimeField(verbose_name="Unlock Date")
+    time_capsoul = models.OneToOneField(
+        TimeCapSoul,
+        on_delete=models.CASCADE,
+        related_name="details",
+        verbose_name="TimeCapSoul"
+    )
+    media_files = models.ManyToManyField(
+        TimeCapSoulMediaFile,
+        blank=True,
+        related_name="timecapsoul_details",
+        verbose_name="Media Files"
+    )
+    unlock_date = models.DateTimeField(verbose_name="Unlock Date")
+    occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul")
 
-     class Meta:
-         verbose_name = "TimeCapSoul Detail"
-         verbose_name_plural = "TimeCapSoul Details"
 
-     def __str__(self):
-         return f"Details for {self.time_capsoul}"
+
+    class Meta:
+        verbose_name = "TimeCapSoul Detail"
+        verbose_name_plural = "TimeCapSoul Details"
+
+    def __str__(self):
+        return f"Details for {self.time_capsoul}"
 
 
 class TimeCapSoulRecipient(BaseModel):

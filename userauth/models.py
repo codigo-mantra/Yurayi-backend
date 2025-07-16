@@ -31,6 +31,7 @@ class Assets(BaseModel):
         default="Others",
         verbose_name="Asset Type"
     )
+    s3_url = models.URLField(blank=True, null=True)
 
     class Meta:
         verbose_name = "Asset"

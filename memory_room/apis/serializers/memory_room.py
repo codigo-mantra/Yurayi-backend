@@ -29,27 +29,6 @@ class MemoryRoomTemplateDefaultSerializer(serializers.ModelSerializer):
             return request.build_absolute_uri(obj.cover_image.image.url) if request else obj.cover_image.image.url
         return None
 
-# class MemoryRoomCreationSerializer(serializers.Serializer):
-#     template_id = serializers.IntegerField(required = False)
-#     name = serializers.CharField(required = False)
-
-
-
-# class CustomMemoryRoomTemplateSerializer(serializers.Serializer):
-#     template_id = serializers.IntegerField(read_only=True)
-#     name = serializers.CharField(max_length=255)
-#     summary = serializers.CharField(required=False, allow_null=True, allow_blank=True)
-#     cover_image = serializers.IntegerField(required=False, allow_null=True)  
-
-#     def validate(self, data):
-#         template_id = data.get('template_id', None)
-#         if not template_id:
-#             pass
-#         else:
-
-        
-        
-
 
 class CustomMemoryRoomTemplateSerializer(serializers.ModelSerializer):
 
@@ -112,16 +91,44 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
             return MemoryRoom.objects.create(user=user, room_template=custom)
 
 
+class MemoryRoomUpdationSerializer(serializers.ModelSerializer):
+    name = serializers.CharField(required=False)
+    summary = serializers.CharField(required=False)
+    cover_image = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = MemoryRoom
+        fields = ('name', 'summary', 'cover_image')
+
+    def validate_cover_image(self, value):
+        try:
+            cover_image = Assets.objects.get(id=value, asset_types='Memory Room Cover')
+        except Assets.DoesNotExist:
+            raise serializers.ValidationError("Cover image with this ID does not exist.")
+        else:
+            return cover_image
+
+    def update(self, instance, validated_data):
+        if 'name' in validated_data:
+            instance.room_template.name = validated_data['name']
+        if 'summary' in validated_data:
+            instance.room_template.summary = validated_data['summary']
+        if 'cover_image' in validated_data:
+            instance.room_template.cover_image = validated_data['cover_image']  
+        instance.save()
+        return instance
+
+       
+
 class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
 
     class Meta:
         model = MemoryRoomMediaFile
         fields = [
-            'id', 'user', 'memory_room', 'file', 'file_url', 'file_type',
-            'cover_image', 'description', 'is_cover_image', 'file_size'
+            'id', 'user', 'memory_room', 'file', 'file_url', 'file_type', 'cover_image', 'description', 'is_cover_image', 'file_size'
         ]
-        read_only_fields = ['id', 'user', 'file_size', 'file_url']
+        read_only_fields = ['id', 'user', 'file_size', 'file_url', 'cover_image']
 
     def get_file_url(self, obj):
         request = self.context.get('request')

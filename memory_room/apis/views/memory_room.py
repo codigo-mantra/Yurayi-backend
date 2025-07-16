@@ -14,7 +14,7 @@ from memory_room.models import MemoryRoom,MemoryRoomTemplateDefault, MemoryRoomM
 
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.apis.serializers.memory_room import (
-    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer, MemoryRoomMediaFileSerializer,
+    MemoryRoomCreationSerializer, MemoryRoomTemplateDefaultSerializer, MemoryRoomMediaFileSerializer,MemoryRoomUpdationSerializer
     
     )
 
@@ -24,7 +24,7 @@ class MemoryRoomCoverView(generics.ListAPIView):
     serializer_class = AssetSerializer
 
     def get_queryset(self):
-        return Assets.objects.filter(asset_types = 'Memory Room Cover')
+        return Assets.objects.filter(asset_types = 'Memory Room Cover').order_by('-is_created')
         
 
 class UserMemoryRoomListView(generics.ListAPIView):
@@ -32,11 +32,11 @@ class UserMemoryRoomListView(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get_queryset(self):
-        return MemoryRoom.objects.filter(user=self.request.user, is_deleted=False)
+        return MemoryRoom.objects.filter(user=self.request.user, is_deleted=False).order_by('-is_created')
 
 class MemoryRoomTemplateDefaultViewSet(generics.ListAPIView):
     permission_classes = [permissions.IsAuthenticated]
-    queryset = MemoryRoomTemplateDefault.objects.filter(is_deleted = False)
+    queryset = MemoryRoomTemplateDefault.objects.filter(is_deleted = False).order_by('-is_created')
     serializer_class = MemoryRoomTemplateDefaultSerializer
 
 
@@ -56,7 +56,23 @@ class CreateMemoryRoomView(SecuredView):
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
         memory_room_name = memory_room.room_template.name
         memory_room.delete()
-        return Response({'message': memory_room_name}, status=status.HTTP_204_NO_CONTENT)
+        return Response({'message': f'Memory deleted successfully named as : {memory_room_name}'}, status=status.HTTP_204_NO_CONTENT)
+    
+    def patch(self, request, memory_room_id):
+        user = self.get_current_user(request)
+        try:
+            memory_room = MemoryRoom.objects.get(id=memory_room_id, user=user)
+        except MemoryRoom.DoesNotExist:
+            return Response({"detail": "MemoryRoom not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = MemoryRoomUpdationSerializer(instance = memory_room, data=request.data, partial=True)
+        if serializer.is_valid():
+            memory_room = serializer.save()
+            memory_room_serializer = MemoryRoomSerializer(memory_room)
+            
+            return Response(memory_room_serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class MemoryRoomMediaFileListCreateAPI(SecuredView):
@@ -64,7 +80,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
     def get(self, request, memory_room_id: int):
         """List All Media Files of Memory Room """
         user = self.get_current_user(request)
-        media_files = MemoryRoomMediaFile.objects.filter(memory_room_id=memory_room_id, user=user)
+        media_files = MemoryRoomMediaFile.objects.filter(memory_room_id=memory_room_id, user=user).order_by('-is_created')
         serializer = MemoryRoomMediaFileSerializer(media_files, many=True)
         return Response(serializer.data)
 
