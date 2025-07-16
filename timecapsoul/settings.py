@@ -13,7 +13,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
-from .utils import load_env
+from timecapsoul.utils import load_env
 
 load_env()
 MODE = os.getenv('MODE')

@@ -80,7 +80,8 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
     def get(self, request, memory_room_id: int):
         """List All Media Files of Memory Room """
         user = self.get_current_user(request)
-        media_files = MemoryRoomMediaFile.objects.filter(memory_room_id=memory_room_id, user=user).order_by('-is_created')
+        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+        media_files = MemoryRoomMediaFile.objects.filter(memory_room=memory_room, user=user).order_by('-is_created')
         serializer = MemoryRoomMediaFileSerializer(media_files, many=True)
         return Response(serializer.data)
 
@@ -92,7 +93,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         # Ensure memory room exists and belongs to user
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
 
-        data = request.data.copy()
+        data = request.data
         data['user'] = user.id
         data['memory_room'] = memory_room.id
 
@@ -128,12 +129,14 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
     def delete(self, request, memory_room_id, media_file_id):
         """Delete Media file"""
         user = self.get_current_user(request)
+        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+
 
         media_file = get_object_or_404(
             MemoryRoomMediaFile,
             id=media_file_id,
             user=user,
-            memory_room_id=memory_room_id
+            memory_room=memory_room
         )
         media_file.delete()
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)

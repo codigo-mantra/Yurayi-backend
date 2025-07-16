@@ -18,3 +18,4 @@ def generate_unique_slug(instance, queryset=None):
         slug = slugify(slug + random.choice(str_letters) + str(random.randint(1,9)))
     
     return slug
+
