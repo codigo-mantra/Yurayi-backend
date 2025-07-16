@@ -16,6 +16,10 @@ from pathlib import Path
 from timecapsoul.utils import load_env, get_aws_secret
 
 
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+
 load_env()  # get credential from env file
 AWS_SECRET = get_aws_secret(os.getenv('AWS_SECRET_MANAGER_NAME')) # get credential from ASW Secret Manager 
 
@@ -25,9 +29,8 @@ print(f'AWS Secret: \n {AWS_SECRET} \n')
 MODE = os.getenv('MODE')
 print(f'\n Project is running in : {MODE}')
 
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-SECRET_KEY = AWS_SECRET['DJANGO_SECRET_KEY']
+SECRET_KEY = 'django-insecure-xv5_(#zp+y*ixeerilyq^!$2mo$q6y139znuj+jqte4k1pa=89'
+print(f'secret\n ',SECRET_KEY)
 
 DEBUG = True
 
