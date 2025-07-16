@@ -14,19 +14,22 @@ from datetime import timedelta
 from pathlib import Path
 
 from timecapsoul.utils import load_env, get_aws_secret
+import environ
+env = environ.Env()
+environ.Env.read_env()
 
-
+# BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 load_env()  # get credential from env file
-AWS_SECRET = get_aws_secret(os.getenv('AWS_SECRET_MANAGER_NAME')) # get credential from ASW Secret Manager 
+AWS_SECRET = get_aws_secret(env('AWS_SECRET_MANAGER_NAME')) # get credential from ASW Secret Manager 
 
 print(f'AWS Secret: \n {AWS_SECRET} \n')
 
 
-MODE = os.getenv('MODE')
+MODE = env('MODE')
 print(f'\n Project is running in : {MODE}')
 
 SECRET_KEY = 'django-insecure-xv5_(#zp+y*ixeerilyq^!$2mo$q6y139znuj+jqte4k1pa=89'
@@ -133,8 +136,8 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 if MODE == 'PROD':
     STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 
-    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
+    AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
     AWS_STORAGE_BUCKET_NAME = AWS_SECRET['AWS_STORAGE_BUCKET_NAME']
     AWS_S3_REGION_NAME = AWS_SECRET['AWS_S3_REGION_NAME']
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
