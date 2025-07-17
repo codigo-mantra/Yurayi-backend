@@ -161,9 +161,10 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
         if file:
             validated_data['file_size'] = file.size
-            s3_url, file_type = upload_file_to_s3_bucket(file, folder='memory_media_files')
+            s3_url, file_type,s3_key = upload_file_to_s3_bucket(file, folder='memory_media_files')
             validated_data['s3_url'] = s3_url
             validated_data['file_type'] = file_type
+            validated_data['s3_key'] = s3_key
 
             # Set the file field 
             validated_data['file'] = file

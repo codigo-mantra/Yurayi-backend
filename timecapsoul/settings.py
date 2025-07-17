@@ -46,7 +46,8 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites', 
-    'storages',       
+    'storages',    
+    'channels',   
     'corsheaders',
     'drf_spectacular',
     'rest_framework',
@@ -95,7 +96,8 @@ TEMPLATES = [
     },
 ]
 
-WSGI_APPLICATION = 'timecapsoul.wsgi.application'
+# WSGI_APPLICATION = 'timecapsoul.wsgi.application'
+ASGI_APPLICATION = "timecapsoul.asgi.application"
 
 DATABASES = {
     'default': {
@@ -150,7 +152,9 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
+# CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
+
+CORS_ORIGIN_ALLOW_ALL = True
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -223,4 +227,14 @@ DJREST_AUTH = {
     "USE_JWT": True,
     "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}/",
     "SEND_PASSWORD_RESET_EMAIL": True,
+}
+
+# Redis setup for channels layer
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            "hosts": [('127.0.0.1', 6379)],
+        },
+    },
 }

@@ -86,3 +86,16 @@ def upload_file_to_s3_bucket(file, folder=None):
     s3_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"
 
     return (s3_url, file_category, s3_key)
+
+def determine_download_chunk_size(file_size):
+    """
+    Dynamically determine chunk size based on file size (in bytes).
+    """
+    if file_size <= 10 * 1024 * 1024:      # <= 10 MB
+        return 512 * 1024                 # 512 KB
+    elif file_size <= 100 * 1024 * 1024:   # <= 100 MB
+        return 1 * 1024 * 1024            # 1 MB
+    elif file_size <= 500 * 1024 * 1024:   # <= 500 MB
+        return 2 * 1024 * 1024            # 2 MB
+    else:
+        return 5 * 1024 * 1024            # 5 MB for large files

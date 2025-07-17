@@ -148,6 +148,9 @@ class MemoryRoomMediaFile(BaseModel):
     )
     file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
     s3_url = models.URLField(blank=True, null=True)
+    s3_key = models.CharField(blank=True, null=True)
+
+
 
 
 
