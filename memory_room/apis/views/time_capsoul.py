@@ -16,6 +16,8 @@ from memory_room.apis.serializers.memory_room import (
     AssetSerializer,
 )
 
+from memory_room.models import TimeCapSoulTemplateDefault
+from memory_room.apis.serializers.time_capsoul import TimeCapSoulTemplateDefaultReadOnlySerializer
 
 class TimeCapSoulCoverView(generics.ListAPIView):
     """
@@ -30,3 +32,12 @@ class TimeCapSoulCoverView(generics.ListAPIView):
         Returns all Time CapSoul Cover assets ordered by creation date.
         """
         return Assets.objects.filter(asset_types='Time CapSoul Cover').order_by('-is_created')
+
+
+class TimeCapSoulDefaultTemplateAPI(SecuredView):
+
+    def get(self, request, format=None):
+        default_templates = TimeCapSoulTemplateDefault.objects.filter(is_deleted = False)
+        serializer = TimeCapSoulTemplateDefaultReadOnlySerializer(default_templates, many=True)
+        return Response(serializer.data)
+
