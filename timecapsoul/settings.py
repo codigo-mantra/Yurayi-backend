@@ -25,9 +25,6 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_env()  # get credential from env file
 AWS_SECRET = get_aws_secret(env('AWS_SECRET_MANAGER_NAME')) # get credential from ASW Secret Manager 
 
-print(f'AWS Secret: \n {AWS_SECRET} \n')
-
-
 MODE = env('MODE')
 print(f'\n Project is running in : {MODE}')
 
@@ -152,9 +149,8 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# CORS_ALLOWED_ORIGINS = ["http://localhost:3000"]
+CORS_ALLOWED_ORIGINS = ["http://localhost:3000", 'https://yurayi.com']
 
-CORS_ORIGIN_ALLOW_ALL = True
 
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
@@ -238,3 +234,5 @@ CHANNEL_LAYERS = {
         },
     },
 }
+
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100MB
