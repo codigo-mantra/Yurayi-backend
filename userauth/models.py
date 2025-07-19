@@ -2,7 +2,8 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from .managers import UserManager
-from memory_room.utils import upload_file_to_s3_bucket
+from memory_room.utils import upload_file_to_s3_bucket,S3FileHandler
+
 
 class BaseModel(models.Model):
     is_created = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
@@ -32,6 +33,8 @@ class Assets(BaseModel):
         verbose_name="Asset Type"
     )
     s3_url = models.URLField(blank=True, null=True)
+    s3_key = models.CharField(blank=True, null=True)
+
 
     class Meta:
         verbose_name = "Asset"
@@ -51,6 +54,7 @@ class Assets(BaseModel):
             uploaded_data = upload_file_to_s3_bucket(self.image, folder="assets")
             if uploaded_data:
                 self.s3_url = uploaded_data[0]
+                self.s3_key = uploaded_data[2]
         super().save(*args, **kwargs)
 
 

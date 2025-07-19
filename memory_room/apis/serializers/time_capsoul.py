@@ -15,3 +15,9 @@ class TimeCapSoulTemplateDefaultReadOnlySerializer(serializers.ModelSerializer):
             cover_image_url =  obj.cover_image.s3_url
         return cover_image_url
 
+
+class TimeCapSoulCreationSerializer(serializers.ModelSerializer):
+    template_id = serializers.IntegerField(required=False)
+    name = serializers.CharField(required=False)
+    summary = serializers.CharField(required=False)
+    cover_image = serializers.IntegerField(required=False)

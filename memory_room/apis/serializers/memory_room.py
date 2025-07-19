@@ -268,6 +268,17 @@ class MemoryRoomMediaFileReadOnlySerializer(serializers.ModelSerializer):
     """
     Read-only serializer for media files, used in simplified listing.
     """
+    media_file_s3_url = serializers.SerializerMethodField()
     class Meta:
         model = MemoryRoomMediaFile
-        fields = ('id', 'cover_image', 'description', 'is_cover_image')
+        fields = ('id', 'description', 'cover_image', 'media_file_s3_url')
+    
+    def get_media_file_s3_url(self, obj):
+        return obj.s3_url
+    
+class MemoryRoomMediaFileDescriptionUpdateSerializer(serializers.ModelSerializer):
+    description = serializers.CharField(allow_blank=True, required=True)
+
+    class Meta:
+        model = MemoryRoomMediaFile
+        fields = ['description']

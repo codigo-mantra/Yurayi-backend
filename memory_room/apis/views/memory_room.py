@@ -7,18 +7,21 @@ from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
+from rest_framework.exceptions import ValidationError
+from rest_framework.pagination import PageNumberPagination
+
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView
 
 from memory_room.models import (
     MemoryRoom, MemoryRoomTemplateDefault,
-    MemoryRoomMediaFile
+    MemoryRoomMediaFile,FILE_TYPES
 )
 from memory_room.apis.serializers.memory_room import (
     AssetSerializer, MemoryRoomCreationSerializer,
     MemoryRoomTemplateDefaultSerializer, MemoryRoomUpdationSerializer,
-    MemoryRoomMediaFileSerializer, MemoryRoomMediaFileCreationSerializer
+    MemoryRoomMediaFileSerializer, MemoryRoomMediaFileCreationSerializer,MemoryRoomMediaFileReadOnlySerializer,MemoryRoomMediaFileDescriptionUpdateSerializer
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 
@@ -30,6 +33,8 @@ from asgiref.sync import async_to_sync
 
 
 from memory_room.utils import determine_download_chunk_size
+
+
 
 class MemoryRoomCoverView(generics.ListAPIView):
     """
@@ -182,7 +187,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         media_file.memory_room = new_room
         media_file.save()
         return Response({'message': "Media files moved successfully"}, status=status.HTTP_200_OK)
-
+    
     def delete(self, request, memory_room_id, media_file_id):
         """
         Delete a media file from a memory room.
@@ -199,7 +204,21 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
 
+class UpdateMediaFileDescriptionView(SecuredView):
+    def patch(self, request, memory_room_id, media_file_id):
+        try:
+            user = self.get_current_user(request)
+            memory_room= get_object_or_404(MemoryRoom, id=memory_room_id,user=user)
+            media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id,memory_room=memory_room)
+        except MemoryRoomMediaFile.DoesNotExist:
+            return Response({'detail': 'Media  file not found.'}, status=status.HTTP_404_NOT_FOUND)
 
+        serializer = MemoryRoomMediaFileDescriptionUpdateSerializer(media_file, data=request.data, partial=True)
+        if serializer.is_valid():
+            updated_data = serializer.save()
+
+            return Response({'message': 'Description updated successfully.', 'data': MemoryRoomMediaFileReadOnlySerializer(updated_data).data})
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class MediaFileDownloadView(SecuredView):
     def get(self, request, memory_room_id, media_file_id):
@@ -265,3 +284,39 @@ class MediaFileDownloadView(SecuredView):
 
         except ClientError as e:
             raise Http404(f"Could not retrieve file: {e}")
+
+class MemoryRoomMediaFileFilterView(SecuredView):
+
+    def get(self, request):
+        user = self.get_current_user(request)
+        query_params = request.query_params
+
+        memory_room_id = query_params.get('memory_room_id')
+        if not memory_room_id:
+            raise ValidationError({'memory_room_id': 'Memory room id is required.'})
+
+        # Validate file_type if given
+        file_type = query_params.get('file_type')
+        if file_type and file_type not in dict(FILE_TYPES).keys():
+            raise ValidationError({
+                'file_type': f"'{file_type}' is not a valid file type. Allowed: {', '.join(dict(FILE_TYPES).keys())}"
+            })
+
+        # media filters
+        media_filters = {
+            key: value for key, value in {
+                'memory_room__id': memory_room_id,
+                'file_type': file_type,
+                'description__icontains': query_params.get('description'),
+                'user': user,
+            }.items() if value is not None
+        }
+
+        queryset = MemoryRoomMediaFile.objects.filter(**media_filters)
+        # pagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 8
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+
+        serializer = MemoryRoomMediaFileReadOnlySerializer(paginated_queryset, many=True)
+        return paginator.get_paginated_response({'media_files': serializer.data})

@@ -221,11 +221,16 @@ DJRESTAUTH_TOKEN_MODEL = None
 
 FRONTEND_URL = AWS_SECRET["FRONTEND_URL"]
 
-DJREST_AUTH = {
+REST_AUTH = {
     "USE_JWT": True,
     "PASSWORD_RESET_CONFIRM_URL": "reset-password/{uid}/{token}/",
     "SEND_PASSWORD_RESET_EMAIL": True,
+    "SIGNUP_FIELDS": {
+        "username": {"required": True},
+        "email": {"required": True},
+    }
 }
+
 
 # Redis setup for channels layer
 CHANNEL_LAYERS = {
