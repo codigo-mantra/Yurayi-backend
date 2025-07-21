@@ -39,14 +39,18 @@ def upload_to_s3(file_path, s3_key=None):
         )
     return f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"
 
-
 def load_env(path='.env'):
     if os.path.exists(path):
         with open(path) as f:
             for line in f:
-                if line.strip() and not line.startswith('#'):
-                    key, val = line.strip().split('=', 1)
-                    os.environ[key] = val
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    if '=' in line:
+                        key, val = line.split('=', 1)
+                        os.environ[key] = val
+                    else:
+                        print(f"Warning: Skipping invalid .env line: {line}")
+
 
 
 def upload_to_s3(file_path):

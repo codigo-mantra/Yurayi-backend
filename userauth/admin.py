@@ -28,11 +28,11 @@ class UserProfileAdmin(admin.ModelAdmin):
 
 @admin.register(Assets)
 class AssetsAdmin(admin.ModelAdmin):
-    list_display = ('title', 'asset_types', 'is_created', 'updated_at', 'is_deleted')
+    list_display = ('title', 'asset_types', 'created_at', 'updated_at', 'is_deleted')
     list_filter = ('asset_types', 'is_deleted')
     search_fields = ('title',)
 
 @admin.register(ContactUs)
 class ContactUsAdmin(admin.ModelAdmin):
-    list_display = ('first_name', 'last_name', 'email', 'phone_number', 'is_created')
+    list_display = ('first_name', 'last_name', 'email', 'phone_number', 'created_at')
     search_fields = ('first_name', 'last_name', 'email')

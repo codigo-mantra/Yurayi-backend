@@ -48,7 +48,7 @@ class MemoryRoomCoverView(generics.ListAPIView):
         """
         Returns all memory room cover assets ordered by creation date.
         """
-        return Assets.objects.filter(asset_types='Memory Room Cover').order_by('-is_created')
+        return Assets.objects.filter(asset_types='Memory Room Cover').order_by('-created_at')
 
 
 class UserMemoryRoomListView(generics.ListAPIView):
@@ -62,7 +62,7 @@ class UserMemoryRoomListView(generics.ListAPIView):
         """
         Returns all memory rooms for the current user that are not deleted.
         """
-        return MemoryRoom.objects.filter(user=self.request.user, is_deleted=False).order_by('-is_created')
+        return MemoryRoom.objects.filter(user=self.request.user, is_deleted=False).order_by('-created_at')
 
 
 class MemoryRoomTemplateDefaultViewSet(generics.ListAPIView):
@@ -76,7 +76,7 @@ class MemoryRoomTemplateDefaultViewSet(generics.ListAPIView):
         """
         Returns all non-deleted default memory room templates ordered by creation.
         """
-        return MemoryRoomTemplateDefault.objects.filter(is_deleted=False).order_by('-is_created')
+        return MemoryRoomTemplateDefault.objects.filter(is_deleted=False).order_by('-created_at')
 
 
 class CreateMemoryRoomView(SecuredView):
@@ -145,7 +145,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         """
         user = self.get_current_user(request)
         memory_room = self.get_memory_room(user, memory_room_id)
-        media_files = MemoryRoomMediaFile.objects.filter(memory_room=memory_room, user=user).order_by('-is_created')
+        media_files = MemoryRoomMediaFile.objects.filter(memory_room=memory_room, user=user).order_by('-created_at')
         return Response(MemoryRoomMediaFileSerializer(media_files, many=True).data)
 
     

@@ -6,7 +6,7 @@ from memory_room.utils import upload_file_to_s3_bucket,S3FileHandler
 
 
 class BaseModel(models.Model):
-    is_created = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="Updated At")
     is_deleted = models.BooleanField(default=False, verbose_name="Is Deleted")
 

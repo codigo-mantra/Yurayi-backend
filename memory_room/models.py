@@ -6,7 +6,7 @@ from memory_room.utils import generate_unique_slug
 
 
 class BaseModel(models.Model):
-    is_created = models.DateTimeField(
+    created_at = models.DateTimeField(
         auto_now_add=True,
         verbose_name="Created At"
     )
@@ -246,7 +246,12 @@ class CustomTimeCapSoulTemplate(BaseModel):
         super().save(*args, **kwargs)
      
 
+STATUS_CHOICES = (
+    ('sealed', 'Sealed With Love'),
+    ('unlocked', 'Unlocked'),
+    ('created', 'Being Crafted')
 
+)
 class TimeCapSoul(BaseModel):
     user = models.ForeignKey(
         User,
@@ -262,6 +267,8 @@ class TimeCapSoul(BaseModel):
         related_name="timecapsouls",
         verbose_name="CapSoul Template"
     )
+    status = models.CharField(choices=STATUS_CHOICES, default='created')
+
 
     class Meta:
         verbose_name = "TimeCapSoul"
@@ -333,7 +340,7 @@ class TimeCapSoulMediaFile(BaseModel):
     
     def save(self, *args, **kwargs):
         """autoauto-populate file-size on save"""
-        self.full_clean()  
+        # self.full_clean()  
 
         if self.file and not self.file_size:
             self.file_size = self.file.size
