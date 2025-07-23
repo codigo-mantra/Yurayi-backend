@@ -146,6 +146,8 @@ class MemoryRoomMediaFile(BaseModel):
         default=False,
         verbose_name="Use as Cover"
     )
+    thumbnail_url = models.URLField(blank=True, null=True)
+    thumbnail_key = models.CharField(blank=True, null=True)
     file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
     s3_url = models.URLField(blank=True, null=True)
     s3_key = models.CharField(blank=True, null=True)
@@ -310,6 +312,8 @@ class TimeCapSoulMediaFile(BaseModel):
         default=False,
         verbose_name="Use as Cover"
     )
+    thumbnail_url = models.URLField(blank=True, null=True)
+    thumbnail_key = models.CharField(blank=True, null=True)
     file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
     s3_url = models.URLField(blank=True, null=True)
 

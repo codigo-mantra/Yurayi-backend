@@ -14,6 +14,9 @@ from django.core.exceptions import ValidationError as DjangoValidationError
 
 from userauth.apis.helpers.validators import CustomPasswordValidator, UsernameValidator
 
+from django.utils.encoding import force_str, force_bytes
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from django.contrib.auth.tokens import default_token_generator
 
 from dj_rest_auth.serializers import (
     PasswordResetSerializer,
@@ -263,5 +266,54 @@ class CustomPasswordChangeSerializer(PasswordChangeSerializer):
         user = self.context['request'].user
         new_password = self.validated_data["new_password1"]
         user.set_password(new_password)
+        user.save()
+        return user
+
+
+class ForgotPasswordSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("Invalid user email.")
+        return value
+    
+
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    uidb64 = serializers.CharField()
+    token = serializers.CharField()
+    new_password = serializers.CharField(write_only=True, min_length=8)
+
+    def validate(self, attrs):
+        uidb64 = attrs.get("uidb64")
+        token = attrs.get("token")
+        password = attrs.get("new_password")
+        errors = {}
+
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError({"uidb64": "Invalid user identifier."})
+
+        if not default_token_generator.check_token(user, token):
+            raise serializers.ValidationError({"token": "Invalid or expired token."})
+
+        try:
+            validator = CustomPasswordValidator()
+            validator.validate(password=password, username=user.username)
+        except DjangoValidationError as e:
+            errors["new_password"] = list(e.messages)
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        attrs["user"] = user
+        return attrs
+
+    def save(self):
+        user = self.validated_data["user"]
+        password = self.validated_data["new_password"]
+        user.set_password(password)
         user.save()
         return user

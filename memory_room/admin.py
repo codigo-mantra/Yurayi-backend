@@ -36,7 +36,7 @@ class MemoryRoomAdmin(admin.ModelAdmin):
 
 @admin.register(MemoryRoomMediaFile)
 class MemoryRoomMediaFilesAdmin(admin.ModelAdmin):
-    list_display = ('id', 'memory_room_id', "file", "file_type", "is_cover_image", "created_at")
+    list_display = ('id', 'memory_room_id','file_type',  "file", "is_cover_image", "created_at")
     list_filter = ("file_type", "is_cover_image")
     search_fields = ("file", "description")
 

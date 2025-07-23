@@ -15,6 +15,10 @@ from allauth.socialaccount.providers.oauth2.client import OAuth2Client
 from dj_rest_auth.registration.views import SocialLoginView
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from userauth.apis.helpers.jwt_tokens import JWTTokenHandler
+from django.core.mail import send_mail
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+
 
 from memory_room.models import UserMapper
 from dj_rest_auth.views import (
@@ -22,12 +26,15 @@ from dj_rest_auth.views import (
     PasswordResetConfirmView,
     PasswordChangeView,
 )
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.encoding import force_str, force_bytes
+from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
 from userauth.models import UserProfile
 
 from userauth.apis.serializers.serializers import  (
-    RegistrationSerializer, UserProfileUpdateSerializer, GoogleIDTokenSerializer, ContactUsSerializer,
-    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer
+    RegistrationSerializer, UserProfileUpdateSerializer, GoogleIDTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
+    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer
     )
 
 
@@ -213,3 +220,45 @@ class DashboardAPIView(SecuredView):
         }
 
         return Response(response,status=status.HTTP_200_OK)
+
+
+
+class ForgotPasswordView(APIView):
+    def post(self, request):
+        serializer = ForgotPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = User.objects.get(email=serializer.validated_data["email"])
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+        token = default_token_generator.make_token(user)
+
+        reset_url = f"{settings.FRONTEND_URL}reset-password/{uidb64}/{token}/"
+
+        subject = "Reset Your Password"
+        from_email = settings.EMAIL_HOST_USER
+        to_email = [user.email]
+
+        # Render HTML message
+        html_message = render_to_string("userauth/reset_password_email.html", {
+            "user": user,
+            "reset_url": reset_url,
+        })
+
+        # Send both plain text and HTML
+        email = EmailMultiAlternatives(subject, body=reset_url, from_email=from_email, to=to_email)
+        email.attach_alternative(html_message, "text/html")
+        email.send()
+        print(f'Yes password reset email sent', to_email)
+
+        return Response({"detail": "Password reset email sent."}, status=status.HTTP_200_OK)
+
+
+class PasswordResetConfirmView(APIView):
+    """
+    Confirm password reset with uidb64 and token.
+    """
+    def post(self, request):
+        serializer = PasswordResetConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response({"detail": "Password has been reset successfully."}, status=status.HTTP_200_OK)
