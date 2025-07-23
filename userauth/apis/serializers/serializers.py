@@ -84,7 +84,6 @@ def validate_username(username):
             "Username must be 5-30 characters long and can only contain letters, numbers, and underscores."
         )
     return username
-
 class RegistrationSerializer(serializers.ModelSerializer):
     step_no = serializers.IntegerField(write_only=True, required=False)
     password = serializers.CharField(write_only=True, required=False)
@@ -135,11 +134,15 @@ class RegistrationSerializer(serializers.ModelSerializer):
                 errors['first_name'] = "First name is required."
             elif not first_name.isalpha():
                 errors['first_name'] = "First name must contain only letters."
+            elif len(first_name) < 3:
+                errors['first_name'] = "First name must be at least 3 characters long."
 
             if not last_name:
                 errors['last_name'] = "Last name is required."
             elif not last_name.isalpha():
                 errors['last_name'] = "Last name must contain only letters."
+            elif len(last_name) < 3:
+                errors['last_name'] = "Last name must be at least 3 characters long."
 
             if not email:
                 errors['email'] = "Email is required."
@@ -194,6 +197,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
             user.set_password(password)
         user.save()
         return user
+
 
     
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
