@@ -318,7 +318,7 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
             raise serializers.ValidationError({"uidb64": "Invalid user identifier."})
 
         if not default_token_generator.check_token(user, token):
-            raise serializers.ValidationError({"token": "Invalid or expired token."})
+            raise serializers.ValidationError({"token": "Token expire! Please use new token to reset your password"})
 
         try:
             validator = CustomPasswordValidator()
