@@ -13,6 +13,7 @@ from memory_room.utils import upload_file_to_s3_bucket, get_file_category
 
 MODE = settings.MODE
 
+from timecapsoul.utils import MediaThumbnailExtractor
 
 class AssetSerializer(serializers.ModelSerializer):
     """
@@ -149,7 +150,9 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MemoryRoomMediaFile
-        fields = ('file_type', 'file', 'memory_room', 'user')
+        fields = ('file_type', 'file', 'memory_room', 'user', 'thumbnail_url')
+        read_only_fields = ['thumbnail_url',]
+
 
     def create(self, validated_data):
         user = self.context['user']
@@ -169,7 +172,26 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             # Set the file field 
             validated_data['file'] = file
 
+            # Extract thumbnail if applicable
+            ext = os.path.splitext(file.name)[1]
+            extractor = MediaThumbnailExtractor(file, ext)
+            thumbnail_data = extractor.extract()
+
+            if thumbnail_data:
+                from django.core.files.base import ContentFile
+                from userauth.models import Assets  # adjust if Assets is elsewhere
+
+                image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+                asset = Assets.objects.create(image=image_file)
+                print(f'S3 url: ',asset.s3_url)
+                validated_data['thumbnail_url'] = asset.s3_url
+                print(f'thubmnail: {validated_data['thumbnail_url']}')
+                validated_data['thumbnail_key'] = asset.s3_key
+            else:
+                validated_data['thumbnail_url'] = 'https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/Frame.png'
         return super().create(validated_data)
+
+
 
 
 
@@ -184,7 +206,7 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
         model = MemoryRoomMediaFile
         fields = [
             'id', 'memory_room', 'file_url', 'file_type',
-            'cover_image', 'description', 'is_cover_image',
+            'cover_image', 'description', 'is_cover_image','thumbnail_url',
         ]
         read_only_fields = ['id', 'user', 'file_size', 'file_url', 'cover_image']
 

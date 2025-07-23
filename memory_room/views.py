@@ -6,5 +6,4 @@ from django.http import HttpResponse
 def testing_view(request):
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
-
     return render(request, 'userauth/reset_password_email.html')
