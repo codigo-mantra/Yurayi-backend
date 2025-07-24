@@ -25,7 +25,8 @@ IMAGES_TYPES = (
 
 class Assets(BaseModel):
     title = models.CharField(max_length=100, blank=True, null=True, verbose_name="Title")
-    image = models.ImageField(upload_to='assets/', verbose_name="Image File")
+    # image = models.ImageField(upload_to='assets/', verbose_name="Image File")
+    image = models.FileField(upload_to='assets/', verbose_name="Assets File")
     asset_types = models.CharField(
         max_length=100,
         choices=IMAGES_TYPES,

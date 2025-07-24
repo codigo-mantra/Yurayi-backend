@@ -85,102 +85,36 @@ def validate_username(username):
         )
     return username
 class RegistrationSerializer(serializers.ModelSerializer):
-    step_no = serializers.IntegerField(write_only=True, required=False)
-    password = serializers.CharField(write_only=True, required=False)
-    confirm_password = serializers.CharField(write_only=True, required=False)
+    password = serializers.CharField(write_only=True, required=True)
+    confirm_password = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = User
-        fields = [
-            'step_no',
-            'username',
-            'email',
-            'first_name',
-            'last_name',
-            'phone_number',
-            'password',
-            'confirm_password'
-        ]
-        extra_kwargs = {
-            field: {'required': False, 'allow_blank': True}
-            for field in ['username', 'email', 'first_name', 'last_name', 'phone_number']
-        }
+        fields = ['email', 'password', 'confirm_password']
 
     def generate_unique_username(self, first_name, last_name):
-        base_username = f"{first_name.lower()}.{last_name.lower()}"
+        base_username = f"{first_name.lower()}.{last_name.lower()}" if first_name and last_name else "user"
         username = base_username
         counter = 1
-
         while User.objects.filter(username=username).exists():
             username = f"{base_username}{counter}"
             counter += 1
-
         return username
 
     def validate(self, data):
-        step_no = data.get('step_no')
+        email = data.get("email", "").strip()
+        password = data.get("password")
+        confirm_password = data.get("confirm_password")
+
         errors = {}
 
-        first_name = data.get('first_name', '').strip()
-        last_name = data.get('last_name', '').strip()
-        email = data.get('email', '').strip()
-        phone_number = data.get('phone_number', '').strip()
+        if User.objects.filter(email=email).exists():
+            errors["email"] = "Email already exists."
 
-        if step_no not in [1, 2]:
-            raise serializers.ValidationError({'step_no': 'Invalid step number.'})
-
-        if step_no in [1, 2]:
-            if not first_name:
-                errors['first_name'] = "First name is required."
-            elif not first_name.isalpha():
-                errors['first_name'] = "First name must contain only letters."
-            elif len(first_name) < 3:
-                errors['first_name'] = "First name must be at least 3 characters long."
-
-            if not last_name:
-                errors['last_name'] = "Last name is required."
-            elif not last_name.isalpha():
-                errors['last_name'] = "Last name must contain only letters."
-            elif len(last_name) < 3:
-                errors['last_name'] = "Last name must be at least 3 characters long."
-
-            if not email:
-                errors['email'] = "Email is required."
-            elif step_no == 2 and User.objects.filter(email=email).exists():
-                errors["email"] = "Email already exists."
-
-            if phone_number:
-                if not re.fullmatch(r'\+?\d{10,13}', phone_number):
-                    errors["phone_number"] = "Enter a valid phone number (10–13 digits, may start with '+')."
-
-        if step_no == 2:
-            username = data.get('username', '').strip()
-            password = data.get('password')
-            confirm_password = data.get('confirm_password')
-
-            if not username:
-                username = self.generate_unique_username(first_name, last_name)
-                data['username'] = username
-            else:
-                try:
-                    username_validator = UsernameValidator()
-                    username_validator(username)
-
-                    if User.objects.filter(username=username).exists():
-                        errors["username"] = "Username already exists."
-                except DjangoValidationError as e:
-                    errors['username'] = list(e.messages)
-
-            if not password or not confirm_password:
-                errors["password"] = "Both password and confirm password are required."
-            elif password != confirm_password:
-                errors["password"] = "Passwords do not match."
-            else:
-                try:
-                    validator = CustomPasswordValidator()
-                    validator.validate(password=password, username=username)
-                except DjangoValidationError as e:
-                    errors["password"] = list(e.messages)
+        if not password or not confirm_password:
+            errors["password"] = "Both password and confirm password are required."
+        elif password != confirm_password:
+            errors["password"] = "Passwords do not match."
 
         if errors:
             raise serializers.ValidationError(errors)
@@ -188,15 +122,24 @@ class RegistrationSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        validated_data.pop("step_no", None)
-        password = validated_data.pop("password", None)
-        validated_data.pop("confirm_password", None)
+        password = validated_data.pop("password")
+        validated_data.pop("confirm_password")
 
-        user = User(**validated_data)
-        if password:
-            user.set_password(password)
+        email = validated_data.get("email")
+        base_username = email.split("@")[0]
+        username = base_username
+        counter = 1
+
+        # Ensure uniqueness
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+
+        user = User(username=username, **validated_data)
+        user.set_password(password)
         user.save()
         return user
+
 
 
     

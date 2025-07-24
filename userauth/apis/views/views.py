@@ -19,7 +19,6 @@ from django.core.mail import send_mail
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 
-
 from memory_room.models import UserMapper
 from dj_rest_auth.views import (
     PasswordResetView,
@@ -98,37 +97,29 @@ class GenerateJWTTokenView(APIView):
         return Response(tokens)
 
 
-
 class RegistrationView(APIView):
     def post(self, request):
-        print(f'request is recieved')
+        print('Request is received')
 
         serializer = RegistrationSerializer(data=request.data)
-
+        
         if serializer.is_valid():
-            step_no = serializer.validated_data.get('step_no')
-            if step_no ==  2:
-                validated_data = serializer.validated_data
-                validated_data.pop('step_no', None)
-                validated_data.pop('confirm_password', None)
-                user = serializer.save()
-                refresh = RefreshToken.for_user(user)
-                return Response({
-                    "message": "Registration successful.",
-                    "refresh": str(refresh),
-                    "access": str(refresh.access_token),
-                    "user": {
-                        "username": user.username,
-                        "email": user.email,
-                        "first_name": user.first_name,
-                        "last_name": user.last_name,
-                        "phone_number": user.phone_number,
-                    }
-                }, status=status.HTTP_201_CREATED)
-            else:
-                return Response({'message': 'Step-1 is completed', 'data': serializer.data})
-            
+            user = serializer.save()
+            profile = UserProfile.objects.filter(user = user)
+
+            refresh = RefreshToken.for_user(user)
+            return Response({
+                "message": "Registration successful.",
+                "refresh": str(refresh),
+                "access": str(refresh.access_token),
+                "user": {
+                    "email": user.email,
+                    # 'profile_image': profile.profile_image.s3_url if profile.profile_image else None
+                }
+            }, status=status.HTTP_201_CREATED)
+        
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
 
 class LoginView(APIView):
     def post(self, request):
