@@ -13,7 +13,9 @@ from memory_room.apis.serializers.memory_room import (
 )
 
 from memory_room.models import TimeCapSoulTemplateDefault, TimeCapSoul
-from memory_room.apis.serializers.time_capsoul import TimeCapSoulTemplateDefaultReadOnlySerializer
+from memory_room.apis.serializers.time_capsoul import (
+    TimeCapSoulTemplateDefaultReadOnlySerializer, TimeCapSoulCreationSerializer, TimeCapSoulSerializer
+)
 
 class TimeCapSoulCoverView(generics.ListAPIView):
     """
@@ -32,15 +34,46 @@ class TimeCapSoulCoverView(generics.ListAPIView):
 
 class TimeCapSoulDefaultTemplateAPI(SecuredView):
 
-    def get_memory_room(self, user, time_capsoul_id):
-        """
-        Utility method to get a memory room owned by the user.
-        """
-        return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
-
+    
 
     def get(self, request, format=None):
         default_templates = TimeCapSoulTemplateDefault.objects.filter(is_deleted = False)
         serializer = TimeCapSoulTemplateDefaultReadOnlySerializer(default_templates, many=True)
         return Response(serializer.data)
+        
 
+class CreateTimeCapSoulView(SecuredView):
+    """
+    API view to create, update, or delete a time-capsoul.
+    Inherits authentication logic from `SecuredView`.
+    """
+    def get_time_capsoul(self, user, time_capsoul_id):
+        """
+        Utility method to get a time capsoul owned by the user.
+        """
+        return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+
+
+    def post(self, request, format=None):
+        """
+        Create a new time-capsoul.
+        """
+        user = self.get_current_user(request)
+        serializer = TimeCapSoulCreationSerializer(data=request.data, context={'user': user})
+        serializer.is_valid(raise_exception=True)
+        timecapsoul = serializer.validated_data.get('time_capsoul')
+        serialized_data = TimeCapSoulSerializer(timecapsoul).data if timecapsoul else {}
+
+        return Response({
+            'message': 'Time CapSoul created successfully',
+            'time_capsoul': serialized_data
+        })
+    
+    def get(self, request, format=None):
+        """Time CapSoul list"""
+        user = self.get_current_user(request)
+        time_capsoul = TimeCapSoul.objects.filter(user = user)
+        serializer = TimeCapSoulSerializer(time_capsoul, many=True)
+        return Response(serializer.data)
+
+        

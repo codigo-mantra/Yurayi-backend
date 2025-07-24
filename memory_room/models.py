@@ -364,7 +364,7 @@ class TimeCapSoulDetail(BaseModel):
         related_name="timecapsoul_details",
         verbose_name="Media Files"
     )
-    unlock_date = models.DateTimeField(verbose_name="Unlock Date")
+    unlock_date = models.DateTimeField(verbose_name="Unlock Date", blank=True, null=True)
     occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul")
 
 

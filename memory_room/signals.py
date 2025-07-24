@@ -25,5 +25,5 @@ def create_user_mapper(sender, instance, created, **kwargs):
 def create_user_mapper(sender, instance, created, **kwargs):
     if created:
         TimeCapSoulDetail.objects.create(
-            memory_room=instance,
+            time_capsoul=instance,
         )
