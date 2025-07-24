@@ -26,7 +26,7 @@ class MemoryRoomSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MemoryRoom
-        fields = ['id', 'room_template', 'created_at']
+        fields = ['id', 'room_template', 'created_at', 'updated_at']
 
 
 class CustomTimeCapSoulTemplateSerializer(serializers.ModelSerializer):

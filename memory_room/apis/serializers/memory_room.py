@@ -150,8 +150,8 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MemoryRoomMediaFile
-        fields = ('file_type', 'file', 'memory_room', 'user', 'thumbnail_url')
-        read_only_fields = ['thumbnail_url',]
+        fields = ('file_type', 'file', 'memory_room', 'user', 'thumbnail_url', 'cover_image')
+        read_only_fields = ['thumbnail_url', ]
 
 
     def create(self, validated_data):
@@ -182,13 +182,14 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                 from userauth.models import Assets  # adjust if Assets is elsewhere
 
                 image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
-                asset = Assets.objects.create(image=image_file)
+                asset = Assets.objects.create(image=image_file, asset_types='Thubmnail/Audio')
+                validated_data['cover_image'] = asset
                 print(f'S3 url: ',asset.s3_url)
                 validated_data['thumbnail_url'] = asset.s3_url
                 print(f'thubmnail: {validated_data['thumbnail_url']}')
                 validated_data['thumbnail_key'] = asset.s3_key
-            else:
-                validated_data['thumbnail_url'] = 'https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/Frame.png'
+            # else:
+            #     validated_data['thumbnail_url'] = 'https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/Frame.png'
         return super().create(validated_data)
 
 
@@ -199,6 +200,7 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
     """
     Serializer for reading memory room media file objects.
     """
+    cover_image = AssetSerializer()
     file_url = serializers.SerializerMethodField()
     memory_room = serializers.SerializerMethodField()
 
@@ -212,6 +214,7 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
 
     def get_file_url(self, obj):
         return obj.s3_url
+    
 
     def get_memory_room(self, obj):
         return MemoryRoomSerializer(obj.memory_room).data

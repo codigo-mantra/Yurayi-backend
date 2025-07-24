@@ -48,6 +48,10 @@ class Assets(BaseModel):
             return self.image.url
         return None
     
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._original_image = self.image  # Store original for comparison
+
     def save(self, *args, **kwargs):
         """Upload assets in S3 bucket"""
         if self.image and (not self.s3_url or self.image != self._original_image):
@@ -56,7 +60,6 @@ class Assets(BaseModel):
                 self.s3_url = uploaded_data[0]
                 self.s3_key = uploaded_data[2]
         super().save(*args, **kwargs)
-
 
 class ContactUs(BaseModel):
     first_name = models.CharField(max_length=100, verbose_name="First Name")

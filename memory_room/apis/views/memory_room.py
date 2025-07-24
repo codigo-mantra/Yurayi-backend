@@ -126,6 +126,20 @@ class CreateMemoryRoomView(SecuredView):
             return Response(MemoryRoomSerializer(updated_room).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+class SetMemoryRoomCoverImageAPIView(SecuredView):
+    def post(self, request, memory_room_id, cover_image_id):
+        print(f'Requst received')
+
+        user = self.get_current_user(request)
+        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+        cover_image = get_object_or_404(Assets, id=cover_image_id)
+        room_template = memory_room.room_template
+        room_template.cover_image = cover_image
+        room_template.save()
+        memory_room.save()
+        serializer = MemoryRoomSerializer(memory_room)
+        return Response(serializer.data)
+
 
 class MemoryRoomMediaFileListCreateAPI(SecuredView):
     """
