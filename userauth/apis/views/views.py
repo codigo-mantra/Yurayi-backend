@@ -105,7 +105,6 @@ class RegistrationView(APIView):
         
         if serializer.is_valid():
             user = serializer.save()
-            profile = UserProfile.objects.filter(user = user)
 
             refresh = RefreshToken.for_user(user)
             return Response({
@@ -199,13 +198,11 @@ class DashboardAPIView(SecuredView):
         user   = self.get_current_user(request)
         user_mapper = UserMapper.objects.get(user = user)
         user_profile = UserProfile.objects.get(user = user)
-
-
         response = {
             'first_name': user.first_name,
             'last_name': user.last_name,
             'email': user.email,
-            'profile_pic': user_profile.profile_image.get_image_url() if user_profile.profile_image else None,
+            'profile_pic': user_profile.profile_image.s3_url,
             'last_login': user.last_login,
             'free_storage_limit': user_mapper.current_storage,
         }
