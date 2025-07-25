@@ -3,7 +3,7 @@ import os
 import mimetypes
 from rest_framework import serializers
 from django.conf import settings
-
+from django.core.files.images import ImageFile 
 from userauth.models import Assets
 from memory_room.models import (
     MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
@@ -171,23 +171,34 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
             # Set the file field 
             validated_data['file'] = file
-
-            # Extract thumbnail if applicable
-            ext = os.path.splitext(file.name)[1]
-            extractor = MediaThumbnailExtractor(file, ext)
-            thumbnail_data = extractor.extract()
-
-            if thumbnail_data:
-                from django.core.files.base import ContentFile
+            if file_type == 'image':
+                file.seek(0)  # Ensure pointer is at start
+                image_file = ImageFile(file)
                 from userauth.models import Assets  # adjust if Assets is elsewhere
 
-                image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
-                asset = Assets.objects.create(image=image_file, asset_types='Thubmnail/Audio')
+                asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
                 validated_data['cover_image'] = asset
-                print(f'S3 url: ',asset.s3_url)
-                validated_data['thumbnail_url'] = asset.s3_url
-                print(f'thubmnail: {validated_data['thumbnail_url']}')
-                validated_data['thumbnail_key'] = asset.s3_key
+            elif file_type == 'audio':
+                try:
+
+                    # Extract thumbnail if applicable
+                    ext = os.path.splitext(file.name)[1]
+                    extractor = MediaThumbnailExtractor(file, ext)
+                    thumbnail_data = extractor.extract()
+
+                    if thumbnail_data:
+                        from django.core.files.base import ContentFile
+                        from userauth.models import Assets  # adjust if Assets is elsewhere
+
+                        image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+                        asset = Assets.objects.create(image=image_file, asset_types='Thubmnail/Audio')
+                        validated_data['cover_image'] = asset
+                        print(f'S3 url: ',asset.s3_url)
+                        validated_data['thumbnail_url'] = asset.s3_url
+                        print(f'thubmnail: {validated_data['thumbnail_url']}')
+                        validated_data['thumbnail_key'] = asset.s3_key
+                except Exception as e:
+                    print(f'\n Exception while extracting thumbnail: \n{e}')
             # else:
             #     validated_data['thumbnail_url'] = 'https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/Frame.png'
         return super().create(validated_data)
