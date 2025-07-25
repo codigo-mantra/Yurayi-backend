@@ -239,7 +239,7 @@ class ForgotPasswordSerializer(serializers.Serializer):
 
     def validate_email(self, value):
         if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("Invalid user email.")
+            raise serializers.ValidationError("No account is associated with this email address. Please enter the registered email to reset your password.")
         return value
     
 

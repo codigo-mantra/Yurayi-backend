@@ -203,18 +203,25 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
     cover_image = AssetSerializer()
     file_url = serializers.SerializerMethodField()
     memory_room = serializers.SerializerMethodField()
+    file_title =  serializers.SerializerMethodField()
 
     class Meta:
         model = MemoryRoomMediaFile
         fields = [
-            'id', 'memory_room', 'file_url', 'file_type',
+            'id', 'file_title', 'memory_room', 'file_url', 'file_type',
             'cover_image', 'description', 'is_cover_image','thumbnail_url',
         ]
-        read_only_fields = ['id', 'user', 'file_size', 'file_url', 'cover_image']
+        read_only_fields = ['id', 'user', 'file_size', 'file_url', 'cover_image', 'file_title']
 
     def get_file_url(self, obj):
         return obj.s3_url
     
+    def get_file_name(self,path: str):
+        return path.split("/")[-1]
+
+    
+    def get_file_title(self, obj):
+        return self.get_file_name(obj.s3_key) if obj.s3_key is not None else None
 
     def get_memory_room(self, obj):
         return MemoryRoomSerializer(obj.memory_room).data
