@@ -178,6 +178,8 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
                 asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
                 validated_data['cover_image'] = asset
+                validated_data['thumbnail_url'] = asset.s3_url
+                validated_data['thumbnail_key'] = asset.s3_key
             elif file_type == 'audio':
                 try:
 
