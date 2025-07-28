@@ -29,11 +29,11 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_str, force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
-from userauth.models import UserProfile
-
+from userauth.models import UserProfile, NewsletterSubscriber
+from timecapsoul.utils import send_html_email
 from userauth.apis.serializers.serializers import  (
     RegistrationSerializer, UserProfileUpdateSerializer, GoogleIDTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
-    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer
+    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer
     )
 
 
@@ -250,3 +250,30 @@ class PasswordResetConfirmView(APIView):
         serializer.is_valid(raise_exception=True)
         serializer.save()
         return Response({"detail": "Password has been reset successfully."}, status=status.HTTP_200_OK)
+
+
+class NewsletterSubscribeAPIView(APIView):
+    def post(self, request):
+        email = request.data.get("email")
+        if not email:
+            return Response({"email": "Email is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        subscriber, created = NewsletterSubscriber.objects.get_or_create(
+            email=email,
+            defaults={"is_active": True}
+        )
+        message = "Successfully subscribed."
+        context = {}
+        send_html_email(
+            subject='Thank you for email subscription', 
+            to_email=email,
+            template_name='userauth/new_letter_subscription.html',
+            context=context,
+                        )
+
+
+        serializer = NewsletterSubscriberSerializer(subscriber)
+        return Response({
+            "message": message,
+            "data": serializer.data
+        }, status=status.HTTP_200_OK)

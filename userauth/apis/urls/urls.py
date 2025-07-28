@@ -6,7 +6,7 @@ from django.urls import include, path, re_path
 from userauth.apis.views.views import (
     LoginView, RegistrationView, UpdateUserProfileView,
     GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,
-    CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView
+    CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView
     
 )
 from rest_framework_simplejwt.views import TokenVerifyView
@@ -14,6 +14,7 @@ from rest_framework_simplejwt.views import TokenVerifyView
 
 
 urlpatterns = [
+    path('news-letter/subscription/', NewsletterSubscribeAPIView.as_view(), name='newsletter-subscribe'),
     path('contact-us/', ContactUsAPIView.as_view(), name='contact-us'),
     path('register/', RegistrationView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),

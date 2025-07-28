@@ -155,6 +155,8 @@ CORS_ALLOW_ALL_ORIGINS = True
 
 
 REST_FRAMEWORK = {
+    'DATE_FORMAT': "%d %B %Y",        # e.g. 28 July 2025
+    'DATETIME_FORMAT': "%d %B %Y",    
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'dj_rest_auth.jwt_auth.JWTCookieAuthentication',

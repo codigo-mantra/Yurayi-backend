@@ -138,3 +138,22 @@ class UserProfile(BaseModel):
 
     def __str__(self):
         return f"{self.user.username}'s Profile"
+
+
+class NewsletterSubscriber(BaseModel):
+    email = models.EmailField(
+        unique=True,
+        verbose_name="Email Address"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        verbose_name="Is Active"
+    )
+
+    def __str__(self):
+        return self.email
+
+    class Meta:
+        verbose_name = "Newsletter Subscriber"
+        verbose_name_plural = "Newsletter Subscribers"
+        ordering = ['-created_at']

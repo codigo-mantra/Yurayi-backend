@@ -71,6 +71,34 @@ class MediaThumbnailExtractor:
         return None
 
 
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.conf import settings
+
+def send_html_email(subject, to_email, template_name, context=None):
+    """
+    Send an HTML email using a template and context.
+
+    :param subject: Subject of the email
+    :param to_email: Recipient's email address (string or list)
+    :param template_name: Path to HTML template (e.g. 'emails/welcome_email.html')
+    :param context: Context dictionary for the template
+    :param from_email: Sender's email address (defaults to settings.DEFAULT_FROM_EMAIL)
+    """
+    
+    from_email = settings.DEFAULT_FROM_EMAIL
+    if isinstance(to_email, str):
+        to_email = [to_email]
+    if context is None:
+        context = {}
+
+    html_content = render_to_string(template_name, context)
+
+    email = EmailMultiAlternatives(subject, "", from_email, to_email)
+    email.attach_alternative(html_content, "text/html")
+    email.send()
+
+
 # class MediaThumbnailExtractor:
 #     def __init__(self, file_obj, file_ext):
 #         """

@@ -7,7 +7,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 from django.contrib.auth.forms import PasswordResetForm
-from userauth.models import User
+from userauth.models import User, NewsletterSubscriber
 from django.core.exceptions import ValidationError
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -281,3 +281,28 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         user.set_password(password)
         user.save()
         return user
+class NewsletterSubscriberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = NewsletterSubscriber
+        fields = ['id', 'email', 'is_active', 'created_at']
+        read_only_fields = ['id', 'created_at']
+
+    def validate_email(self, value):
+        # Override to bypass unique validation
+        return value
+
+    def create(self, validated_data):
+        email = validated_data.get('email')
+
+        # Get or create without raising unique error
+        subscriber, created = NewsletterSubscriber.objects.get_or_create(
+            email=email,
+            defaults=validated_data
+        )
+
+        # If exists and was inactive, reactivate
+        if not created and not subscriber.is_active:
+            subscriber.is_active = True
+            subscriber.save()
+
+        return subscriber
