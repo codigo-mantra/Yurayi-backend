@@ -49,6 +49,16 @@ class ContactUsAPIView(APIView):
         serializer = ContactUsSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
+            email = serializer.validated_data.get('email')
+            context = {
+                'name': serializer.validated_data.get('first_name')
+            }
+            send_html_email(
+            subject='Thank for contacting us', 
+            to_email=email,
+            template_name='userauth/contact_us.html',
+            context=context,
+                        )
             return Response({"message": "Contact request submitted successfully."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -99,8 +109,6 @@ class GenerateJWTTokenView(APIView):
 
 class RegistrationView(APIView):
     def post(self, request):
-        print('Request is received')
-
         serializer = RegistrationSerializer(data=request.data)
         
         if serializer.is_valid():
@@ -236,7 +244,6 @@ class ForgotPasswordView(APIView):
         email = EmailMultiAlternatives(subject, body=reset_url, from_email=from_email, to=to_email)
         email.attach_alternative(html_message, "text/html")
         email.send()
-        print(f'Yes password reset email sent', to_email)
 
         return Response({"detail": "Password reset email sent."}, status=status.HTTP_200_OK)
 
