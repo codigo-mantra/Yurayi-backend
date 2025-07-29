@@ -10,10 +10,3 @@ class UserMemoryRoomListView(generics.ListAPIView):
     def get_queryset(self):
         return MemoryRoom.objects.filter(user=self.request.user, is_deleted=False)
 
-
-class UserTimeCapSoulListView(generics.ListAPIView):
-    serializer_class = TimeCapSoulSerializer
-    permission_classes = [permissions.IsAuthenticated]
-
-    def get_queryset(self):
-        return TimeCapSoul.objects.filter(user=self.request.user, is_deleted=False)

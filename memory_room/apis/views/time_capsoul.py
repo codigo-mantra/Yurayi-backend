@@ -14,7 +14,7 @@ from memory_room.apis.serializers.memory_room import (
 
 from memory_room.models import TimeCapSoulTemplateDefault, TimeCapSoul
 from memory_room.apis.serializers.time_capsoul import (
-    TimeCapSoulTemplateDefaultReadOnlySerializer, TimeCapSoulCreationSerializer, TimeCapSoulSerializer
+    TimeCapSoulTemplateDefaultReadOnlySerializer, TimeCapSoulCreationSerializer, TimeCapSoulSerializer, TimeCapSoulUpdationSerializer
 )
 
 class TimeCapSoulCoverView(generics.ListAPIView):
@@ -77,3 +77,26 @@ class CreateTimeCapSoulView(SecuredView):
         return Response(serializer.data)
 
         
+class TimeCapSoulUpdationView(SecuredView):
+
+    def patch(self, request, time_capsoul_id):
+        user = self.get_current_user(request)
+        timecap_soul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+        serializer = TimeCapSoulUpdationSerializer(instance = timecap_soul, data=request.data, partial = True)
+        if serializer.is_valid():
+            update_time_capsoul = serializer.save()
+            return Response(TimeCapSoulSerializer(update_time_capsoul).data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    
+    def delete(self, request, time_capsoul_id):
+        user = self.get_current_user(request)
+        timecap_soul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+        timecap_soul.delete()
+        return Response({'message': "Time capsoul deleted successfully"})
+
+
+
+
+        
+
+

@@ -43,10 +43,27 @@ class ContactUsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Last name should only contain alphabets.")
         return value
 
+
     def validate_phone_number(self, value):
-        if not re.match(r'^\+?\d{10,13}$', value):
-            raise serializers.ValidationError("Enter a valid phone number with 10-13 digits.")
+        if value.startswith('+'):
+            # Must start with +91 and followed by exactly 10 digits
+            if not re.fullmatch(r'\+91\d{10}', value):
+                raise serializers.ValidationError("Phone number must be in the format +91XXXXXXXXXX.")
+            digits_only = value[3:]  # remove +91
+
+            if digits_only[0] < '3':
+                raise serializers.ValidationError("In +91 format, phone number must start with 3 or higher.")
+
+        else:
+            if not re.fullmatch(r'\d{10}', value):
+                raise serializers.ValidationError("Phone number must be a 10-digit number without country code.")
+            digits_only = value
+
+        if set(digits_only) == {'0'}:
+            raise serializers.ValidationError("Phone number cannot be all zeros.")
+
         return value
+
 
 class GoogleIDTokenSerializer(SocialLoginSerializer):
     id_token = serializers.CharField()
@@ -115,6 +132,12 @@ class RegistrationSerializer(serializers.ModelSerializer):
             errors["password"] = "Both password and confirm password are required."
         elif password != confirm_password:
             errors["password"] = "Passwords do not match."
+        
+        try:
+            validator = CustomPasswordValidator()
+            validator.validate(password=password)
+        except DjangoValidationError as e:
+            errors["password"] = list(e.messages)
 
         if errors:
             raise serializers.ValidationError(errors)

@@ -295,14 +295,7 @@ class TimeCapSoulMediaFile(BaseModel):
         default='other',
         verbose_name="File Type"
     )
-    cover_image = models.ForeignKey(
-        Assets,
-        on_delete=models.CASCADE,
-        null=True,
-        blank=True,
-        related_name="time_capsoul_media_cover",
-        verbose_name="Cover Image"
-    )
+    title = models.CharField(blank=True, null=True)
     description = models.TextField(
         blank=True,
         null=True,

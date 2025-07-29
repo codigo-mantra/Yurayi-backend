@@ -26,7 +26,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
     time_capsoul_template_id = serializers.IntegerField(required=False)
     name = serializers.CharField(required=False)
     summary = serializers.CharField(required=False)
-    cover_image_id = serializers.IntegerField(required=False)
+    cover_image = serializers.IntegerField(required=False)
 
     def validate(self, data):
         user = self.context['user']
@@ -63,7 +63,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         Create a time-capsoul from scratch using custom inputs.
         """
         try:
-            image_asset = Assets.objects.get(id=data['cover_image_id']) 
+            image_asset = Assets.objects.get(id=data['cover_image']) 
         except (Assets.DoesNotExist, Assets.MultipleObjectsReturned):
             raise serializers.ValidationError({'cover_image': 'Cover-image id is invalid'})
 
@@ -80,14 +80,59 @@ class CustomTimeCapSoulTemplateSerializer(serializers.ModelSerializer):
         model = CustomTimeCapSoulTemplate
         fields = ['id', 'name', 'slug', 'summary', 'cover_image']
 
+
 class TimeCapSoulSerializer(serializers.ModelSerializer):
     status = serializers.SerializerMethodField()
-    capsoul_template = CustomTimeCapSoulTemplateSerializer()
-
+    name = serializers.SerializerMethodField()
+    summary = serializers.SerializerMethodField()
+    cover_image = serializers.SerializerMethodField()
 
     class Meta:
         model = TimeCapSoul
-        fields = ['id', 'status', 'created_at', 'updated_at', 'capsoul_template']
+        fields = ['id', 'status','name', 'summary', 'cover_image','created_at', 'updated_at']
     
     def get_status(self, obj):
         return obj.get_status_display()
+    
+    def get_name(self, obj):
+        return obj.capsoul_template.name
+    
+    def get_summary(self, obj):
+        return obj.capsoul_template.summary
+    
+    def get_cover_image(self, obj):
+        cover_image = obj.capsoul_template.cover_image
+        return AssetSerializer(cover_image).data
+
+class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
+    """
+    Serializer to handle updating an existing memory room template data.
+    """
+    name = serializers.CharField(required=False)
+    summary = serializers.CharField(required=False)
+    cover_image = serializers.IntegerField(required=False)
+
+    class Meta:
+        model = TimeCapSoul
+        fields = ('name', 'summary', 'cover_image')
+
+    def validate_cover_image(self, value):
+        """
+        Validates that the provided cover_image exists and is of type 'Time CapSoul Cover'.
+        """
+        try:
+            return Assets.objects.get(id=value, asset_types='Time CapSoul Cover')
+        except Assets.DoesNotExist:
+            raise serializers.ValidationError("Cover image with this ID does not exist.")
+
+    def update(self, instance, validated_data):
+        """
+        Updates related Time CapSoul Template fields.
+        """
+        template = instance.capsoul_template
+        template.name = validated_data.get('name', template.name)
+        template.summary = validated_data.get('summary', template.summary)
+        template.cover_image = validated_data.get('cover_image', template.cover_image)
+        template.save()
+        instance.save()
+        return instance
