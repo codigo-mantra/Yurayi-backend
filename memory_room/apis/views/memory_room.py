@@ -250,7 +250,7 @@ class MediaFileDownloadView(SecuredView):
         )
 
         s3_key = media_file.s3_key
-        file_name = media_file.name or s3_key.split("/")[-1]
+        file_name = s3_key.split("/")[-1]
 
         s3 = boto3.client(
             's3',
