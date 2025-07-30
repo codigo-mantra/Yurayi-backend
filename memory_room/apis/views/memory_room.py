@@ -13,7 +13,7 @@ from rest_framework.pagination import PageNumberPagination
 
 
 from userauth.models import Assets
-from userauth.apis.views.views import SecuredView
+from userauth.apis.views.views import SecuredView, NewSecuredView
 
 from memory_room.models import (
     MemoryRoom, MemoryRoomTemplateDefault,
@@ -235,7 +235,7 @@ class UpdateMediaFileDescriptionView(SecuredView):
             return Response({'message': 'Description updated successfully.', 'data': MemoryRoomMediaFileReadOnlySerializer(updated_data).data})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class MediaFileDownloadView(SecuredView):
+class MediaFileDownloadView(NewSecuredView):
     def get(self, request, memory_room_id, media_file_id):
         """
         Securely stream a media file from S3 using optimized chunk size based on file size.

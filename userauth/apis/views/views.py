@@ -202,7 +202,36 @@ class SecuredView(APIView):
         token = request.headers['Authorization'][7:]
         user  = jwtTokens.get_user_from_token(token=token)
         return user
-    
+
+class NewSecuredView(APIView):
+
+    def get_current_user(self, request):
+        """Retrieve the current user from query parameter or header token"""
+        token = request.GET.get('token')  # from query parameter
+
+        if not token and 'Authorization' in request.headers:
+            auth_header = request.headers.get('Authorization')
+            if auth_header.startswith('Bearer '):
+                token = auth_header[7:]  # Remove 'Bearer ' prefix
+
+        if token:
+            try:
+                user = jwtTokens.get_user_from_token(token=token)
+                return user
+            except Exception as e:
+                # Token is invalid/expired
+                return None
+        return None
+
+    def get(self, request):
+        """Example GET method using the token logic"""
+        user = self.get_current_user(request)
+        if not user:
+            return Response({'detail': 'Invalid or missing token.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # Proceed with authorized logic
+        return Response({'message': f'Hello {user.username}'})
+
 class DashboardAPIView(SecuredView):
 
     def get(self, request, format=None):
