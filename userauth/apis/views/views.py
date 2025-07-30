@@ -146,7 +146,9 @@ class LoginView(APIView):
             user = User.objects.filter(username__iexact=identifier).first()
 
         if not user:
-            return Response({'error': 'User not found.'}, status=404)
+            # return Response({'error': 'Login credentials are invalid. Please use valid credentials to login in dashboard'}, status=404)
+            return Response( {"error": "Invalid login credentials. Please check your credentials and try again."},status=404)
+
 
         if not user.check_password(password):
             return Response({'error': 'Incorrect password.'}, status=401)
