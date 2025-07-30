@@ -121,6 +121,7 @@ class RegistrationView(APIView):
                 "access": str(refresh.access_token),
                 "user": {
                     "email": user.email,
+                    'username': user.username,
                     # 'profile_image': profile.profile_image.s3_url if profile.profile_image else None
                 }
             }, status=status.HTTP_201_CREATED)

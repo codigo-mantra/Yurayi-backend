@@ -1,4 +1,5 @@
 import boto3
+import mimetypes
 from botocore.exceptions import ClientError
 from django.conf import settings
 from django.http import StreamingHttpResponse, Http404
@@ -237,8 +238,7 @@ class UpdateMediaFileDescriptionView(SecuredView):
 class MediaFileDownloadView(SecuredView):
     def get(self, request, memory_room_id, media_file_id):
         """
-        Securely stream media file from S3 by file ID using stored s3_key.
-        Also sends real-time progress updates over WebSocket.
+        Securely stream a media file from S3 using optimized chunk size based on file size.
         """
         user = self.get_current_user(request)
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
@@ -250,9 +250,7 @@ class MediaFileDownloadView(SecuredView):
         )
 
         s3_key = media_file.s3_key
-        file_id = str(media_file.id)
-        channel_layer = get_channel_layer()
-        group_name = f"progress_{file_id}"
+        file_name = media_file.name or s3_key.split("/")[-1]
 
         s3 = boto3.client(
             's3',
@@ -264,40 +262,37 @@ class MediaFileDownloadView(SecuredView):
         try:
             s3_response = s3.get_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=s3_key)
             file_stream = s3_response['Body']
-            content_type = s3_response.get('ContentType', 'application/octet-stream')
             file_size = s3_response['ContentLength']
             chunk_size = determine_download_chunk_size(file_size)
 
-            def stream_with_progress():
-                bytes_sent = 0
+            mime_type = (
+                s3_response.get('ContentType')
+                or mimetypes.guess_type(file_name)[0]
+                or 'application/octet-stream'
+            )
+
+            def file_iterator():
                 while True:
                     chunk = file_stream.read(chunk_size)
                     if not chunk:
                         break
-                    bytes_sent += len(chunk)
-                    percent_done = int((bytes_sent / file_size) * 100)
-
-                    # Send progress update via WebSocket
-                    async_to_sync(channel_layer.group_send)(
-                        group_name,
-                        {
-                            "type": "send_progress",
-                            "content": {
-                                "percent": percent_done
-                            }
-                        }
-                    )
                     yield chunk
 
             response = StreamingHttpResponse(
-                streaming_content=stream_with_progress(),
-                content_type=content_type
+                streaming_content=file_iterator(),
+                content_type=mime_type
             )
-            response['Content-Disposition'] = f'attachment; filename="{s3_key.split("/")[-1]}"'
+            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+            response['Content-Length'] = str(file_size)
+            response['Accept-Ranges'] = 'bytes'
+            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response['Access-Control-Expose-Headers'] = 'Content-Length, Content-Disposition'
+
             return response
 
         except ClientError as e:
             raise Http404(f"Could not retrieve file: {e}")
+
 
 class MemoryRoomMediaFileFilterView(SecuredView):
 

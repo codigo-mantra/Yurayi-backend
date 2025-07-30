@@ -59,8 +59,8 @@ class ContactUsSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError("Phone number must be a 10-digit number without country code.")
             digits_only = value
 
-        if set(digits_only) == {'0'}:
-            raise serializers.ValidationError("Phone number cannot be all zeros.")
+            if digits_only[0] < '3':
+                raise serializers.ValidationError("In +91 format, phone number must start with 3 or higher.")
 
         return value
 

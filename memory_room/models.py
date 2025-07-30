@@ -301,14 +301,12 @@ class TimeCapSoulMediaFile(BaseModel):
         null=True,
         verbose_name="Description"
     )
-    is_cover_image = models.BooleanField(
-        default=False,
-        verbose_name="Use as Cover"
-    )
-    thumbnail_url = models.URLField(blank=True, null=True)
-    thumbnail_key = models.CharField(blank=True, null=True)
+    thumbnail = models.ForeignKey(Assets, on_delete=models.CASCADE, blank=True, null=True)
     file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
     s3_url = models.URLField(blank=True, null=True)
+    s3_key = models.CharField(blank=True, null=True)
+    is_cover_image = models.BooleanField(default=False)
+
 
 
 
