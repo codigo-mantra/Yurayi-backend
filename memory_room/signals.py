@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import User, UserMapper
-from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica,TimeCapSoulReplica
+from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica,TimeCapSoulReplica, RecipientsDetail
 
 @receiver(post_save, sender=User)
 def create_user_mapper(sender, instance, created, **kwargs):
@@ -27,6 +27,11 @@ def create_user_mapper(sender, instance, created, **kwargs):
         TimeCapSoulDetail.objects.create(
             time_capsoul=instance,
         )
+        # also create here recipients-details
+        RecipientsDetail.objects.create(
+            time_capsoul = instance
+            )
+
 
 
 @receiver(post_save, sender=TimeCapSoulMediaFile)

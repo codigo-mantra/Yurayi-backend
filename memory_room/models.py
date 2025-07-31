@@ -457,7 +457,7 @@ class TimeCapSoulRecipient(BaseModel):
 
 
 class RecipientsDetail(BaseModel):
-     time_capsoul = models.ForeignKey(
+     time_capsoul = models.OneToOneField(
          TimeCapSoul,
          on_delete=models.CASCADE,
          related_name="recipient_details",

@@ -1,10 +1,15 @@
 import os
 from django.utils import timezone
 from userauth.models import Assets
+from django.shortcuts import get_object_or_404
+
 from django.core.files.images import ImageFile 
 from timecapsoul.utils import MediaThumbnailExtractor
 from memory_room.apis.serializers.memory_room import AssetSerializer
-from memory_room.models import TimeCapSoulTemplateDefault,CustomTimeCapSoulTemplate,TimeCapSoul, TimeCapSoulMediaFile,TimeCapSoulDetail, TimeCapSoulMediaFileReplica, TimeCapSoulReplica
+from memory_room.models import (
+    TimeCapSoulTemplateDefault,CustomTimeCapSoulTemplate,TimeCapSoul,TimeCapSoulRecipient,RecipientsDetail,
+    TimeCapSoulMediaFile,TimeCapSoulDetail, TimeCapSoulMediaFileReplica, TimeCapSoulReplica,
+    )
 
 from rest_framework import serializers
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug
@@ -309,78 +314,6 @@ class TimeCapSoulMediaFilesReadOnlySerailizer(serializers.ModelSerializer):
         fields = ('time_capsoul', 'media_files')
 
 
-# class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
-#     cover_image_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
-#     cover_audio_type = serializers.BooleanField(default = False)
-
-
-#     class Meta:
-#         model = TimeCapSoulMediaFile
-#         fields = ('description', 'cover_image_id', 'cover_audio_type')
-
-#     def validate(self, data):
-#         cover_image_id = data.get('cover_image_id', None)
-#         if cover_image_id:
-#             try:
-#                 cover_image = Assets.objects.get(id = cover_image_id)
-#             except Assets.DoesNotExist:
-#                 raise serializers.ValidationError({'cover_image_id': 'Cover image is invalid'})
-#             else:
-#                 data['cover_image'] = cover_image
-#         else:
-#             data['cover_image'] = None
-
-#         return data
-
-#     def update(self, instance, validated_data):
-#         time_capsoul_detial = self.context['time_capsoul_detial']
-#         cover_image = validated_data.get('cover_image')
-#         cover_audio_type = validated_data.get('cover_audio_type')
-#         validated_data.pop('cover_audio_type')
-#         validated_data.pop('cover_image_id', None)
-
-#         if time_capsoul_detial.is_locked: # if time-capsoul is locked then create replica
-#             try:
-#                 replica_media_file = TimeCapSoulMediaFileReplica.objects.get(parent_media_file = instance)
-#             except TimeCapSoulMediaFileReplica.DoesNotExist:
-#                 replica_media_file = TimeCapSoulMediaFileReplica.objects.create(
-#                     user = instance.user,
-#                     time_capsoul = instance.time_capsoul,
-#                     file = instance.file,
-#                     file_type = instance.file_type,
-#                     title = instance.title,
-#                     description =  validated_data.get('description'),
-#                     thumbnail = instance.thumbnail,
-#                     file_size = instance.file_size,
-#                     s3_url = instance.s3_url,
-#                     s3_key = instance.s3_key,
-#                     is_cover_image = instance.is_cover_image,
-#                     parent_media_file = instance
-#                 )
-#                 replica_media_file.save()
-#             finally:
-#                 self.context['replica_media_file'] = replica_media_file
-            
-#         else:
-#             instance.description = validated_data.get('description', instance.description)
-#             if cover_audio_type == True: # set cover image for audio
-#                 if cover_image:
-#                     time_capsoul_template = time_capsoul_detial.time_capsoul.capsoul_template
-#                     time_capsoul_template.cover_image = cover_image
-#                     time_capsoul_template.save()
-#                     instance.is_cover_image = True
-
-#                 if instance.file_type == 'image' and instance.is_cover_image == False:
-#                     # store image in assets then set as cover image for current time-capsoul
-#                     asset = Assets.objects.create(title = instance.title, image = instance.file)
-#                     time_capsoul_template = time_capsoul_detial.time_capsoul.capsoul_template
-#                     time_capsoul_template.cover_image = asset
-#                     time_capsoul_template.save()
-      
-#         instance.save()
-#         return instance
-
-
 class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
     cover_type = serializers.CharField(required = False)
 
@@ -471,4 +404,46 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
         time_capsoul.status = 'sealed'
         time_capsoul.save()
         instance.save()
+        return instance
+
+
+class TimeCapSoulRecipientSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TimeCapSoulRecipient
+        fields = ['id', 'name', 'email']
+
+
+class RecipientsDetailSerializer(serializers.ModelSerializer):
+    recipients = TimeCapSoulRecipientSerializer(many=True)
+
+    class Meta:
+        model = RecipientsDetail
+        fields = ['id', 'recipients']  
+
+    def create(self, validated_data):
+        time_capsoul = self.context.get('time_capsoul')
+        if not time_capsoul:
+            raise serializers.ValidationError("TimeCapsoul context is required.")
+
+        # ✅ Get existing RecipientsDetail created via signal
+        recipients_detail = get_object_or_404(RecipientsDetail, time_capsoul=time_capsoul)
+
+        recipients_data = validated_data.pop('recipients', [])
+
+        for recipient_data in recipients_data:
+            recipient, _ = TimeCapSoulRecipient.objects.get_or_create(**recipient_data)
+            recipients_detail.recipients.add(recipient)
+
+        return recipients_detail
+
+
+    def update(self, instance, validated_data):
+        recipients_data = validated_data.pop('recipients', None)
+
+        if recipients_data is not None:
+            instance.recipients.clear()
+            for recipient_data in recipients_data:
+                recipient, _ = TimeCapSoulRecipient.objects.get_or_create(**recipient_data)
+                instance.recipients.add(recipient)
+
         return instance

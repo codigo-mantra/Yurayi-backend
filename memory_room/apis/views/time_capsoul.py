@@ -17,11 +17,15 @@ from memory_room.apis.serializers.memory_room import (
     AssetSerializer,
 )
 
-from memory_room.models import TimeCapSoulTemplateDefault, TimeCapSoul, TimeCapSoulDetail, TimeCapSoulMediaFile, TimeCapSoulReplica, TimeCapSoulMediaFileReplica
+from memory_room.models import (
+    TimeCapSoulTemplateDefault, TimeCapSoul, TimeCapSoulDetail, TimeCapSoulMediaFile,RecipientsDetail,
+    TimeCapSoulReplica, TimeCapSoulMediaFileReplica,TimeCapSoulRecipient,
+    )
+
 from memory_room.apis.serializers.time_capsoul import (
     TimeCapSoulTemplateDefaultReadOnlySerializer, TimeCapSoulCreationSerializer,TimeCapSoulMediaFileReadOnlySerializer,
     TimeCapSoulSerializer, TimeCapSoulUpdationSerializer,TimeCapSoulMediaFileSerializer,TimeCapSoulMediaFilesReadOnlySerailizer, TimeCapsoulMediaFileUpdationSerializer,
-    TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,
+    TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,
 )
 
 class TimeCapSoulCoverView(generics.ListAPIView):
@@ -303,3 +307,51 @@ class TimeCapSoulMediaFileDownloadView(NewSecuredView):
 
         except ClientError as e:
             raise Http404(f"Could not retrieve file: {e}")
+
+
+
+class RecipientsDetailCreateOrUpdateView(SecuredView):
+    """
+    Handles GET, POST, and PUT for TimeCapSoul Recipients.
+    """
+
+    def get(self, request, time_capsoul_id):
+        """
+        Retrieve all recipients for a given TimeCapSoul.
+        """
+        user = self.get_current_user(request)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+
+        try:
+            recipients_detail = RecipientsDetail.objects.get(time_capsoul=time_capsoul)
+            serializer = RecipientsDetailSerializer(recipients_detail)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except RecipientsDetail.DoesNotExist:
+            return Response({"message": "No recipients found for this Time Capsule."}, status=status.HTTP_404_NOT_FOUND)
+
+    def post(self, request, time_capsoul_id):
+        """
+        Create a new RecipientsDetail for a given TimeCapSoul.
+        """
+        user = self.get_current_user(request)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+
+        serializer = RecipientsDetailSerializer(data=request.data, context={'time_capsoul': time_capsoul})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def put(self, request, time_capsoul_id):
+        """
+        Update the recipients of an existing RecipientsDetail for a given TimeCapSoul.
+        """
+        user = self.get_current_user(request)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+        recipients_detail = get_object_or_404(RecipientsDetail, time_capsoul=time_capsoul)
+
+        serializer = RecipientsDetailSerializer(recipients_detail, data=request.data, context={'time_capsoul': time_capsoul})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
