@@ -214,6 +214,7 @@ class TimeCapSoulTemplateDefault(BaseModel):
         super().save(*args, **kwargs)
 
 
+
 class CustomTimeCapSoulTemplate(BaseModel):
     name = models.CharField(max_length=255, verbose_name="TimeCapSoul Name")
     slug = models.SlugField(verbose_name="Slug")
@@ -254,6 +255,55 @@ STATUS_CHOICES = (
     ('created', 'Being Crafted')
 
 )
+
+class AbstractMediaFile(BaseModel):
+    
+    file = models.FileField(
+        upload_to='media_files/',
+        verbose_name="Media File"
+    )
+    file_type = models.CharField(
+        max_length=20,
+        choices=FILE_TYPES,
+        default='other',
+        verbose_name="File Type"
+    )
+    title = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True
+    )
+    description = models.TextField(
+        blank=True,
+        null=True,
+        verbose_name="Description"
+    )
+    file_size = models.BigIntegerField(
+        blank=True,
+        null=True,
+        verbose_name="File Size"
+    )
+    s3_url = models.URLField(
+        blank=True,
+        null=True,
+        verbose_name="S3 URL"
+    )
+    s3_key = models.CharField(
+        max_length=512,
+        blank=True,
+        null=True,
+        verbose_name="S3 Key"
+    )
+    is_cover_image = models.BooleanField(
+        default=False,
+        help_text="Mark if this media is the cover image"
+    )
+    
+
+    class Meta:
+        abstract = True
+
+
 class TimeCapSoul(BaseModel):
     user = models.ForeignKey(
         User,
@@ -279,67 +329,92 @@ class TimeCapSoul(BaseModel):
     def __str__(self):
         return f"{self.user.username}'s TimeCapSoul"
 
-
-
-class TimeCapSoulMediaFile(BaseModel):
-    user = models.ForeignKey(User, on_delete=models.CASCADE, blank=True, null=True, related_name='user_timecapsoul_media_files')
-    time_capsoul = models.ForeignKey(TimeCapSoul, on_delete=models.CASCADE, blank=True, null=True, related_name='timecapsoul_media_files')
-
-    file = models.FileField(
-        upload_to='time_capsoul_media_file/',
-        verbose_name="Media File"
+class TimeCapSoulReplica(BaseModel):
+    name = models.CharField(max_length=255, verbose_name="TimeCapSoul Name",blank=True, null=True)
+    slug = models.SlugField(verbose_name="Slug",blank=True, null=True)
+    summary = models.TextField(blank=True, null=True, verbose_name="TimeCapSoul Summary")
+    status = models.CharField(choices=STATUS_CHOICES, blank=True, null=True)
+    cover_image = models.ForeignKey(
+        Assets,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="timecapsoul_replica",
+        verbose_name="Cover Image"
     )
-    file_type = models.CharField(
-        max_length=20,
-        choices=FILE_TYPES,
-        default='other',
-        verbose_name="File Type"
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="time_capsoul_replica",
+        verbose_name="Owner",
+        blank=True, null=True
     )
-    title = models.CharField(blank=True, null=True)
-    description = models.TextField(
+    parent_time_capsoul  = models.OneToOneField(TimeCapSoul, on_delete=models.CASCADE, related_name='time_capsoul_replica',blank=True, null=True)
+
+
+class TimeCapSoulMediaFile(AbstractMediaFile):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
         blank=True,
         null=True,
-        verbose_name="Description"
+        related_name='time_capsoul_media_files'
     )
-    thumbnail = models.ForeignKey(Assets, on_delete=models.CASCADE, blank=True, null=True)
-    file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
-    s3_url = models.URLField(blank=True, null=True)
-    s3_key = models.CharField(blank=True, null=True)
-    is_cover_image = models.BooleanField(default=False)
-
-
-
+    time_capsoul = models.ForeignKey(
+        'memory_room.TimeCapSoul',
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name='timecapsoul_media_files'
+    )
+    thumbnail = models.ForeignKey(
+        Assets,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name='time_capsoul_media_thumbnails',
+        verbose_name="Thumbnail"
+    )
 
     class Meta:
-        verbose_name = "Time CapSoul Media File"
-        verbose_name_plural = "Time CapSoul Media File"
+        verbose_name = "TimeCapSoul Media File"
+        verbose_name_plural = "TimeCapSoul Media Files"
+        ordering = ['-created_at']
 
-    def __str__(self):
-        return f"{self.file.name}"
-    
-    def clean(self):
-        if self.file:
-            self.file_size = self.file.size
 
-            # Ensure memory_room is set through reverse relation
-            memory_rooms = self.memory_room_details.all()
-            if not memory_rooms:
-                return  # Can't validate without memory room context
+class TimeCapSoulMediaFileReplica(AbstractMediaFile):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name='timecapsoul_media_file_replicas'
+    )
+    thumbnail = models.ForeignKey(
+        Assets,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name='timecapsoul_media_file_replicas_thumbnails',
+        verbose_name="Thumbnail"
+    )
+    time_capsoul = models.ForeignKey(
+        TimeCapSoul,
+        on_delete=models.CASCADE,
+        blank=True,
+        null=True,
+        related_name='media_file_replicas'
+    )
+    parent_media_file = models.OneToOneField(
+        TimeCapSoulMediaFile,
+        on_delete=models.CASCADE,
+        related_name='replica'
+    )
 
-            # Assume the file belongs to the first memory room it's associated with
-            memory_room = memory_rooms.first().memory_room
-            user_mapper = memory_room.user.usermapper
-
-            if user_mapper.current_storage + self.file_size > user_mapper.max_storage_limit:
-                raise ValidationError("Uploading this file exceeds your storage limit.")
-    
-    def save(self, *args, **kwargs):
-        """autoauto-populate file-size on save"""
-        # self.full_clean()  
-
-        if self.file and not self.file_size:
-            self.file_size = self.file.size
-        super().save(*args, **kwargs)
+    class Meta:
+        verbose_name = "TimeCapSoul Media File Replica"
+        verbose_name_plural = "TimeCapSoul Media File Replicas"
+        ordering = ['-created_at']
 
 
 class TimeCapSoulDetail(BaseModel):
@@ -355,6 +430,7 @@ class TimeCapSoulDetail(BaseModel):
         related_name="timecapsoul_details",
         verbose_name="Media Files"
     )
+    is_locked  = models.BooleanField(default=False)
     unlock_date = models.DateTimeField(verbose_name="Unlock Date", blank=True, null=True)
     occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul")
 

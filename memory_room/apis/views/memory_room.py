@@ -317,6 +317,7 @@ class MemoryRoomMediaFileFilterView(SecuredView):
                 'memory_room__id': memory_room_id,
                 'file_type': file_type,
                 'description__icontains': query_params.get('description'),
+                'title__icontains': query_params.get('description'),
                 'user': user,
             }.items() if value is not None
         }

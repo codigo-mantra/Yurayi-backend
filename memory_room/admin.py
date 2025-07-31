@@ -12,7 +12,15 @@ from .models import (
     TimeCapSoulRecipient,
     RecipientsDetail,
     UserMapper,
+    TimeCapSoulReplica
 )
+
+
+@admin.register(TimeCapSoulReplica)
+class TimeCapSoulReplicaAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "created_at", "parent_time_capsoul")
+    search_fields = ("name", "slug")
+
 
 @admin.register(MemoryRoomTemplateDefault)
 class MemoryRoomTemplateDefaultAdmin(admin.ModelAdmin):
