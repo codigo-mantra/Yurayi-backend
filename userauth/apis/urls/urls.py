@@ -4,8 +4,8 @@ from django.urls import include, path, re_path
 
 
 from userauth.apis.views.views import (
-    LoginView, RegistrationView, UpdateUserProfileView,
-    GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,
+    LoginView, RegistrationView, 
+    GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,UserProfileUpdateView,
     CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView
     
 )
@@ -18,7 +18,7 @@ urlpatterns = [
     path('contact-us/', ContactUsAPIView.as_view(), name='contact-us'),
     path('register/', RegistrationView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
-    path('profile/update/', UpdateUserProfileView.as_view(), name='profile-update'),
+    path('profile/update/', UserProfileUpdateView.as_view(), name='profile-update'),
     path('user/dashboard/', DashboardAPIView.as_view(), name='user-dashboard'),
 
 

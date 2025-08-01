@@ -93,6 +93,8 @@ class User(AbstractBaseUser, PermissionsMixin):
         unique=True,
         verbose_name="Google ID"
     )
+    gender = models.CharField(blank=True, null=True)
+
 
     objects = UserManager()
 
@@ -157,3 +159,24 @@ class NewsletterSubscriber(BaseModel):
         verbose_name = "Newsletter Subscriber"
         verbose_name_plural = "Newsletter Subscribers"
         ordering = ['-created_at']
+
+class UserAddress(BaseModel):
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='address',
+        verbose_name="User"
+    )
+    address_line_1 = models.CharField(max_length=255, verbose_name="Address Line 1")
+    address_line_2 = models.CharField(max_length=255, blank=True, null=True, verbose_name="Address Line 2 (Optional)")
+    city = models.CharField(max_length=100, verbose_name="City")
+    state = models.CharField(max_length=100, verbose_name="State")
+    postal_code = models.CharField(max_length=20, verbose_name="Postal Code")
+    country = models.CharField(max_length=100, default="India", verbose_name="Country")
+
+    class Meta:
+        verbose_name = "User Address"
+        verbose_name_plural = "User Addresses"
+
+    def __str__(self):
+        return f"{self.user.username} - {self.address_line_1}"

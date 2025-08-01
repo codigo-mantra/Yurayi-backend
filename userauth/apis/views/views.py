@@ -1,4 +1,4 @@
-import re
+import re, os
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
@@ -33,7 +33,7 @@ from userauth.models import UserProfile, NewsletterSubscriber
 from timecapsoul.utils import send_html_email
 from userauth.apis.serializers.serializers import  (
     RegistrationSerializer, UserProfileUpdateSerializer, GoogleIDTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
-    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer
+    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer
     )
 
 
@@ -50,15 +50,16 @@ class ContactUsAPIView(APIView):
         if serializer.is_valid():
             serializer.save()
             email = serializer.validated_data.get('email')
-            context = {
-                'name': serializer.validated_data.get('first_name')
-            }
+            print(serializer._validated_data.get('first_name'))
             send_html_email(
-            subject='Thank for contacting us', 
-            to_email=email,
-            template_name='userauth/contact_us.html',
-            context=context,
-                        )
+                subject='Thank for contacting us', 
+                to_email=email,
+                template_name='userauth/contact_us.html',
+                context={'first_name': serializer._validated_data.get('first_name')},
+                inline_images={
+                    'logo_cid': os.path.join(settings.BASE_DIR, 'static/images/logo.png')
+                }
+            )
             return Response({"message": "Contact request submitted successfully."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -170,16 +171,6 @@ class LoginView(APIView):
                 "last_name": user.last_name,
             }
         }, status=200)
-
-class UpdateUserProfileView(APIView):
-    permission_classes = [IsAuthenticated]
-
-    def put(self, request):
-        serializer = UserProfileUpdateSerializer(instance=request.user, data=request.data, partial=True)
-        if serializer.is_valid():
-            serializer.save()
-            return Response({'detail': 'Profile updated successfully.'})
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
 class CustomPasswordResetView(PasswordResetView):
     serializer_class = CustomPasswordResetSerializer
@@ -262,20 +253,19 @@ class ForgotPasswordView(APIView):
 
         reset_url = f"{settings.FRONTEND_URL}reset-password/{uidb64}/{token}/"
 
-        subject = "Reset Your Password"
-        from_email = settings.EMAIL_HOST_USER
-        to_email = [user.email]
-
-        # Render HTML message
-        html_message = render_to_string("userauth/reset_password_email.html", {
-            "user": user,
-            "reset_url": reset_url,
-        })
-
-        # Send both plain text and HTML
-        email = EmailMultiAlternatives(subject, body=reset_url, from_email=from_email, to=to_email)
-        email.attach_alternative(html_message, "text/html")
-        email.send()
+        # Use shared email sending function
+        send_html_email(
+            subject="Reset Your Password",
+            to_email=user.email,
+            template_name="userauth/reset_password_email.html",
+            context={
+                "user": user,
+                "reset_url": reset_url,
+            },
+            inline_images={
+                "logo_cid": os.path.join(settings.BASE_DIR, "static/images/logo.png")
+            }
+        )
 
         return Response({"detail": "Password reset email sent."}, status=status.HTTP_200_OK)
 
@@ -302,13 +292,17 @@ class NewsletterSubscribeAPIView(APIView):
             defaults={"is_active": True}
         )
         message = "Successfully subscribed."
-        context = {}
+        context = {'user_email':email,  }
+        
         send_html_email(
-            subject='Thank you for email subscription', 
+            subject='Thank you for email subscription',
             to_email=email,
             template_name='userauth/new_letter_subscription.html',
-            context=context,
-                        )
+            context={'user_email': email},
+            inline_images={
+                'logo_cid': os.path.join(settings.BASE_DIR, 'static/images/logo.png')
+            }
+        )
 
 
         serializer = NewsletterSubscriberSerializer(subscriber)
@@ -316,3 +310,27 @@ class NewsletterSubscribeAPIView(APIView):
             "message": message,
             "data": serializer.data
         }, status=status.HTTP_200_OK)
+
+class UserProfileUpdateView(SecuredView):
+    """
+    Handles retrieving and updating the authenticated user's profile.
+    Includes nested updates to UserProfile and UserAddress.
+    """
+
+    def get(self, request):
+        user = self.get_current_user(request)
+        serializer = UserProfileUpdateSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request):
+        user = self.get_current_user(request)
+        serializer = UserProfileUpdateSerializer(user, data=request.data, partial=True)
+
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "message": "Profile updated successfully",
+                "data": serializer.data
+            }, status=status.HTTP_200_OK)
+
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

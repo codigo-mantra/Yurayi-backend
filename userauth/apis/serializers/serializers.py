@@ -1,6 +1,6 @@
 import re
 from rest_framework import serializers
-from userauth.models import ContactUs, User, UserProfile, Assets
+from userauth.models import ContactUs, User, UserProfile, Assets,UserAddress
 
 from dj_rest_auth.registration.serializers import SocialLoginSerializer
 from rest_framework import serializers
@@ -329,3 +329,121 @@ class NewsletterSubscriberSerializer(serializers.ModelSerializer):
             subscriber.save()
 
         return subscriber
+
+
+
+class UserAddressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UserAddress
+        fields = [
+            "id", "address_line_1", "address_line_2", "city", "state", "postal_code", "country"
+        ]
+
+
+class AssetSerializer(serializers.ModelSerializer):
+    image_url = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Assets
+        fields = ["id", "title", "asset_types", "image_url", "s3_url", "s3_key"]
+
+    def get_image_url(self, obj):
+        return obj.s3_url or obj.get_image_url()
+    
+
+class UserProfileDataSerializer(serializers.ModelSerializer):
+    profile_image = AssetSerializer(read_only=True)
+    profile_image_id = serializers.PrimaryKeyRelatedField(
+        queryset=Assets.objects.all(), source='profile_image', write_only=True, required=False
+    )
+    profile_cover_image = AssetSerializer(read_only=True)
+    profile_cover_image_id = serializers.PrimaryKeyRelatedField(
+        queryset=Assets.objects.all(), source='profile_cover_image', write_only=True, required=False
+    )
+
+    class Meta:
+        model = UserProfile
+        fields = [
+            "about",
+            "profile_image", "profile_image_id",
+            "profile_cover_image", "profile_cover_image_id"
+        ]
+
+
+class UserProfileUpdateSerializer(serializers.ModelSerializer):
+    # address = UserAddressSerializer(required=False)
+    profile = UserProfileDataSerializer(required=False)
+    profile_image = serializers.ImageField(required=False, write_only=True)
+
+
+    class Meta:
+        model = User
+        fields = [
+            "id", "username", "first_name", "last_name", "email", "phone_number",
+            "gender", "profile",'profile_image', 
+        ]
+        read_only_fields = ["email",]
+    
+    
+    def validate_gender(self,value):
+        allowed_values = ["male", "female", "other"]
+        if value and value.lower() not in allowed_values:
+            raise serializers.ValidationError("Gender must be either 'male', 'female', or 'other'.")
+        return value
+    
+    def validate_phone_number(self, value):
+        if value.startswith('+'):
+            # Must start with +91 and followed by exactly 10 digits
+            if not re.fullmatch(r'\+91\d{10}', value):
+                raise serializers.ValidationError("Phone number must be in the format +91XXXXXXXXXX.")
+            digits_only = value[3:]  # remove +91
+
+            if digits_only[0] < '3':
+                raise serializers.ValidationError("In +91 format, phone number must start with 3 or higher.")
+
+        else:
+            if not re.fullmatch(r'\d{10}', value):
+                raise serializers.ValidationError("Phone number must be a 10-digit number without country code.")
+            digits_only = value
+
+            if digits_only[0] < '3':
+                raise serializers.ValidationError("In +91 format, phone number must start with 3 or higher.")
+
+        return value
+
+    def update(self, instance, validated_data):
+        profile_data = validated_data.pop("profile", {})
+        # address_data = validated_data.pop("address", {})
+
+        # Update User fields
+        
+        profile, _ = UserProfile.objects.get_or_create(user=instance)
+
+        profile_image_file = validated_data.get('profile_image')
+        if profile_image_file:
+            asset = Assets.objects.create(
+                image=profile_image_file,
+                asset_types='Profile Image',
+                title=profile_image_file.name
+            )
+            profile.profile_image = asset
+            profile.save()
+
+        # Update or create related UserProfile
+        if profile_data:
+            profile_instance, _ = UserProfile.objects.get_or_create(user=instance)
+            for attr, value in profile_data.items():
+                setattr(profile_instance, attr, value)
+            profile_instance.save()
+
+        # Update or create UserAddress
+        # if address_data:
+        #     address_instance = instance.address.first()
+        #     if address_instance:
+        #         for attr, value in address_data.items():
+        #             setattr(address_instance, attr, value)
+        #         address_instance.save()
+        #     else:
+        #         UserAddress.objects.create(user=instance, **address_data)
+
+        return instance
