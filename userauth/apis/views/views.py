@@ -233,7 +233,7 @@ class DashboardAPIView(SecuredView):
             'first_name': user.first_name,
             'last_name': user.last_name,
             'email': user.email,
-            'profile_pic': user_profile.profile_image.s3_url,
+            'profile_pic': user_profile.profile_image.s3_url if user_profile.profile_image else None,
             'last_login': user.last_login,
             'free_storage_limit': user_mapper.current_storage,
         }
