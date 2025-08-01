@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, UserProfile, Assets, ContactUs, NewsletterSubscriber
+from .models import User, UserProfile, Assets, ContactUs, NewsletterSubscriber, UserAddress
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
@@ -25,6 +25,12 @@ class UserAdmin(BaseUserAdmin):
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('user', 'profile_image', 'profile_cover_image')
+
+
+
+@admin.register(UserAddress)
+class UserAddressAdmin(admin.ModelAdmin):
+    list_display = ('user', 'address_line_1', 'city')
 
 @admin.register(Assets)
 class AssetsAdmin(admin.ModelAdmin):

@@ -29,11 +29,11 @@ from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_str, force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 
-from userauth.models import UserProfile, NewsletterSubscriber
+from userauth.models import UserProfile, NewsletterSubscriber, UserAddress
 from timecapsoul.utils import send_html_email
 from userauth.apis.serializers.serializers import  (
     RegistrationSerializer, UserProfileUpdateSerializer, GoogleIDTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
-    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer
+    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer,UserAddressSerializer
     )
 
 
@@ -334,3 +334,58 @@ class UserProfileUpdateView(SecuredView):
             }, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+class UserAddressListCreateView(SecuredView):
+    def get(self, request):
+        user = self.get_current_user(request)
+        addresses = UserAddress.objects.filter(user=user)
+        serializer = UserAddressSerializer(addresses, many=True)
+        return Response(serializer.data)
+
+    def post(self, request):
+        user = self.get_current_user(request)
+        serializer = UserAddressSerializer(data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save(user=user)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class UserAddressDetailView(SecuredView):
+    def get_object(self, pk, user):
+        try:
+            return UserAddress.objects.get(pk=pk, user=user)
+        except UserAddress.DoesNotExist:
+            return None
+
+    def get(self, request, pk):
+        user = self.get_current_user(request)
+        address = self.get_object(pk, user)
+        if not address:
+            return Response({"detail": "Address not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = UserAddressSerializer(address)
+        return Response(serializer.data)
+
+    def put(self, request, pk):
+        user = self.get_current_user(request)
+        address = self.get_object(pk, user)
+        if not address:
+            return Response({"detail": "Address not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        serializer = UserAddressSerializer(address, data=request.data, context={'request': request})
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, pk):
+        user = self.get_current_user(request)
+        address = self.get_object(pk, user)
+        if not address:
+            return Response({"detail": "Address not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        address.delete()
+        return Response({"detail": "Address deleted."}, status=status.HTTP_204_NO_CONTENT)

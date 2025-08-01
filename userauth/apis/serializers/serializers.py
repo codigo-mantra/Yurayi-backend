@@ -330,14 +330,23 @@ class NewsletterSubscriberSerializer(serializers.ModelSerializer):
 
         return subscriber
 
-
-
 class UserAddressSerializer(serializers.ModelSerializer):
     class Meta:
         model = UserAddress
         fields = [
-            "id", "address_line_1", "address_line_2", "city", "state", "postal_code", "country"
+            'id', 'address_line_1', 'address_line_2',
+            'city', 'state', 'country', 'postal_code'
         ]
+
+    def create(self, validated_data):
+        user = self.context['request'].user
+        return UserAddress.objects.create(user=user, **validated_data)
+    
+    def to_representation(self, instance):
+        if not instance:
+            return None
+        return super().to_representation(instance)
+
 
 
 class AssetSerializer(serializers.ModelSerializer):
@@ -371,7 +380,7 @@ class UserProfileDataSerializer(serializers.ModelSerializer):
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
-    # address = UserAddressSerializer(required=False)
+    address = serializers.SerializerMethodField()
     profile = UserProfileDataSerializer(required=False)
     profile_image = serializers.ImageField(required=False, write_only=True)
 
@@ -380,7 +389,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id", "username", "first_name", "last_name", "email", "phone_number",
-            "gender", "profile",'profile_image', 
+            "gender", "profile",'profile_image','address', 
         ]
         read_only_fields = ["email",]
     
@@ -390,6 +399,13 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         if value and value.lower() not in allowed_values:
             raise serializers.ValidationError("Gender must be either 'male', 'female', or 'other'.")
         return value
+    
+    def get_address(self, obj):
+        address_instance = obj.address.first() 
+        if address_instance:
+            return UserAddressSerializer(address_instance).data
+        return None  # or {} if you prefer
+
     
     def validate_phone_number(self, value):
         if value.startswith('+'):
@@ -413,7 +429,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         profile_data = validated_data.pop("profile", {})
-        # address_data = validated_data.pop("address", {})
+        address_data = validated_data.pop("address", {})
 
         # Update User fields
         
@@ -437,13 +453,13 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             profile_instance.save()
 
         # Update or create UserAddress
-        # if address_data:
-        #     address_instance = instance.address.first()
-        #     if address_instance:
-        #         for attr, value in address_data.items():
-        #             setattr(address_instance, attr, value)
-        #         address_instance.save()
-        #     else:
-        #         UserAddress.objects.create(user=instance, **address_data)
+        if address_data:
+            address_instance = instance.address.first()
+            if address_instance:
+                for attr, value in address_data.items():
+                    setattr(address_instance, attr, value)
+                address_instance.save()
+            else:
+                UserAddress.objects.create(user=instance, **address_data)
 
         return instance

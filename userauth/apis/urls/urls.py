@@ -6,7 +6,7 @@ from django.urls import include, path, re_path
 from userauth.apis.views.views import (
     LoginView, RegistrationView, 
     GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,UserProfileUpdateView,
-    CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView
+    CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView,UserAddressListCreateView,UserAddressDetailView
     
 )
 from rest_framework_simplejwt.views import TokenVerifyView
@@ -32,6 +32,9 @@ urlpatterns = [
     path('password/reset/', ForgotPasswordView.as_view(), name='password_reset'),
     path('password/reset/confirm/', PasswordResetConfirmView.as_view(), name='password_reset_confirm'),
     path('password/change/', CustomPasswordChangeView.as_view(), name='password_change'),
+
+    path('user/addresses/', UserAddressListCreateView.as_view(), name='user-address-list-create'),
+    path('user/addresses/<int:pk>/', UserAddressDetailView.as_view(), name='user-address-detail'),
 
     path("rest/auth/", include("dj_rest_auth.urls")),
     # re_path(r"^api/v1/auth/accounts/", include("allauth.urls")),
