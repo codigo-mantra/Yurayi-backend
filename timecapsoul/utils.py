@@ -78,30 +78,6 @@ from django.template.loader import render_to_string
 from django.conf import settings
 
 
-# def send_html_email(subject, to_email, template_name, context=None):
-#     """
-#     Send an HTML email using a template and context.
-
-#     :param subject: Subject of the email
-#     :param to_email: Recipient's email address (string or list)
-#     :param template_name: Path to HTML template (e.g. 'emails/welcome_email.html')
-#     :param context: Context dictionary for the template
-#     :param from_email: Sender's email address (defaults to settings.DEFAULT_FROM_EMAIL)
-#     """
-    
-#     from_email = settings.DEFAULT_FROM_EMAIL
-#     if isinstance(to_email, str):
-#         to_email = [to_email]
-#     if context is None:
-#         context = {}
-
-#     html_content = render_to_string(template_name, context)
-
-#     email = EmailMultiAlternatives(subject, "", from_email, to_email)
-#     email.attach_alternative(html_content, "text/html")
-#     email.send()
-
-
 def send_html_email(subject, to_email, template_name, context=None, inline_images=None):
     """
     Send an HTML email using a template and context.
@@ -119,6 +95,18 @@ def send_html_email(subject, to_email, template_name, context=None, inline_image
     if context is None:
         context = {}
 
+    inline_images={
+        'logo': os.path.join(settings.BASE_DIR, 'static/images/logo.png'),
+        'email_temp': os.path.join(settings.BASE_DIR, 'static/images/email-temp.png'),
+        'temp_bg': os.path.join(settings.BASE_DIR, 'static/images/temp-bg.png'),
+        'rectangle': os.path.join(settings.BASE_DIR, 'static/images/Rectangle_221.png'),
+        # social icons images
+        'youtube': os.path.join(settings.BASE_DIR, 'static/images/youtube_social_image.png'),
+        'insta': os.path.join(settings.BASE_DIR, 'static/images/insta_social_image.png'),
+        'linkedin': os.path.join(settings.BASE_DIR, 'static/images/linkedin_social_image.png'),
+        'facebook': os.path.join(settings.BASE_DIR, 'static/images/facebook_social_image.png'),
+        }
+
     html_content = render_to_string(template_name, context)
 
     email = EmailMultiAlternatives(subject, "", from_email, to_email)
@@ -129,12 +117,16 @@ def send_html_email(subject, to_email, template_name, context=None, inline_image
         for cid, image_path in inline_images.items():
             if os.path.exists(image_path):
                 with open(image_path, 'rb') as img:
-                    mime_image = MIMEImage(img.read())
+                    img_data = img.read()
+                    content_type, encoding = mimetypes.guess_type(image_path)
+                    maintype, subtype = content_type.split('/') if content_type else ('image', 'png')
+                    mime_image = MIMEImage(img_data, _subtype=subtype)
                     mime_image.add_header('Content-ID', f'<{cid}>')
                     mime_image.add_header('Content-Disposition', 'inline', filename=os.path.basename(image_path))
                     email.attach(mime_image)
 
     email.send()
+    print(f'\n yes email sent')
 
 
 # class MediaThumbnailExtractor:

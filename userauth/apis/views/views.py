@@ -5,6 +5,7 @@ from rest_framework import status
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
+from allauth.socialaccount.models import SocialAccount
 
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny,IsAuthenticated
@@ -56,24 +57,79 @@ class ContactUsAPIView(APIView):
                 to_email=email,
                 template_name='userauth/contact_us.html',
                 context={'first_name': serializer._validated_data.get('first_name')},
-                inline_images={
-                    'logo_cid': os.path.join(settings.BASE_DIR, 'static/images/logo.png')
-                }
+                
             )
             return Response({"message": "Contact request submitted successfully."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# class GoogleAuthView(SocialLoginView):
+#     adapter_class = GoogleOAuth2Adapter
+#     # callback_url = settings.GOOGLE_OAUTH_CALLBACK_URL
+#     client_class = OAuth2Client
+#     permission_classes = [AllowAny]
+#     serializer_class = GoogleIDTokenSerializer  
+
+
+#     def get_response(self):
+#         # Generate JWT tokens manually
+#         user = self.user
+#         refresh = RefreshToken.for_user(user)
+#         data = {
+#             'access': str(refresh.access_token),
+#             'refresh': str(refresh),
+#             'user': {
+#                 'id': user.id,
+#                 'email': user.email,
+#                 'username': user.username,
+#                 'first_name': user.first_name,
+#                 'last_name': user.last_name,
+#             }
+#         }
+#         return Response(data=data, status=status.HTTP_200_OK)
+       
+    
+#     def post(self, request, *args, **kwargs):
+#         try:
+#             return super().post(request, *args, **kwargs)
+#         except OAuth2Error as e:
+#             raise ValidationError({"detail": str(e)})
+
+
 class GoogleAuthView(SocialLoginView):
     adapter_class = GoogleOAuth2Adapter
-    # callback_url = settings.GOOGLE_OAUTH_CALLBACK_URL
     client_class = OAuth2Client
     permission_classes = [AllowAny]
-    serializer_class = GoogleIDTokenSerializer  
+    serializer_class = GoogleIDTokenSerializer
 
+    def post(self, request, *args, **kwargs):
+        self.is_new_user = False  # default
+
+        try:
+            response = super().post(request, *args, **kwargs)
+
+            if self.is_new_user:
+                user = self.user
+                # Send registration email
+                send_html_email(
+                    subject='Thank you for registering on Yurayi',
+                    to_email=user.email,
+                    template_name='userauth/registeration_confirmation.html',
+                    context={'email': user.email},
+                )
+
+            return response
+
+        except OAuth2Error as e:
+            raise ValidationError({"detail": str(e)})
+
+    def login(self):
+        # Called during login process by dj-rest-auth
+        ret = super().login()
+        self.is_new_user = not SocialAccount.objects.filter(user=self.user).exists()
+        return ret
 
     def get_response(self):
-        # Generate JWT tokens manually
         user = self.user
         refresh = RefreshToken.for_user(user)
         data = {
@@ -85,17 +141,11 @@ class GoogleAuthView(SocialLoginView):
                 'username': user.username,
                 'first_name': user.first_name,
                 'last_name': user.last_name,
-            }
+            },
+            'is_new_user': self.is_new_user
         }
-        return Response(data=data, status=status.HTTP_200_OK)
-       
-    
-    def post(self, request, *args, **kwargs):
-        try:
-            return super().post(request, *args, **kwargs)
-        except OAuth2Error as e:
-            raise ValidationError({"detail": str(e)})
 
+        return Response(data=data, status=status.HTTP_200_OK)
 
 
 
@@ -114,8 +164,16 @@ class RegistrationView(APIView):
         
         if serializer.is_valid():
             user = serializer.save()
+            send_html_email(
+                subject='Thank you for registration on Yurayi',
+                to_email=user.email,
+                template_name='userauth/registeration_confirmation.html',
+                context={'email': user.email},
+            )
 
             refresh = RefreshToken.for_user(user)
+            profile = UserProfile.objects.get(user = user)
+
             return Response({
                 "message": "Registration successful.",
                 "refresh": str(refresh),
@@ -123,7 +181,8 @@ class RegistrationView(APIView):
                 "user": {
                     "email": user.email,
                     'username': user.username,
-                    # 'profile_image': profile.profile_image.s3_url if profile.profile_image else None
+                    'profile_image': profile.profile_image.s3_url if profile.profile_image else None,
+                    'created_at': user.created_at,
                 }
             }, status=status.HTTP_201_CREATED)
         
@@ -262,23 +321,34 @@ class ForgotPasswordView(APIView):
                 "user": user,
                 "reset_url": reset_url,
             },
-            inline_images={
-                "logo_cid": os.path.join(settings.BASE_DIR, "static/images/logo.png")
-            }
+            
         )
 
         return Response({"detail": "Password reset email sent."}, status=status.HTTP_200_OK)
-
 
 class PasswordResetConfirmView(APIView):
     """
     Confirm password reset with uidb64 and token.
     """
+
     def post(self, request):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        serializer.save()
-        return Response({"detail": "Password has been reset successfully."}, status=status.HTTP_200_OK)
+        user = serializer.save()  
+
+        # Issue JWT tokens after password reset
+        refresh = RefreshToken.for_user(user)
+        return Response({
+            "detail": "Password has been reset successfully.",
+            "refresh": str(refresh),
+            "access": str(refresh.access_token),
+            "user": {
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            }
+        }, status=status.HTTP_200_OK)
 
 
 class NewsletterSubscribeAPIView(APIView):
@@ -292,16 +362,13 @@ class NewsletterSubscribeAPIView(APIView):
             defaults={"is_active": True}
         )
         message = "Successfully subscribed."
-        context = {'user_email':email,  }
         
         send_html_email(
             subject='Thank you for email subscription',
             to_email=email,
             template_name='userauth/new_letter_subscription.html',
-            context={'user_email': email},
-            inline_images={
-                'logo_cid': os.path.join(settings.BASE_DIR, 'static/images/logo.png')
-            }
+            context={'email': str(email)},
+           
         )
 
 

@@ -1,126 +1,68 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Welcome to Yurayi</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-</head>
-<body style="margin:0; padding:0; background-color:#f8f9fa; font-family:'Inter', -apple-system, BlinkMacSystemFont, sans-serif; color:#2d3748;">
+{% extends './base_email.html' %} 
+{% load static %}
 
-  <table width="100%" bgcolor="#f8f9fa" cellpadding="0" cellspacing="0" style="font-family:'Inter', sans-serif;">
+{% block main_content %}
+ <!-- Main Content -->
+  <style>
+    .a6S{
+      display: none !important;
+    }
+    .ii a[href] {
+      color: #15c;
+      text-decoration: none;
+      cursor: no-drop;
+  }
+</style>
     <tr>
-      <td align="center" style="padding:20px 0;">
-
-        <!-- Main Container -->
-        <table width="600" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="border-radius:12px; overflow:hidden; box-shadow:0 4px 20px rgba(0,0,0,0.08); max-width:600px;">
-
-          <!-- Top SVG Banner -->
+      <td style="padding:70px 30px; background: url('cid:temp_bg') no-repeat; min-height: 559px;margin: 60px 0px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
           <tr>
             <td>
-              <img src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/temp-bg.png" width="600" height="29" style="display:block;" alt="Top Banner">
-            </td>
-          </tr>
-
-          <!-- Header with Logo -->
-          <tr>
-            <td align="center" style="padding:20px;">
-              <!-- Try SVG first, fallback to text -->
-              <img src="cid:logo_cid" alt="Yurayi Logo" style="max-width:200px; height:auto;">
-              <h1 style="font-family:'Inter', sans-serif; font-size:28px; font-weight:600; margin:0; color:#EB629B; letter-spacing:-0.5px; display:none;">yurayi</h1>
-            </td>
-          </tr>
-
-          <!-- Hero Image Section -->
-          <tr>
-            <td align="center">
-              <img src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/email-temp.png" alt="Hero Image" width="100%" style="display:block; max-width:600px;">
-            </td>
-          </tr>
-
-          <!-- Welcome Message -->
-          <tr>
-            <td align="center" style="padding:0 40px 10px;">
-              <h2 style="font-family:'Inter', sans-serif; font-size:24px; font-weight:600; margin:0; color:#2d3748; line-height:1.3;">Your own memory space is ready</h2>
-            </td>
-          </tr>
-
-          <!-- Subtitle -->
-          <tr>
-            <td align="center" style="padding:0 40px 30px;">
-              <p style="font-size:16px; font-weight:400; line-height:1.5; margin:0; color:#718096;">
+              <h2 style="font-family:'Mauline',serif;font-size:30px;font-weight:400;color:#000;margin:0 0 15px;line-height:1.2;">
+                Your own memory space is ready
+              </h2>
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 30px;">
                 Your Yurayi account is all set. Time to save your first memory.
               </p>
-            </td>
-          </tr>
-
-          <!-- CTA Button -->
-          <tr>
-            <td align="center" style="padding:0 40px 40px;">
-              <a href="https://yurayi.com/login" style="background:#EB629B; color:#FFF; text-decoration:none; border-radius:30px; padding:14px 40px; display:inline-block; font-size:14px; font-weight:600; font-family:'Inter', sans-serif;">
+              <a href="https://yurayi.com/login" style="display:inline-block;background:#EB629B;color:#FFF;text-decoration:none;border-radius:100px;padding:14px 40px;font-size:14px;font-weight:600;transition:background-color .3s;">
                 ❤️ Create Your First Memory Room →
               </a>
             </td>
           </tr>
 
-          <!-- Main Content -->
           <tr>
-            <td style="padding:20px 40px 40px;">
-              <div style="background-color:#f8f9fa; border-radius:12px; padding:30px; margin-bottom:20px;">
-                <h3 style="font-family:'Inter', sans-serif; font-size:18px; font-weight:600; margin:0 0 15px; color:#2d3748;">Dear {{first_name}} </h3>
-                
-                <p style="font-size:15px; line-height:1.6; margin:0 0 15px; color:#4a5568;">Thanks for signing up. You are now a part of Yurayi Family, a space to store and share the memories with your loved ones-there- photos, voice notes, letters, and more.</p>
-                
-                <p style="font-size:15px; line-height:1.6; margin:0 0 15px; color:#4a5568;">Start with one Memory. One photo. One voice note. Every memory adds up to something beautiful.</p>
-                
-                
-                <p style="font-size:15px; line-height:1.6; margin:0 0 5px; color:#4a5568;">This is your forever space.</p>
-                <p style="font-size:15px; line-height:1.6; margin:0 0 25px; color:#4a5568;">Let's begin.</p>
-                
-                <p style="font-size:15px; line-height:1.6; margin:0 0 5px; color:#4a5568; font-weight:500;">Warmly,</p>
-                <p style="font-size:15px; line-height:1.6; margin:0; color:#4a5568; font-weight:500;">The Yurayi Team</p>
-              </div>
-            </td>
-          </tr>
-
-          <!-- Footer -->
-          <tr>
-            <td bgcolor="#f8f9fa" style="padding:30px 40px; text-align:center;">
+            <td style="padding-top:30px; text-decoration: none;">
+              <p style="font-size:14px;font-weight:600;color:#17252E;margin:0 0 15px; text-decoration: none;" >
+                Dear {{email}},
+              </p>
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 15px;">
+                Thanks for signing up. You are now a part of Yurayi Family, a space to store and share the memories with your loved ones-there- photos, voice notes, letters, and more.
+              </p>
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 15px;">
+                Start with one Memory. One photo. One voice note. Every memory adds up to something beautiful.
+              </p>
               
-              <!-- Social Icons -->
-              <div style="margin-bottom:20px;">
-                <a href="#" style="display:inline-block; background:#1877f2; color:#fff; width:40px; height:40px; line-height:40px; border-radius:50%; text-align:center; text-decoration:none; font-weight:600; margin:0 8px; font-size:16px;">f</a>
-                <a href="#" style="display:inline-block; background:#1da1f2; color:#fff; width:40px; height:40px; line-height:40px; border-radius:50%; text-align:center; text-decoration:none; font-weight:600; margin:0 8px; font-size:16px;">𝕏</a>
-                <a href="#" style="display:inline-block; background:#e4405f; color:#fff; width:40px; height:40px; line-height:40px; border-radius:50%; text-align:center; text-decoration:none; font-weight:600; margin:0 8px; font-size:16px;">📷</a>
-                <a href="#" style="display:inline-block; background:#0a66c2; color:#fff; width:40px; height:40px; line-height:40px; border-radius:50%; text-align:center; text-decoration:none; font-weight:600; margin:0 8px; font-size:16px;">in</a>
-              </div>
-
-              <!-- Footer Links -->
-              <div style="margin-bottom:15px;">
-                <a href="#" style="color:#718096; text-decoration:none; font-size:14px; margin:0 15px;">Manage Your Account</a>
-                <a href="#" style="color:#718096; text-decoration:none; font-size:14px; margin:0 15px;">Contact Support</a>
-                <a href="#" style="color:#718096; text-decoration:none; font-size:14px; margin:0 15px;">Privacy Policy</a>
-                <a href="https://yurayi.com/unsubscribe" style="color:#718096; text-decoration:none; font-size:14px; margin:0 15px;">Unsubscribe</a>
-              </div>
-
-              <p style="font-size:12px; color:#a0aec0; margin:0; line-height:1.5;">
-                Create, save, and share time capsules filled with photos, voice notes, letters, and love.Because some moments deserve to live forever.
-               
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 15px;">
+                This is your forever space.
               </p>
-
-              <p style="font-size:12px; color:#a0aec0; margin:0; line-height:1.5; margin-top: 13px;">
-                © 2025 Yurayi. All rights reserved. | Your house of memories
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 15px;">
+                Let’s begin.
               </p>
-
             </td>
           </tr>
 
+          <tr>
+            <td style="padding-top:20px;">
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 5px;">
+                With care,
+              </p>
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0;">
+                The Yurijo Team
+              </p>
+            </td>
+          </tr>
         </table>
-        <!-- End Main Container -->
-
       </td>
     </tr>
-  </table>
 
-</body>
-</html>
+{% endblock main_content %}
