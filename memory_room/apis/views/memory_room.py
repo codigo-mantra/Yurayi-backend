@@ -293,7 +293,6 @@ class MediaFileDownloadView(NewSecuredView):
         except ClientError as e:
             raise Http404(f"Could not retrieve file: {e}")
 
-
 class MemoryRoomMediaFileFilterView(SecuredView):
 
     def get(self, request):
@@ -304,14 +303,13 @@ class MemoryRoomMediaFileFilterView(SecuredView):
         if not memory_room_id:
             raise ValidationError({'memory_room_id': 'Memory room id is required.'})
 
-        # Validate file_type if given
         file_type = query_params.get('file_type')
         if file_type and file_type not in dict(FILE_TYPES).keys():
             raise ValidationError({
                 'file_type': f"'{file_type}' is not a valid file type. Allowed: {', '.join(dict(FILE_TYPES).keys())}"
             })
 
-        # media filters
+        # filter conditions
         media_filters = {
             key: value for key, value in {
                 'memory_room__id': memory_room_id,
@@ -319,11 +317,28 @@ class MemoryRoomMediaFileFilterView(SecuredView):
                 'description__icontains': query_params.get('description'),
                 'title__icontains': query_params.get('description'),
                 'user': user,
+                'created_at__date': query_params.get('date'),
             }.items() if value is not None
         }
 
         queryset = MemoryRoomMediaFile.objects.filter(**media_filters)
-        # pagination
+
+        # Sorting logic 
+        sort_by = query_params.get('sort_by')       # "alphabetical" or "upload_date"
+        sort_order = query_params.get('sort_order') # "asc" or "desc"
+
+        if sort_by == 'alphabetical':
+            if sort_order == 'asc':
+                queryset = queryset.order_by('title')
+            elif sort_order == 'desc':
+                queryset = queryset.order_by('-title')
+        else:  # Default to sorting by upload_date
+            if sort_order == 'asc':
+                queryset = queryset.order_by('created_at')
+            else:
+                queryset = queryset.order_by('-created_at')
+
+        # Pagination
         paginator = PageNumberPagination()
         paginator.page_size = 8
         paginated_queryset = paginator.paginate_queryset(queryset, request)
