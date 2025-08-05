@@ -207,14 +207,15 @@ class LoginView(APIView):
 
         if not user:
             # return Response({'error': 'Login credentials are invalid. Please use valid credentials to login in dashboard'}, status=404)
-            return Response( {"error": "Invalid login credentials. Please check your credentials and try again."},status=404)
+            return Response( {"error": "Invalid login credentials. Please check your credentials and try again."},status=400)
 
 
         if not user.check_password(password):
-            return Response({'error': 'Incorrect password.'}, status=401)
+            return Response( {"error": "Invalid login credentials. Please check your credentials and try again."},status=400)
+
 
         if not user.is_active:
-            return Response({'error': 'This account is inactive.'}, status=403)
+            return Response({'error': 'Account inactive. Contact support to reactivate.'}, status=403)
 
         return self._issue_tokens(user)
 
