@@ -414,7 +414,7 @@ class UserAddressListCreateView(SecuredView):
 
     def post(self, request):
         user = self.get_current_user(request)
-        serializer = UserAddressSerializer(data=request.data, context={'request': request})
+        serializer = UserAddressSerializer(data=request.data, context={'user': user})
         if serializer.is_valid():
             serializer.save(user=user)
             return Response(serializer.data, status=status.HTTP_201_CREATED)
