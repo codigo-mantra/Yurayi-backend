@@ -389,7 +389,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         model = User
         fields = [
             "id", "username", "first_name", "last_name", "email", "phone_number",
-            "gender", "profile",'profile_image','address', 
+            "gender", "profile",'profile_image','address', 'created_at'
         ]
         read_only_fields = ["email",]
     
@@ -399,6 +399,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         if value and value.lower() not in allowed_values:
             raise serializers.ValidationError("Gender must be either 'male', 'female', or 'other'.")
         return value
+    
     
     def get_address(self, obj):
         address_instance = obj.address.first() 
@@ -436,11 +437,7 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         instance.last_name = validated_data.get('last_name', instance.last_name)
         instance.username = validated_data.get('username', instance.username)
 
-
-
-
         # Update User fields
-        
         profile, _ = UserProfile.objects.get_or_create(user=instance)
 
         profile_image_file = validated_data.get('profile_image')
