@@ -443,7 +443,7 @@ class UserAddressDetailView(SecuredView):
         if not address:
             return Response({"detail": "Address not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = UserAddressSerializer(address, data=request.data, context={'request': request})
+        serializer = UserAddressSerializer(address, data=request.data, context={'request': request}, partial = True)
         if serializer.is_valid():
             serializer.save()
             return Response(serializer.data)
