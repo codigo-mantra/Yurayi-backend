@@ -17,9 +17,13 @@ class AssetSerializer(serializers.ModelSerializer):
         
 class CustomMemoryRoomTemplateSerializer(serializers.ModelSerializer):
     cover_image = AssetSerializer()
+    is_editable = serializers.SerializerMethodField()
     class Meta:
         model = CustomMemoryRoomTemplate
-        fields = ['id', 'name', 'slug', 'summary', 'cover_image']
+        fields = ['id', 'is_editable', 'name', 'slug', 'summary', 'cover_image']
+    
+    def get_is_editable(self, obj):
+        return False if obj.default_template else True
 
 class MemoryRoomSerializer(serializers.ModelSerializer):
     room_template = CustomMemoryRoomTemplateSerializer()
