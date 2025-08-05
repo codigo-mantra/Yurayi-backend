@@ -432,6 +432,11 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         address_data = validated_data.pop("address", {})
         instance.gender = validated_data.get('gender', instance.gender)
         instance.phone_number = validated_data.get('phone_number', instance.phone_number)
+        instance.first_name = validated_data.get('first_name', instance.first_name)
+        instance.last_name = validated_data.get('last_name', instance.last_name)
+        instance.username = validated_data.get('username', instance.username)
+
+
 
 
         # Update User fields
