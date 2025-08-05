@@ -430,6 +430,9 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         profile_data = validated_data.pop("profile", {})
         address_data = validated_data.pop("address", {})
+        instance.gender = validated_data.get('gender', instance.gender)
+        instance.phone_number = validated_data.get('phone_number', instance.phone_number)
+
 
         # Update User fields
         
@@ -461,5 +464,6 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
                 address_instance.save()
             else:
                 UserAddress.objects.create(user=instance, **address_data)
+        instance.save()
 
         return instance

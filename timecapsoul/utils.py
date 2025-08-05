@@ -95,17 +95,17 @@ def send_html_email(subject, to_email, template_name, context=None, inline_image
     if context is None:
         context = {}
 
-    inline_images={
-        'logo': os.path.join(settings.BASE_DIR, 'static/images/logo.png'),
-        'email_temp': os.path.join(settings.BASE_DIR, 'static/images/email-temp.png'),
-        'temp_bg': os.path.join(settings.BASE_DIR, 'static/images/temp-bg.png'),
-        'rectangle': os.path.join(settings.BASE_DIR, 'static/images/Rectangle_221.png'),
+    # inline_images={
+        # 'logo': os.path.join(settings.BASE_DIR, 'static/images/logo.png'),
+        # 'email_temp': os.path.join(settings.BASE_DIR, 'static/images/email-temp.png'),
+        # 'temp_bg': os.path.join(settings.BASE_DIR, 'static/images/temp-bg.png'),
+        # 'rectangle': os.path.join(settings.BASE_DIR, 'static/images/Rectangle_221.png'),
         # social icons images
-        'youtube': os.path.join(settings.BASE_DIR, 'static/images/youtube_social_image.png'),
-        'insta': os.path.join(settings.BASE_DIR, 'static/images/insta_social_image.png'),
-        'linkedin': os.path.join(settings.BASE_DIR, 'static/images/linkedin_social_image.png'),
-        'facebook': os.path.join(settings.BASE_DIR, 'static/images/facebook_social_image.png'),
-        }
+        # 'youtube': os.path.join(settings.BASE_DIR, 'static/images/svgs_images/Frame 77.png'),
+        # 'insta': os.path.join(settings.BASE_DIR, 'static/images/svgs_images/Frame 78.png'),
+        # 'linkedin': os.path.join(settings.BASE_DIR, 'static/images/svgs_images/Frame 79.png'),
+        # 'facebook': os.path.join(settings.BASE_DIR, 'static/images/svgs_images/Frame 80.png'),
+        # }
 
     html_content = render_to_string(template_name, context)
 
@@ -126,7 +126,6 @@ def send_html_email(subject, to_email, template_name, context=None, inline_image
                     email.attach(mime_image)
 
     email.send()
-    print(f'\n yes email sent')
 
 
 # class MediaThumbnailExtractor:
