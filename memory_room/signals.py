@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import User, UserMapper
-from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica,TimeCapSoulReplica, RecipientsDetail
+from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica,TimeCapSoulReplica, RecipientsDetail, MemoryRoomMediaFile
 
 @receiver(post_save, sender=User)
 def create_user_mapper(sender, instance, created, **kwargs):
@@ -45,6 +45,20 @@ def attach_media_to_timecapsoul_detail(sender, instance, created, **kwargs):
             detail = TimeCapSoulDetail.objects.create(time_capsoul=instance.time_capsoul, )
             detail.media_files.add(instance)
 
+
+@receiver(post_save, sender=MemoryRoomMediaFile)
+def attach_memory_room_media__files_detail(sender, instance, created, **kwargs):
+    if created and instance.memory_room:
+        try:
+            detail = MemoryRoomDetail.objects.get(memory_room=instance.memory_room)
+            detail.media_files.add(instance)
+        except MemoryRoomDetail.DoesNotExist:
+            # Optionally create the detail if it doesn't exist
+            detail = MemoryRoomDetail.objects.create(memory_room=instance.memory_room, )
+            detail.media_files.add(instance)
+        else:
+            print('media file added')
+            pass
 
 
 @receiver(post_delete, sender=TimeCapSoul)

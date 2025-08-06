@@ -110,7 +110,6 @@ FILE_TYPES = (
     ('image', 'Image'),
     ('video', 'Video'),
     ('audio', 'Audio'),
-    ('document', 'Document'),
     ('other', 'Other'),
 )
 
@@ -137,6 +136,7 @@ class MemoryRoomMediaFile(BaseModel):
         related_name="memory_room_media_cover",
         verbose_name="Cover Image"
     )
+    title = models.CharField(max_length=255, blank=True, null=True)
     description = models.TextField(
         blank=True,
         null=True,

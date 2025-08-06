@@ -6,6 +6,8 @@ import string, random
 from django.conf import settings
 from django.utils.text import slugify
 
+from rest_framework import serializers
+
 def generate_unique_slug(instance, queryset=None):
     """
     Generate a unique slug for a model instance.
@@ -24,22 +26,65 @@ def generate_unique_slug(instance, queryset=None):
     
     return slug
 
-def get_file_category(file_name):
-    import mimetypes
+# def get_file_category(file_name):
+#     import mimetypes
 
-    content_type = mimetypes.guess_type(file_name)[0] or ''
-    if content_type.startswith('image/'):
+#     content_type = mimetypes.guess_type(file_name)[0] or ''
+#     if content_type.startswith('image/'):
+#         return 'image'
+#     elif content_type.startswith('video/'):
+#         return 'video'
+#     elif content_type.startswith('audio/'):
+#         return 'audio'
+#     elif content_type in ['application/pdf', 'application/msword',
+#                           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+#                           'application/vnd.ms-excel']:
+#         return 'document'
+#     else:
+#         return 'other'
+
+def get_readable_file_size_from_kb(size_in_bytes):
+    kb = size_in_bytes / 1024
+    if kb < 1024:
+        return f"{kb:.2f} KB"
+    
+    mb = kb / 1024
+    if mb < 1024:
+        return f"{mb:.2f} MB"
+    
+    gb = mb / 1024
+    return f"{gb:.2f} GB"
+
+
+
+def get_file_category(file_name):
+    import os
+
+    extension = os.path.splitext(file_name)[1].lower()
+
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic', '.svg', '.ico', '.raw', '.psd'}
+    video_extensions = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp', '.mpeg', '.mpg', '.ts', '.m4v'}
+    audio_extensions = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', '.aiff', '.m4a', '.opus', '.amr'}
+    
+    # Grouped as "other" valid type
+    other_extensions = {'.txt', '.doc', '.docx', '.pdf', '.rtf', '.odt', '.md', '.tex',
+                        '.csv', '.xls', '.xlsx', '.ods', '.tsv', '.json', '.xml', '.yaml', '.yml',
+                        '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.iso',
+                        '.exe', '.msi', '.apk', '.bat', '.sh', '.app',
+                        '.html', '.htm', '.css', '.js', '.ts', '.py', '.java', '.c', '.cpp', '.cs',
+                        '.php', '.rb', '.go', '.swift', '.rs', '.kt', '.sql', '.ini', '.env', '.toml'}
+
+    if extension in image_extensions:
         return 'image'
-    elif content_type.startswith('video/'):
+    elif extension in video_extensions:
         return 'video'
-    elif content_type.startswith('audio/'):
+    elif extension in audio_extensions:
         return 'audio'
-    elif content_type in ['application/pdf', 'application/msword',
-                          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                          'application/vnd.ms-excel']:
-        return 'document'
-    else:
+    elif extension in other_extensions:
         return 'other'
+    else:
+        return 'invalid'
+
     
 def upload_file_to_s3_bucket(file, folder=None):
     import io
@@ -144,18 +189,27 @@ class S3FileHandler:
             raise Exception(f"Virus detected in file: {result}")
         file_buffer.seek(0)
 
-    def upload_file_to_s3_bucket(self, file, folder=None):
+    def upload_file_to_s3_bucket(self, file, folder=None, file_category=None):
         original_file_name = file.name
-        file_category = get_file_category(original_file_name)
+        # file_category = get_file_category(original_file_name)
+        # if file_category == 'invalid':
+        #     raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+
         file_name = f"{folder}/{original_file_name}" if folder else original_file_name
-        s3_key = f"{file_category}/{file_name}"
+        if file_category: 
+            s3_key = f"{file_category}/{file_name}"
+        else:
+            s3_key = f"{file_name}"
+
+
+
         content_type = mimetypes.guess_type(original_file_name)[0] or 'application/octet-stream'
 
         file.seek(0)
         buffer = io.BytesIO(file.read())
 
         # Scan before upload
-        self.scan_file_for_viruses(buffer)
+        # self.scan_file_for_viruses(buffer)
 
         try:
             self.s3.upload_fileobj(

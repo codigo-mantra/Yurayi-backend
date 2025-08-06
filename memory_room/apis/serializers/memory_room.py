@@ -9,9 +9,11 @@ from memory_room.models import (
     MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_kb, S3FileHandler
 
 MODE = settings.MODE
+
+s3_bucket_handler = S3FileHandler()
 
 from timecapsoul.utils import MediaThumbnailExtractor
 
@@ -163,24 +165,25 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         validated_data['memory_room'] = memory_room
 
         if file:
+            file_category = get_file_category(file.name)
+            if file_category == 'invalid':
+                raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+
             validated_data['file_size'] = file.size
-            s3_url, file_type,s3_key = upload_file_to_s3_bucket(file, folder='memory_media_files')
-            validated_data['s3_url'] = s3_url
-            validated_data['file_type'] = file_type
-            validated_data['s3_key'] = s3_key
+            try:
+                s3_url, file_type,s3_key = s3_bucket_handler.upload_file_to_s3_bucket(file=file, file_category=file_category)
+            except Exception as e:
+                print(f'\nException while uploading images: {e}')
+            else:
+                validated_data['s3_url'] = s3_url
+                validated_data['file_type'] = file_type
+                validated_data['s3_key'] = s3_key
+                validated_data['title'] = file.name
+                
 
-            # Set the file field 
             validated_data['file'] = file
-            if file_type == 'image':
-                file.seek(0)  # Ensure pointer is at start
-                image_file = ImageFile(file)
-                from userauth.models import Assets  # adjust if Assets is elsewhere
-
-                asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
-                validated_data['cover_image'] = asset
-                validated_data['thumbnail_url'] = asset.s3_url
-                validated_data['thumbnail_key'] = asset.s3_key
-            elif file_type == 'audio':
+            file.seek(0)  # Ensure pointer is at start
+            if file_type == 'audio':
                 try:
 
                     # Extract thumbnail if applicable
@@ -201,8 +204,6 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                         validated_data['thumbnail_key'] = asset.s3_key
                 except Exception as e:
                     print(f'\n Exception while extracting thumbnail: \n{e}')
-            # else:
-            #     validated_data['thumbnail_url'] = 'https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/Frame.png'
         return super().create(validated_data)
 
 
@@ -217,11 +218,12 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
     memory_room = serializers.SerializerMethodField()
     file_title =  serializers.SerializerMethodField()
+    file_size =  serializers.SerializerMethodField()
 
     class Meta:
         model = MemoryRoomMediaFile
         fields = [
-            'id', 'file_title', 'file_type', 'memory_room', 'file_url', 'file_type',
+            'id', 'file_size', 'file_title', 'file_type', 'memory_room', 'file_url', 'file_type',
             'cover_image', 'description', 'is_cover_image','thumbnail_url','created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'user', 'file_size', 'file_url', 'cover_image', 'file_title']
@@ -229,12 +231,15 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
     def get_file_url(self, obj):
         return obj.s3_url
     
+    def get_file_size(self, obj):
+        return get_readable_file_size_from_kb(obj.file_size)
+    
     def get_file_name(self,path: str):
         return path.split("/")[-1]
 
     
     def get_file_title(self, obj):
-        return self.get_file_name(obj.s3_key) if obj.s3_key is not None else None
+        return obj.title
 
     def get_memory_room(self, obj):
         return MemoryRoomSerializer(obj.memory_room).data
@@ -314,16 +319,22 @@ class MemoryRoomMediaFileReadOnlySerializer(serializers.ModelSerializer):
     Read-only serializer for media files, used in simplified listing.
     """
     media_file_s3_url = serializers.SerializerMethodField()
+    file_size = serializers.SerializerMethodField()
+
     class Meta:
         model = MemoryRoomMediaFile
-        fields = ('id', 'description','file_type', 'cover_image', 'media_file_s3_url', 'created_at', 'updated_at')
+        fields = ('id', 'file_size', 'title', 'description','file_type', 'cover_image', 'media_file_s3_url', 'created_at', 'updated_at', )
     
     def get_media_file_s3_url(self, obj):
         return obj.s3_url
+    
+    def get_file_size(self, obj):
+        return get_readable_file_size_from_kb(obj.file_size)
+
     
 class MemoryRoomMediaFileDescriptionUpdateSerializer(serializers.ModelSerializer):
     description = serializers.CharField(allow_blank=True, required=True)
 
     class Meta:
         model = MemoryRoomMediaFile
-        fields = ['description']
+        fields = ['description', 'title']

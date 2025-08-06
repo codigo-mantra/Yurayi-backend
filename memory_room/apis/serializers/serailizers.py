@@ -1,7 +1,7 @@
 # serializers.py
 from rest_framework import serializers
 from userauth.models import Assets
-from memory_room.models import MemoryRoom, TimeCapSoul, CustomMemoryRoomTemplate, CustomTimeCapSoulTemplate
+from memory_room.models import MemoryRoom, TimeCapSoul, CustomMemoryRoomTemplate, CustomTimeCapSoulTemplate,MemoryRoomDetail
 from django.conf import settings
 MODE = settings.MODE
 
@@ -26,11 +26,22 @@ class CustomMemoryRoomTemplateSerializer(serializers.ModelSerializer):
         return False if obj.default_template else True
 
 class MemoryRoomSerializer(serializers.ModelSerializer):
+    total_files = serializers.SerializerMethodField()
     room_template = CustomMemoryRoomTemplateSerializer()
+
 
     class Meta:
         model = MemoryRoom
-        fields = ['id', 'room_template', 'created_at', 'updated_at']
+        fields = ['id', 'total_files', 'room_template', 'created_at', 'updated_at']
+    
+    def get_total_files(self, obj):
+        # Access related MemoryRoomDetail
+        try:
+            detail = obj.details  
+            return detail.media_files.count()
+        except MemoryRoomDetail.DoesNotExist:
+            return 0
+
 
 
 class CustomTimeCapSoulTemplateSerializer(serializers.ModelSerializer):
