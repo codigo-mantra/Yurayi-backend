@@ -7,6 +7,8 @@ from botocore.exceptions import ClientError
 from django.conf import settings
 from django.http import StreamingHttpResponse, Http404
 from memory_room.utils import determine_download_chunk_size
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.exceptions import ValidationError
 
 
 from userauth.models import Assets
@@ -19,7 +21,7 @@ from memory_room.apis.serializers.memory_room import (
 
 from memory_room.models import (
     TimeCapSoulTemplateDefault, TimeCapSoul, TimeCapSoulDetail, TimeCapSoulMediaFile,RecipientsDetail,
-    TimeCapSoulReplica, TimeCapSoulMediaFileReplica,TimeCapSoulRecipient,
+    TimeCapSoulReplica, TimeCapSoulMediaFileReplica,TimeCapSoulRecipient,FILE_TYPES
     )
 
 from memory_room.apis.serializers.time_capsoul import (
@@ -355,3 +357,56 @@ class RecipientsDetailCreateOrUpdateView(SecuredView):
             serializer.save()
             return Response(serializer.data, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class TimeCapsoulMediaFileFilterView(SecuredView):
+
+    def get(self, request):
+        user = self.get_current_user(request)
+        query_params = request.query_params
+
+        time_capsoul_id = query_params.get('time_capsoul_id')
+        if not time_capsoul_id:
+            raise ValidationError({'time_capsoul_id': 'TimeCapsoul ID is required.'})
+
+        file_type = query_params.get('file_type')
+        if file_type and file_type not in dict(FILE_TYPES).keys():
+            raise ValidationError({
+                'file_type': f"'{file_type}' is not valid. Allowed: {', '.join(dict(FILE_TYPES).keys())}"
+            })
+
+        # Filter conditions
+        media_filters = {
+            key: value for key, value in {
+                'time_capsoul__id': time_capsoul_id,
+                'file_type': file_type,
+                'description__icontains': query_params.get('description'),
+                'title__icontains': query_params.get('title'),
+                'user': user,
+                'created_at__date': query_params.get('date'),
+            }.items() if value is not None
+        }
+
+        queryset = TimeCapSoulMediaFileReplica.objects.filter(**media_filters)
+
+        # Sorting logic
+        sort_by = query_params.get('sort_by')        # alphabetical / upload_date
+        sort_order = query_params.get('sort_order')  # asc / desc
+
+        if sort_by == 'alphabetical':
+            sort_field = 'title'
+        else:
+            sort_field = 'created_at'
+
+        if sort_order == 'asc':
+            queryset = queryset.order_by(sort_field)
+        else:
+            queryset = queryset.order_by(f'-{sort_field}')
+
+        # Pagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 8
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+
+        serializer = TimeCapSoulMediaFileReadOnlySerializer(paginated_queryset, many=True)
+        return paginator.get_paginated_response({'media_files': serializer.data})
