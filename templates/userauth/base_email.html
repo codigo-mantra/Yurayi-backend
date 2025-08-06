@@ -12,69 +12,70 @@
   .a6S{
     display: none !important;
   }
+  /* This is a widely used fix for the Gmail download icon issue */
+  img + div {
+    display: none !important;
+  }
 </style>
 <body style="margin:0;padding:0;background-color:#f8f8f8;font-family:'Open Sans',sans-serif;color:#17252E;line-height:1.4;">
 
   <table class="email-container" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;background-color:#ffffff;box-shadow:0 0 20px rgba(0,0,0,0.1);border-collapse:collapse;">
     
-    <!-- Top Gradient Bar -->
     <tr>
       <td style="padding:0;">
-        <img src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/Rectangle_221.png" alt="Yurayi Start Image" style="pointer-events:none;user-select:none;-webkit-user-drag:none;">
+        <a href="#" style="cursor:default;pointer-events:none;">
+          <img src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/Rectangle_221.png" alt="Yurayi Start Image" style="height:auto;display:block;width:100%;pointer-events:none;user-select:none;-webkit-user-drag:none;">
+        </a>
       </td>
     </tr>
 
-    <!-- Header -->
-    <tr>
-      <td style="padding:20px;text-align:center;">
-        <h1 style="font-family:'Mauline',serif;font-size:30px;font-weight:400;color:#000;margin:0;">
-          <img src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/logo.png" alt="Yurayi Logo" style="max-width:200px;height:auto;pointer-events:none;user-select:none;-webkit-user-drag:none;">
-        </h1>
-      </td>
-    </tr>
+   <tr>
+  <td style="padding:20px;text-align:center;">
+ <div style="width: 100%;">
+   <a href="#" style="cursor:default;pointer-events:none; margin:auto;text-align: center; width: auto;">
+     <img 
+       src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/email_log.png"  
+       alt="Yurayi Logo"
+       width="150"
+       style="display:block;max-width:150px;width:150px;height:auto;margin:0 auto;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;"
+     >
+   </a>
+ </div>
+</td>
+</tr>
 
-    <!-- Hero Image -->
-    <tr>
-      <td style="padding:0 46px 18px;">
-        <img src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/email-temp.png" alt="Family illustration" width="100%" style="display:block;border:0;outline:none;text-decoration:none;pointer-events:none;user-select:none;-webkit-user-drag:none;">
-      </td>
-    </tr>
+<tr>
+  <td style="padding:0 46px 18px;">
+    <a href="#" style="cursor:default;pointer-events:none;">
+      <img 
+        src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/hero_image.png"  
+        alt="Hero Image"
+        width="100%"
+        style="display:block;height:auto;border:0;outline:none;text-decoration:none;pointer-events:none;user-select:none;-webkit-user-drag:none;-webkit-touch-callout:none;"
+      >
+    </a>
+  </td>
+</tr>
+
 
     {% block main_content %}
     {% endblock main_content %}
 
-    <!-- Social Icons -->
     <tr>
       <td style="padding:20px 0 10px; text-align: center;">
         <table role="presentation" cellpadding="0" cellspacing="0" style="margin: 0 auto;">
           <tr>
             <td style="padding:0 8px;">
-              <a href="https://www.instagram.com/yur_ayi/" style="display:inline-block;width:40px;height:40px;border-radius:50%;background:#21599B;text-align:center;line-height:40px;">
+              <a href="https://www.instagram.com/yur_ayi/" style="display:inline-block;width:40px;height:40px;border-radius:50%;text-align:center;line-height:40px;background:#21599B;">
                 <img src="https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/instaIcons.png" alt="Yurayi youtube" width="20" height="20" style="display:inline-block;vertical-align:middle;pointer-events:none;user-select:none;-webkit-user-drag:none;">
               </a>
             </td>
 
-            <!-- <td style="padding:0 8px;">
-              <a href="#" style="display:inline-block;width:40px;height:40px;border-radius:50%;background:#21599B;text-align:center;line-height:40px;">
-                <img src="" alt="Yurayi facebook" width="20" height="20" style="display:inline-block;vertical-align:middle;pointer-events:none;user-select:none;-webkit-user-drag:none;">
-              </a>
-            </td>
-            <td style="padding:0 8px;">
-              <a href="" style="display:inline-block;width:40px;height:40px;border-radius:50%;background:#21599B;text-align:center;line-height:40px;">
-                <img src="" alt="Yurayi insta" width="20" height="20" style="display:inline-block;vertical-align:middle;pointer-events:none;user-select:none;-webkit-user-drag:none;">
-              </a>
-            </td>
-            <td style="padding:0 8px;">
-              <a href="#" style="display:inline-block;width:40px;height:40px;border-radius:50%;background:#21599B;text-align:center;line-height:40px;">
-                <img src="" alt="Yurayi linkedin" width="20" height="20" style="display:inline-block;vertical-align:middle;pointer-events:none;user-select:none;-webkit-user-drag:none;">
-              </a>
-            </td> -->
-          </tr>
+            </tr>
         </table>
       </td>
     </tr>
 
-    <!-- Footer Links -->
     <tr>
       <td align="center" style="padding:0 30px 20px;">
         <table role="presentation" cellpadding="0" cellspacing="0" align="center">
@@ -99,7 +100,6 @@
       </td>
     </tr>
 
-    <!-- Footer Text -->
     <tr>
       <td style="background-color:#fff;padding:0 30px 30px;text-align:center;">
         <p style="font-size:10px;color:#17252E;line-height:140%;margin:0 0 5px;">

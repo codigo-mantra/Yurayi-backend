@@ -53,7 +53,7 @@ class ContactUsAPIView(APIView):
             email = serializer.validated_data.get('email')
             print(serializer._validated_data.get('first_name'))
             send_html_email(
-                subject='Thank for contacting us', 
+                subject='We’ve received your message',
                 to_email=email,
                 template_name='userauth/contact_us.html',
                 context={'first_name': serializer._validated_data.get('first_name')},
@@ -112,7 +112,7 @@ class GoogleAuthView(SocialLoginView):
                 user = self.user
                 # Send registration email
                 send_html_email(
-                    subject='Thank you for registering on Yurayi',
+                    subject='Welcome to Yurayi',
                     to_email=user.email,
                     template_name='userauth/registeration_confirmation.html',
                     context={'email': user.email},
@@ -165,7 +165,7 @@ class RegistrationView(APIView):
         if serializer.is_valid():
             user = serializer.save()
             send_html_email(
-                subject='Thank you for registration on Yurayi',
+                subject='Welcome to Yurayi',
                 to_email=user.email,
                 template_name='userauth/registeration_confirmation.html',
                 context={'email': user.email},
@@ -315,7 +315,7 @@ class ForgotPasswordView(APIView):
 
         # Use shared email sending function
         send_html_email(
-            subject="Reset Your Password",
+            subject="Reset Your Yurayi Password",
             to_email=user.email,
             template_name="userauth/reset_password_email.html",
             context={
