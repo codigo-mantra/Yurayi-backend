@@ -468,6 +468,39 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Gender must be either 'male', 'female', or 'other'.")
         return value
     
+    # def validate_profile_image(self, image):
+    #     from PIL import Image, UnidentifiedImageError
+
+    #     try:
+    #         img = Image.open(image)
+    #         img.verify()  # Validate the image without loading it fully
+    #     except UnidentifiedImageError:
+    #         raise serializers.ValidationError("Upload a valid image. Unsupported or corrupted file.")
+    #     return image
+
+    def validate_profile_image(self, image):
+        import pillow_heif
+        from PIL import Image, UnidentifiedImageError
+
+        # Register HEIF/HEIC support (once per process)
+        pillow_heif.register_heif_opener()
+
+        # Check if image object is valid
+        if not image or not hasattr(image, 'file') or not image.file:
+            raise serializers.ValidationError("No image file provided.")
+
+        # Try to open and verify the image
+        try:
+            img = Image.open(image)
+            img.verify()  # Checks for corruption
+        except UnidentifiedImageError:
+            raise serializers.ValidationError("Upload a valid image. Unsupported or corrupted file.")
+        except Exception as e:
+            raise serializers.ValidationError(f"Image validation failed: {str(e)}")
+
+        return image
+
+    
     
     def get_address(self, obj):
         address_instance = obj.address.first() 

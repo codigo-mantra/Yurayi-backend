@@ -7,3 +7,5 @@ class UserauthConfig(AppConfig):
 
     def ready(self):
         import userauth.signals
+        import pillow_heif
+        pillow_heif.register_heif_opener()

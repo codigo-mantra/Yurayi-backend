@@ -340,12 +340,15 @@ class NewsletterSubscribeAPIView(APIView):
             "message": message,
             "data": serializer.data
         }, status=status.HTTP_200_OK)
+from rest_framework.parsers import MultiPartParser, FormParser
 
 class UserProfileUpdateView(SecuredView):
     """
     Handles retrieving and updating the authenticated user's profile.
     Includes nested updates to UserProfile and UserAddress.
     """
+    parser_classes = [MultiPartParser, FormParser]
+
 
     def get(self, request):
         user = self.get_current_user(request)

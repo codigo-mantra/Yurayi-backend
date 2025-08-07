@@ -13,6 +13,11 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+
+# import pillow_heif
+# pillow_heif.register_heif_opener()
+
+
 from timecapsoul.utils import load_env, get_aws_secret
 import environ
 env = environ.Env()
