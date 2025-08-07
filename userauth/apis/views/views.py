@@ -6,10 +6,10 @@ from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.conf import settings
 from allauth.socialaccount.models import SocialAccount
-
+from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny,IsAuthenticated
-
+from allauth.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.providers.oauth2.client import OAuth2Error
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
@@ -19,7 +19,7 @@ from userauth.apis.helpers.jwt_tokens import JWTTokenHandler
 from django.core.mail import send_mail
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
-
+from allauth.socialaccount.helpers import complete_social_login
 from memory_room.models import UserMapper
 from dj_rest_auth.views import (
     PasswordResetView,
@@ -36,6 +36,8 @@ from userauth.apis.serializers.serializers import  (
     RegistrationSerializer, UserProfileUpdateSerializer, GoogleIDTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
     CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer,UserAddressSerializer
     )
+
+from allauth.account.utils import perform_login
 
 
 # jwt token handler
@@ -63,76 +65,40 @@ class ContactUsAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-# class GoogleAuthView(SocialLoginView):
-#     adapter_class = GoogleOAuth2Adapter
-#     # callback_url = settings.GOOGLE_OAUTH_CALLBACK_URL
-#     client_class = OAuth2Client
-#     permission_classes = [AllowAny]
-#     serializer_class = GoogleIDTokenSerializer  
-
-
-#     def get_response(self):
-#         # Generate JWT tokens manually
-#         user = self.user
-#         refresh = RefreshToken.for_user(user)
-#         data = {
-#             'access': str(refresh.access_token),
-#             'refresh': str(refresh),
-#             'user': {
-#                 'id': user.id,
-#                 'email': user.email,
-#                 'username': user.username,
-#                 'first_name': user.first_name,
-#                 'last_name': user.last_name,
-#             }
-#         }
-#         return Response(data=data, status=status.HTTP_200_OK)
-       
-    
-#     def post(self, request, *args, **kwargs):
-#         try:
-#             return super().post(request, *args, **kwargs)
-#         except OAuth2Error as e:
-#             raise ValidationError({"detail": str(e)})
-
-
-class GoogleAuthView(SocialLoginView):
-    adapter_class = GoogleOAuth2Adapter
-    client_class = OAuth2Client
+class GoogleAuthView(APIView):
     permission_classes = [AllowAny]
     serializer_class = GoogleIDTokenSerializer
 
     def post(self, request, *args, **kwargs):
-        self.is_new_user = False  # default
+        serializer = self.serializer_class(
+            data=request.data,
+            context={'request': request, 'view': self}
+        )
+        serializer.is_valid(raise_exception=True)
+
+        sociallogin = serializer.save()
+        user = sociallogin.user
+
+        if not user.is_active:
+            raise serializers.ValidationError("This account is inactive.")
 
         try:
-            response = super().post(request, *args, **kwargs)
+            perform_login(request, user, email_verification='optional')
+            is_new_user = getattr(serializer, 'is_new_user', False)
+        except ImmediateHttpResponse as e:
+            return e.response
 
-            if self.is_new_user:
-                user = self.user
-                # Send registration email
-                send_html_email(
-                    subject='Welcome to Yurayi',
-                    to_email=user.email,
-                    template_name='userauth/registeration_confirmation.html',
-                    context={'email': user.email},
-                )
+        if is_new_user:
+            send_html_email(
+                subject='Welcome to Yurayi',
+                to_email=user.email,
+                template_name='userauth/registeration_confirmation.html',
+                context={'email': user.email},
+            )
 
-            return response
-
-        except OAuth2Error as e:
-            raise ValidationError({"detail": str(e)})
-
-    def login(self):
-        # Called during login process by dj-rest-auth
-        ret = super().login()
-        self.is_new_user = not SocialAccount.objects.filter(user=self.user).exists()
-        return ret
-
-    def get_response(self):
-        user = self.user
         refresh = RefreshToken.for_user(user)
-        data = {
+
+        return Response({
             'access': str(refresh.access_token),
             'refresh': str(refresh),
             'user': {
@@ -142,12 +108,8 @@ class GoogleAuthView(SocialLoginView):
                 'first_name': user.first_name,
                 'last_name': user.last_name,
             },
-            'is_new_user': self.is_new_user
-        }
-
-        return Response(data=data, status=status.HTTP_200_OK)
-
-
+            'is_new_user': is_new_user
+        })
 
     
 class GenerateJWTTokenView(APIView):

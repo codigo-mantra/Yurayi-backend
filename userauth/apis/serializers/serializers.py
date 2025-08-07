@@ -1,4 +1,4 @@
-import re
+import re, requests
 from rest_framework import serializers
 from userauth.models import ContactUs, User, UserProfile, Assets,UserAddress
 
@@ -9,6 +9,9 @@ from django.conf import settings
 from django.contrib.auth.forms import PasswordResetForm
 from userauth.models import User, NewsletterSubscriber
 from django.core.exceptions import ValidationError
+from allauth.socialaccount.providers.google.provider import GoogleProvider
+from allauth.socialaccount.models import SocialApp, SocialAccount, SocialLogin
+
 
 from django.core.exceptions import ValidationError as DjangoValidationError
 
@@ -64,20 +67,84 @@ class ContactUsSerializer(serializers.ModelSerializer):
 
         return value
 
+from rest_framework import serializers
+from allauth.socialaccount.models import SocialAccount
+from allauth.socialaccount.providers.google.provider import GoogleProvider
+from allauth.socialaccount.models import SocialLogin
+from django.contrib.auth import get_user_model
+import requests
 
-class GoogleIDTokenSerializer(SocialLoginSerializer):
+User = get_user_model()
+
+class GoogleIDTokenSerializer(serializers.Serializer):
     id_token = serializers.CharField()
 
     def validate(self, attrs):
-        request = self.context.get("request")
         id_token = attrs.get("id_token")
-
         if not id_token:
-            raise serializers.ValidationError("Id-token is required")
+            raise serializers.ValidationError("id_token is required")
+        attrs["access_token"] = id_token  
+        return attrs
 
-        attrs["access_token"] = id_token  # 
-        return super().validate(attrs)
+    def generate_unique_username(self, first_name):
+        base_username = f"{first_name.lower()}" if first_name else "user"
+        username = base_username
+        counter = 1
+        while User.objects.filter(username=username).exists():
+            username = f"{base_username}{counter}"
+            counter += 1
+        return username
 
+    def create(self, validated_data):
+        request = self.context.get("request")
+        access_token = validated_data.get("access_token")
+
+        # Fetch user info from Google
+        user_info_response = requests.get(
+            "https://www.googleapis.com/oauth2/v3/tokeninfo",
+            params={"id_token": access_token}
+        )
+        if not user_info_response.ok:
+            raise serializers.ValidationError("Failed to fetch user info from Google")
+
+        user_info = user_info_response.json()
+        email = user_info['email'].lower().strip()
+        uid = user_info.get("sub")
+        first_name = user_info.get("given_name", email).replace(" ", "")
+        last_name = user_info.get("family_name", "").replace(" ", "")
+        username = self.generate_unique_username(first_name=first_name)
+
+        # Try to get or create the user
+        try:
+            user = User.objects.get(email=email)
+            is_new_user = False
+        except User.DoesNotExist:
+            user = User.objects.create(
+                email=email,
+                username=username,
+                first_name=first_name,
+                last_name=last_name
+            )
+            user.last_login = None
+            user.save()
+            is_new_user = True
+
+        # Create SocialAccount object (not saved to DB)
+        account = SocialAccount(
+            user=user,
+            uid=uid,
+            provider=GoogleProvider.id,
+            extra_data=user_info
+        )
+
+        # Create SocialLogin object
+        login = SocialLogin(user=user, account=account)
+        login.state = SocialLogin.state_from_request(request)
+
+        # Track user status internally (used in view)
+        self.is_new_user = is_new_user
+
+        return login
 
 
 class JWTTokenSerializer(serializers.Serializer):
