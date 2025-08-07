@@ -147,10 +147,10 @@ class MemoryRoomMediaFile(BaseModel):
         verbose_name="Use as Cover"
     )
     thumbnail_url = models.URLField(blank=True, null=True)
-    thumbnail_key = models.CharField(blank=True, null=True)
+    thumbnail_key = models.CharField(blank=True, null=True, max_length=255)
     file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
     s3_url = models.URLField(blank=True, null=True)
-    s3_key = models.CharField(blank=True, null=True)
+    s3_key = models.CharField(blank=True, null=True,max_length=255)
 
 
 
@@ -177,7 +177,7 @@ class MemoryRoomDetail(BaseModel):
         related_name="memory_room_details",
         verbose_name="Media Files"
     )
-    occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul")
+    occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul", max_length=255)
 
 
     class Meta:
@@ -190,7 +190,7 @@ class MemoryRoomDetail(BaseModel):
 
 class TimeCapSoulTemplateDefault(BaseModel):
     name = models.CharField(max_length=255, verbose_name="TimeCapSoul Name")
-    summary = models.TextField(blank=True, null=True, verbose_name="TimeCapSoul Summary")
+    summary = models.TextField(blank=True, null=True, verbose_name="TimeCapSoul Summary", max_length=255)
     cover_image = models.ForeignKey(
                 Assets,
         on_delete=models.CASCADE,
@@ -289,10 +289,11 @@ class AbstractMediaFile(BaseModel):
         verbose_name="S3 URL"
     )
     s3_key = models.CharField(
-        max_length=512,
+        max_length=255,
         blank=True,
         null=True,
-        verbose_name="S3 Key"
+        verbose_name="S3 Key",
+        
     )
     is_cover_image = models.BooleanField(
         default=False,
@@ -319,7 +320,7 @@ class TimeCapSoul(BaseModel):
         related_name="timecapsouls",
         verbose_name="CapSoul Template"
     )
-    status = models.CharField(choices=STATUS_CHOICES, default='created')
+    status = models.CharField(choices=STATUS_CHOICES, default='created', max_length=255)
 
 
     class Meta:
@@ -333,7 +334,7 @@ class TimeCapSoulReplica(BaseModel):
     name = models.CharField(max_length=255, verbose_name="TimeCapSoul Name",blank=True, null=True)
     slug = models.SlugField(verbose_name="Slug",blank=True, null=True)
     summary = models.TextField(blank=True, null=True, verbose_name="TimeCapSoul Summary")
-    status = models.CharField(choices=STATUS_CHOICES, blank=True, null=True)
+    status = models.CharField(choices=STATUS_CHOICES, blank=True, null=True,max_length=255)
     cover_image = models.ForeignKey(
         Assets,
         on_delete=models.CASCADE,
@@ -432,7 +433,7 @@ class TimeCapSoulDetail(BaseModel):
     )
     is_locked  = models.BooleanField(default=False)
     unlock_date = models.DateTimeField(verbose_name="Unlock Date", blank=True, null=True)
-    occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul")
+    occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul", max_length=255)
 
 
 

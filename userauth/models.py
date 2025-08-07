@@ -34,7 +34,7 @@ class Assets(BaseModel):
         verbose_name="Asset Type"
     )
     s3_url = models.URLField(blank=True, null=True)
-    s3_key = models.CharField(blank=True, null=True)
+    s3_key = models.CharField(blank=True, null=True,max_length=255)
 
 
     class Meta:
@@ -80,7 +80,7 @@ class ContactUs(BaseModel):
 class User(AbstractBaseUser, PermissionsMixin):
     username = models.CharField(max_length=150, unique=True, verbose_name="Username")
     email = models.EmailField(unique=True, verbose_name="Email")
-    first_name = models.CharField(max_length=150, blank=True, null=True, verbose_name="First Name")
+    first_name = models.CharField(max_length=160, blank=True, null=True, verbose_name="First Name")
     last_name = models.CharField(max_length=150, blank=True, null=True, verbose_name="Last Name")
     phone_number = models.CharField(max_length=13, blank=True, null=True, verbose_name="Phone Number")
     is_active = models.BooleanField(default=True, verbose_name="Is Active")
@@ -93,7 +93,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         unique=True,
         verbose_name="Google ID"
     )
-    gender = models.CharField(blank=True, null=True)
+    gender = models.CharField(blank=True, null=True,max_length=255)
 
 
     objects = UserManager()
