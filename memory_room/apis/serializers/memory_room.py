@@ -183,6 +183,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
             validated_data['file'] = file
             file.seek(0)  # Ensure pointer is at start
+
             if file_type == 'audio':
                 try:
 
@@ -204,6 +205,15 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                         validated_data['thumbnail_key'] = asset.s3_key
                 except Exception as e:
                     print(f'\n Exception while extracting thumbnail: \n{e}')
+            elif file_type == 'image':
+                file.seek(0)  # Ensure pointer is at start
+                image_file = ImageFile(file)
+                from userauth.models import Assets  # adjust if Assets is elsewhere
+                asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
+                validated_data['cover_image'] = asset
+                validated_data['thumbnail_url'] = asset.s3_url
+                validated_data['thumbnail_key'] = asset.s3_key
+                
         return super().create(validated_data)
 
 
