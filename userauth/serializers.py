@@ -31,19 +31,6 @@ class ContactUsSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("Enter a valid phone number with 10-13 digits.")
         return value
 
-class GoogleIDTokenSerializer(SocialLoginSerializer):
-    id_token = serializers.CharField()
-
-    def validate(self, attrs):
-        request = self.context.get("request")
-        id_token = attrs.get("id_token")
-
-        if not id_token:
-            raise serializers.ValidationError("Id-token is required")
-
-        attrs["access_token"] = id_token  # 
-        return super().validate(attrs)
-
 
 
 class JWTTokenSerializer(serializers.Serializer):

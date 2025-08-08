@@ -148,7 +148,7 @@ class MemoryRoomMediaFile(BaseModel):
     )
     thumbnail_url = models.URLField(blank=True, null=True)
     thumbnail_key = models.CharField(blank=True, null=True, max_length=255)
-    file_size = models.BigIntegerField(blank=True, null=True, verbose_name='File size')
+    file_size = models.CharField(blank=True, null=True, max_length=255, verbose_name='File size')
     s3_url = models.URLField(blank=True, null=True)
     s3_key = models.CharField(blank=True, null=True,max_length=255)
 

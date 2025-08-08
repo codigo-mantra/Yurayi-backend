@@ -14,10 +14,6 @@ from datetime import timedelta
 from pathlib import Path
 
 
-# import pillow_heif
-# pillow_heif.register_heif_opener()
-
-
 from timecapsoul.utils import load_env, get_aws_secret
 import environ
 env = environ.Env()
@@ -31,7 +27,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 load_env()  # get credential from env file
-AWS_SECRET = get_aws_secret(env('AWS_SECRET_MANAGER_NAME')) # get credential from ASW Secret Manager 
+AWS_SECRET = get_aws_secret(env('AWS_SECRET_MANAGER_NAME')) # get credential from AWS Secret Manager 
 
 MODE = env('MODE')
 print(f'\n Project is running in : {MODE}')
@@ -111,6 +107,7 @@ ASGI_APPLICATION = "timecapsoul.asgi.application"
 #     }
 # }
 
+# local db config
 # DATABASES = {
 #     'default': {
 #         'ENGINE': 'django.db.backends.mysql',
@@ -126,6 +123,7 @@ ASGI_APPLICATION = "timecapsoul.asgi.application"
 #     }
 # }
 
+# production db config
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
@@ -170,11 +168,10 @@ STATIC_DIR = os.path.join(BASE_DIR, 'static')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-
+AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
+AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
 if MODE == 'PROD':
     STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-    AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
     AWS_STORAGE_BUCKET_NAME = AWS_SECRET['AWS_STORAGE_BUCKET_NAME']
     AWS_S3_REGION_NAME = AWS_SECRET['AWS_S3_REGION_NAME']
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
@@ -182,7 +179,6 @@ if MODE == 'PROD':
     AWS_S3_USE_SSL = True
     AWS_S3_VERIFY = True
     AWS_DEFAULT_ACL = None
-
     DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
     MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
 else:
@@ -262,8 +258,6 @@ SIMPLE_JWT = {
 
 DJRESTAUTH_TOKEN_MODEL = None
 
-# FRONTEND_URL = AWS_SECRET["FRONTEND_URL"]
-# FRONTEND_URL = env('AWS_SECRET_ACCESS_KEY')
 FRONTEND_URL = env('FRONTEND_URL')
 
 print(FRONTEND_URL)

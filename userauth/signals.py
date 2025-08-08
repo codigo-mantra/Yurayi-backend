@@ -16,19 +16,3 @@ def create_user_profile(sender, instance, created, **kwargs):
         else:
             print(f'Profile created for: {instance}')
 
-
-
-# @receiver(post_save, sender=User)
-# def send_welcome_email(sender, instance, created, **kwargs):
-#     if created:
-#         email = instance.email
-#         send_html_email(
-#             subject='Thank you for registration on Yurayi',
-#             to_email=email,
-#             template_name='userauth/registeration_confirmation.html',
-#             context={'first_name': instance.email},
-#             inline_images={
-#                 'logo_cid': os.path.join(settings.BASE_DIR, 'static/images/logo.png')
-#             }
-#         )
-#         print(f'\n Yes email send registration')

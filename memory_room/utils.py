@@ -26,34 +26,54 @@ def generate_unique_slug(instance, queryset=None):
     
     return slug
 
-# def get_file_category(file_name):
-#     import mimetypes
 
-#     content_type = mimetypes.guess_type(file_name)[0] or ''
-#     if content_type.startswith('image/'):
-#         return 'image'
-#     elif content_type.startswith('video/'):
-#         return 'video'
-#     elif content_type.startswith('audio/'):
-#         return 'audio'
-#     elif content_type in ['application/pdf', 'application/msword',
-#                           'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-#                           'application/vnd.ms-excel']:
-#         return 'document'
+
+# def get_readable_file_size_from_bites(size_in_bytes):
+#     calculated_size = size_in_bytes
+#     try:
+#         size_in_bytes = float(size_in_bytes)
+#     except Exception as e:
+#         print(f'\n Exception as  {e}')
 #     else:
-#         return 'other'
+#         kb = size_in_bytes / 1024
 
-def get_readable_file_size_from_kb(size_in_bytes):
-    kb = size_in_bytes / 1024
-    if kb < 1024:
-        return f"{kb:.2f} KB"
-    
-    mb = kb / 1024
-    if mb < 1024:
-        return f"{mb:.2f} MB"
-    
-    gb = mb / 1024
-    return f"{gb:.2f} GB"
+#         if kb < 1024:
+#             return f"{kb:.2f} KB"
+        
+#         mb = kb / 1024
+#         if mb < 1024:
+#             return f"{mb:.2f} MB"
+        
+#         gb = mb / 1024
+#         return f"{gb:.2f} GB"
+#     finally:
+#         return calculated_size
+
+def get_readable_file_size_from_bytes(size_in_bytes):
+    """
+    Convert a file size in bytes to a human-readable string (KB, MB, or GB).
+    Always returns something in the finally block.
+    """
+    readable_size = size_in_bytes  # Default fallback
+    try:
+        size_in_bytes = float(size_in_bytes)
+        kb = size_in_bytes / 1024
+
+        if kb < 1024:
+            readable_size = f"{kb:.2f} KB"
+        else:
+            mb = kb / 1024
+            if mb < 1024:
+                readable_size = f"{mb:.2f} MB"
+            else:
+                gb = mb / 1024
+                readable_size = f"{gb:.2f} GB"
+
+    except (ValueError, TypeError) as e:
+        print(f"\nException: {e}")
+
+    finally:
+        return readable_size
 
 
 
@@ -146,6 +166,33 @@ def determine_download_chunk_size(file_size):
     else:
         return 5 * 1024 * 1024            # 5 MB for large files
 
+import threading
+import sys
+
+class ProgressPercentage:
+    def __init__(self, filename, filesize, callback=None):
+        self._filename = filename
+        self._filesize = filesize
+        self._seen_so_far = 0
+        self._lock = threading.Lock()
+        self._callback = callback  # Optional callback to send progress updates
+
+    def __call__(self, bytes_amount):
+        # Thread-safe progress update
+        with self._lock:
+            self._seen_so_far += bytes_amount
+            percentage = (self._seen_so_far / self._filesize) * 100
+
+            # If no callback, just print to stdout
+            if self._callback:
+                self._callback(self._filename, round(percentage, 2))
+            else:
+                sys.stdout.write(
+                    f"\r{self._filename}  {self._seen_so_far} / {self._filesize}  ({percentage:.2f}%)"
+                )
+                sys.stdout.flush()
+
+
 class S3FileHandler:
     def __init__(self):
         self.s3 = boto3.client(
@@ -189,44 +236,85 @@ class S3FileHandler:
             raise Exception(f"Virus detected in file: {result}")
         file_buffer.seek(0)
 
-    def upload_file_to_s3_bucket(self, file, folder=None, file_category=None):
+    # def upload_file_to_s3_bucket(self, file, folder=None, file_category=None):
+    #     original_file_name = file.name
+    #     # file_category = get_file_category(original_file_name)
+    #     # if file_category == 'invalid':
+    #     #     raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+
+    #     file_name = f"{folder}/{original_file_name}" if folder else original_file_name
+    #     if file_category: 
+    #         s3_key = f"{file_category}/{file_name}"
+    #     else:
+    #         s3_key = f"{file_name}"
+
+
+
+    #     content_type = mimetypes.guess_type(original_file_name)[0] or 'application/octet-stream'
+
+    #     file.seek(0)
+    #     buffer = io.BytesIO(file.read())
+
+    #     # Scan before upload
+    #     # self.scan_file_for_viruses(buffer)
+
+    #     try:
+    #         self.s3.upload_fileobj(
+    #             buffer,
+    #             self.bucket_name,
+    #             s3_key,
+    #             ExtraArgs={
+    #                 'ContentType': content_type,
+    #                 'ACL': 'public-read'
+    #             }
+    #         )
+    #     except Exception as e:
+    #         raise Exception(f"S3 upload failed: {str(e)}")
+
+    #     s3_url = f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{s3_key}"
+    #     return s3_url, file_category, s3_key
+    
+    def upload_file_to_s3_bucket(self, file, folder=None, file_category=None, progress_callback=None):
         original_file_name = file.name
-        # file_category = get_file_category(original_file_name)
-        # if file_category == 'invalid':
-        #     raise serializers.ValidationError({'file_type': 'File type is invalid.'})
-
         file_name = f"{folder}/{original_file_name}" if folder else original_file_name
-        if file_category: 
-            s3_key = f"{file_category}/{file_name}"
-        else:
-            s3_key = f"{file_name}"
-
-
-
+        s3_key = f"{file_category}/{file_name}" if file_category else file_name
         content_type = mimetypes.guess_type(original_file_name)[0] or 'application/octet-stream'
 
         file.seek(0)
         buffer = io.BytesIO(file.read())
 
-        # Scan before upload
-        # self.scan_file_for_viruses(buffer)
+        # Wrap buffer to track progress
+        if progress_callback:
+            total_size = len(buffer.getvalue())
+
+            class ProgressWrapper(io.BytesIO):
+                def __init__(self, data):
+                    super().__init__(data)
+                    self.bytes_uploaded = 0
+
+                def read(self, amt=-1):
+                    chunk = super().read(amt)
+                    self.bytes_uploaded += len(chunk)
+                    percent = int((self.bytes_uploaded / total_size) * 100)
+                    progress_callback(percent)
+                    return chunk
+
+            buffer = ProgressWrapper(buffer.getvalue())
 
         try:
             self.s3.upload_fileobj(
                 buffer,
                 self.bucket_name,
                 s3_key,
-                ExtraArgs={
-                    'ContentType': content_type,
-                    'ACL': 'public-read'
-                }
+                ExtraArgs={'ContentType': content_type, 'ACL': 'public-read'}
             )
         except Exception as e:
             raise Exception(f"S3 upload failed: {str(e)}")
 
         s3_url = f"https://{self.bucket_name}.s3.{self.region}.amazonaws.com/{s3_key}"
         return s3_url, file_category, s3_key
-    
+
+
     def delete_file_from_s3_bucket(self, s3_key):
         is_deleted = False
         try:
@@ -238,3 +326,4 @@ class S3FileHandler:
             print(f'File deleted successfully from s3 s3: {s3_key} status: {is_deleted}')
         finally:
             return is_deleted
+

@@ -1,37 +1,42 @@
 import boto3
+import json
+import time
 import mimetypes
+
 from botocore.exceptions import ClientError
 from django.conf import settings
 from django.http import StreamingHttpResponse, Http404
-
 from django.shortcuts import get_object_or_404
+
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
 from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
 
+from channels.layers import get_channel_layer
+from asgiref.sync import async_to_sync
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView, NewSecuredView
 
 from memory_room.models import (
-    MemoryRoom, MemoryRoomTemplateDefault,
-    MemoryRoomMediaFile,FILE_TYPES
+    MemoryRoom,
+    MemoryRoomTemplateDefault,
+    MemoryRoomMediaFile,
+    FILE_TYPES
 )
 from memory_room.apis.serializers.memory_room import (
-    AssetSerializer, MemoryRoomCreationSerializer,
-    MemoryRoomTemplateDefaultSerializer, MemoryRoomUpdationSerializer,
-    MemoryRoomMediaFileSerializer, MemoryRoomMediaFileCreationSerializer,MemoryRoomMediaFileReadOnlySerializer,MemoryRoomMediaFileDescriptionUpdateSerializer
+    AssetSerializer,
+    MemoryRoomCreationSerializer,
+    MemoryRoomTemplateDefaultSerializer,
+    MemoryRoomUpdationSerializer,
+    MemoryRoomMediaFileSerializer,
+    MemoryRoomMediaFileCreationSerializer,
+    MemoryRoomMediaFileReadOnlySerializer,
+    MemoryRoomMediaFileDescriptionUpdateSerializer
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
-
-from botocore.exceptions import ClientError
-from django.http import StreamingHttpResponse, Http404
-
-from channels.layers import get_channel_layer
-from asgiref.sync import async_to_sync
-
 
 from memory_room.utils import determine_download_chunk_size
 
@@ -163,33 +168,148 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         media_files = MemoryRoomMediaFile.objects.filter(memory_room=memory_room, user=user).order_by('-created_at')
         return Response(MemoryRoomMediaFileSerializer(media_files, many=True).data)
 
+        
+    # def post(self, request, memory_room_id):
+    #     """
+    #     Upload multiple media files to a memory room with streaming progress updates.
+    #     """
+    #     user = self.get_current_user(request)
+    #     memory_room = self.get_memory_room(user, memory_room_id)
+
+    #     files = request.FILES.getlist('file')
+    #     created_objects = []
+    #     results = []
+
+    #     def file_upload_stream():
+    #         for uploaded_file in files:
+    #             yield f"data: Starting upload of {uploaded_file.name}\n\n"
+    #             try:
+    #                 # Simulate progress reporting
+    #                 chunk_size = determine_download_chunk_size(uploaded_file.size)
+    #                 uploaded_so_far = 0
+
+    #                 for i in range(5):
+    #                     # time.sleep(0.3)  # simulate chunk upload delay
+    #                     uploaded_so_far += chunk_size
+    #                     percentage = min(99, int((uploaded_so_far / uploaded_file.size) * 100))
+    #                     yield f"data: {uploaded_file.name} -> {percentage}\n\n"
+
+    #                 # Save file in DB
+    #                 serializer = MemoryRoomMediaFileCreationSerializer(
+    #                     data={**request.data, 'file': uploaded_file},
+    #                     context={'user': user, 'memory_room': memory_room}
+    #                 )
+    #                 if serializer.is_valid():
+    #                     media_file = serializer.save()
+    #                     created_objects.append(media_file)
+    #                     results.append({
+    #                         "file": uploaded_file.name,
+    #                         "status": "success",
+    #                         "progress": percentage,
+    #                         "data": MemoryRoomMediaFileSerializer(media_file).data
+    #                     })
+    #                     yield f"data: {uploaded_file.name} -> 100\n\n"
+    #                     yield f"data: {uploaded_file.name} upload completed successfully\n\n"
+    #                 else:
+    #                     results.append({
+    #                         "file": uploaded_file.name,
+    #                         "status": "failed",
+    #                         "progress": percentage,
+    #                         "errors": serializer.errors
+    #                     })
+    #                     yield f"data: {uploaded_file.name} upload failed: {json.dumps(serializer.errors)}\n\n"
+
+    #             except Exception as e:
+    #                 results.append({
+    #                     "file": uploaded_file.name,
+    #                     "status": "failed",
+    #                     "progress": percentage,
+    #                     "error": str(e)
+    #                 })
+    #                 yield f"data: {uploaded_file.name} upload failed: {str(e)}\n\n"
+
+    #         # Send final combined results
+    #         yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
+
+    #     return StreamingHttpResponse(
+    #         file_upload_stream(),
+    #         content_type='text/event-stream',
+    #         status=status.HTTP_200_OK
+    #     )
+    
     
     def post(self, request, memory_room_id):
         """
-        Upload multiple media files to a memory room.
+        Upload multiple media files to a memory room with streaming progress updates (real chunk based).
         """
         user = self.get_current_user(request)
         memory_room = self.get_memory_room(user, memory_room_id)
 
         files = request.FILES.getlist('file')
         created_objects = []
+        results = []
 
-        for uploaded_file in files:
-            serializer = MemoryRoomMediaFileCreationSerializer(
-                data={**request.data, 'file': uploaded_file},
-                context={'user': user, 'memory_room': memory_room}
-            )
-            if serializer.is_valid():
-                media_file = serializer.save()
-                created_objects.append(media_file)
-            else:
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        def file_upload_stream():
+            for uploaded_file in files:
+                yield f"data: Starting upload of {uploaded_file.name}\n\n"
+                file_size = uploaded_file.size
+                chunk_size = determine_download_chunk_size(file_size)
+                uploaded_so_far = 0
+                percentage = 0
 
-        # Serialize all successfully created files
-        return Response(
-            MemoryRoomMediaFileSerializer(created_objects, many=True).data,
-            status=status.HTTP_201_CREATED
+                try:
+                    # Read file in chunks and calculate progress
+                    for chunk in uploaded_file.chunks(chunk_size):
+                        uploaded_so_far += len(chunk)
+                        new_percentage = int((uploaded_so_far / file_size) * 100)
+                        if new_percentage > percentage:  # only send if percentage increases
+                            percentage = new_percentage
+                            yield f"data: {uploaded_file.name} -> {percentage}\n\n"
+
+                    # Save file after fully read
+                    serializer = MemoryRoomMediaFileCreationSerializer(
+                        data={**request.data, 'file': uploaded_file},
+                        context={'user': user, 'memory_room': memory_room}
+                    )
+
+                    if serializer.is_valid():
+                        media_file = serializer.save()
+                        created_objects.append(media_file)
+                        results.append({
+                            "file": uploaded_file.name,
+                            "status": "success",
+                            "progress": 100,
+                            "data": MemoryRoomMediaFileSerializer(media_file).data
+                        })
+                        yield f"data: {uploaded_file.name} -> 100\n\n"
+                        yield f"data: {uploaded_file.name} upload completed successfully\n\n"
+                    else:
+                        results.append({
+                            "file": uploaded_file.name,
+                            "status": "failed",
+                            "progress": percentage,
+                            "errors": serializer.errors
+                        })
+                        yield f"data: {uploaded_file.name} upload failed: {json.dumps(serializer.errors)}\n\n"
+
+                except Exception as e:
+                    results.append({
+                        "file": uploaded_file.name,
+                        "status": "failed",
+                        "progress": percentage,
+                        "error": str(e)
+                    })
+                    yield f"data: {uploaded_file.name} upload failed: {str(e)}\n\n"
+
+            # Send final combined results
+            yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
+
+        return StreamingHttpResponse(
+            file_upload_stream(),
+            content_type='text/event-stream',
+            status=status.HTTP_200_OK
         )
+
 
     def patch(self, request, memory_room_id, media_file_id):
         """

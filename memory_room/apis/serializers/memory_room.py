@@ -9,7 +9,7 @@ from memory_room.models import (
     MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_kb, S3FileHandler
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
 
 MODE = settings.MODE
 
@@ -169,11 +169,17 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             if file_category == 'invalid':
                 raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
-            validated_data['file_size'] = file.size
+            validated_data['file_size'] = get_readable_file_size_from_bites(file.size)
             try:
-                s3_url, file_type,s3_key = s3_bucket_handler.upload_file_to_s3_bucket(file=file, file_category=file_category)
+                # s3_url, file_type,s3_key = s3_bucket_handler.upload_file_to_s3_bucket(file=file, file_category=file_category)
+                s3_url, file_type, s3_key = s3_bucket_handler.upload_file_to_s3_bucket(
+                    file=file,
+                    file_category=file_category,
+                    progress_callback=self.context.get("progress_callback")
+                )
             except Exception as e:
                 print(f'\nException while uploading images: {e}')
+                raise serializers.ValidationError({'upload_error': "File uploadation fialed. Invalid file"})
             else:
                 validated_data['s3_url'] = s3_url
                 validated_data['file_type'] = file_type
@@ -199,12 +205,13 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                         image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
                         asset = Assets.objects.create(image=image_file, asset_types='Thubmnail/Audio')
                         validated_data['cover_image'] = asset
-                        print(f'S3 url: ',asset.s3_url)
+                        # print(f'S3 url: ',asset.s3_url)
                         validated_data['thumbnail_url'] = asset.s3_url
-                        print(f'thubmnail: {validated_data['thumbnail_url']}')
+                        # print(f'thubmnail: {validated_data['thumbnail_url']}')
                         validated_data['thumbnail_key'] = asset.s3_key
                 except Exception as e:
                     print(f'\n Exception while extracting thumbnail: \n{e}')
+           
             elif file_type == 'image':
                 file.seek(0)  # Ensure pointer is at start
                 image_file = ImageFile(file)
@@ -218,8 +225,6 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
 
 
-
-
 class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
     """
     Serializer for reading memory room media file objects.
@@ -228,7 +233,6 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
     file_url = serializers.SerializerMethodField()
     memory_room = serializers.SerializerMethodField()
     file_title =  serializers.SerializerMethodField()
-    file_size =  serializers.SerializerMethodField()
 
     class Meta:
         model = MemoryRoomMediaFile
@@ -236,13 +240,10 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
             'id', 'file_size', 'file_title', 'file_type', 'memory_room', 'file_url', 'file_type',
             'cover_image', 'description', 'is_cover_image','thumbnail_url','created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'user', 'file_size', 'file_url', 'cover_image', 'file_title']
+        read_only_fields = ['id', 'user',  'file_url', 'cover_image', 'file_title']
 
     def get_file_url(self, obj):
         return obj.s3_url
-    
-    def get_file_size(self, obj):
-        return get_readable_file_size_from_kb(obj.file_size)
     
     def get_file_name(self,path: str):
         return path.split("/")[-1]
@@ -329,7 +330,6 @@ class MemoryRoomMediaFileReadOnlySerializer(serializers.ModelSerializer):
     Read-only serializer for media files, used in simplified listing.
     """
     media_file_s3_url = serializers.SerializerMethodField()
-    file_size = serializers.SerializerMethodField()
 
     class Meta:
         model = MemoryRoomMediaFile
@@ -338,8 +338,7 @@ class MemoryRoomMediaFileReadOnlySerializer(serializers.ModelSerializer):
     def get_media_file_s3_url(self, obj):
         return obj.s3_url
     
-    def get_file_size(self, obj):
-        return get_readable_file_size_from_kb(obj.file_size)
+   
 
     
 class MemoryRoomMediaFileDescriptionUpdateSerializer(serializers.ModelSerializer):
