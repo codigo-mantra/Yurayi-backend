@@ -12,6 +12,7 @@ from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
 
 MODE = settings.MODE
+from django.core.files.base import ContentFile
 
 s3_bucket_handler = S3FileHandler()
 
@@ -152,9 +153,15 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = MemoryRoomMediaFile
-        fields = ('file_type', 'file', 'memory_room', 'user', 'thumbnail_url', 'cover_image')
-        read_only_fields = ['thumbnail_url', ]
-
+        fields = (
+            'file_type',
+            'file',
+            'memory_room',
+            'user',
+            'thumbnail_url',
+            'cover_image'
+        )
+        read_only_fields = ['thumbnail_url']
 
     def create(self, validated_data):
         user = self.context['user']
@@ -164,64 +171,62 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         validated_data['user'] = user
         validated_data['memory_room'] = memory_room
 
-        if file:
-            file_category = get_file_category(file.name)
-            if file_category == 'invalid':
-                raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+        if not file:
+            raise serializers.ValidationError({"file": "No file provided."})
 
-            validated_data['file_size'] = get_readable_file_size_from_bites(file.size)
-            try:
-                # s3_url, file_type,s3_key = s3_bucket_handler.upload_file_to_s3_bucket(file=file, file_category=file_category)
-                s3_url, file_type, s3_key = s3_bucket_handler.upload_file_to_s3_bucket(
-                    file=file,
-                    file_category=file_category,
-                    progress_callback=self.context.get("progress_callback")
-                )
-            except Exception as e:
-                print(f'\nException while uploading images: {e}')
-                raise serializers.ValidationError({'upload_error': "File uploadation fialed. Invalid file"})
-            else:
-                validated_data['s3_url'] = s3_url
-                validated_data['file_type'] = file_type
-                validated_data['s3_key'] = s3_key
-                validated_data['title'] = file.name
-                
+        file_category = get_file_category(file.name)
+        if file_category == 'invalid':
+            raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
-            validated_data['file'] = file
-            file.seek(0)  # Ensure pointer is at start
+        validated_data['file_size'] = get_readable_file_size_from_bytes(file.size)
+
+        try:
+            s3_url, file_type, s3_key = s3_bucket_handler.upload_file_to_s3_bucket(
+                file=file,
+                file_category=file_category,
+                progress_callback=self.context.get("progress_callback")
+            )
+        except Exception as e:
+            print(f'[Upload Error] {e}')
+            raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
+
+        # Assign uploaded file details
+        validated_data['s3_url'] = s3_url
+        validated_data['file_type'] = file_type
+        validated_data['s3_key'] = s3_key
+        validated_data['title'] = file.name
+        validated_data['file'] = file  # This will be stored in the FileField
+
+        # Reset file pointer before further processing
+        file.seek(0)
+
+        try:
+            from userauth.models import Assets
 
             if file_type == 'audio':
-                try:
+                ext = os.path.splitext(file.name)[1]
+                extractor = MediaThumbnailExtractor(file, ext)
+                thumbnail_data = extractor.extract()
+                if thumbnail_data:
+                    image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+                    asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Audio')
+                    validated_data['cover_image'] = asset
+                    validated_data['thumbnail_url'] = asset.s3_url
+                    validated_data['thumbnail_key'] = asset.s3_key
 
-                    # Extract thumbnail if applicable
-                    ext = os.path.splitext(file.name)[1]
-                    extractor = MediaThumbnailExtractor(file, ext)
-                    thumbnail_data = extractor.extract()
-
-                    if thumbnail_data:
-                        from django.core.files.base import ContentFile
-                        from userauth.models import Assets  # adjust if Assets is elsewhere
-
-                        image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
-                        asset = Assets.objects.create(image=image_file, asset_types='Thubmnail/Audio')
-                        validated_data['cover_image'] = asset
-                        # print(f'S3 url: ',asset.s3_url)
-                        validated_data['thumbnail_url'] = asset.s3_url
-                        # print(f'thubmnail: {validated_data['thumbnail_url']}')
-                        validated_data['thumbnail_key'] = asset.s3_key
-                except Exception as e:
-                    print(f'\n Exception while extracting thumbnail: \n{e}')
-           
             elif file_type == 'image':
-                file.seek(0)  # Ensure pointer is at start
                 image_file = ImageFile(file)
-                from userauth.models import Assets  # adjust if Assets is elsewhere
                 asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
                 validated_data['cover_image'] = asset
                 validated_data['thumbnail_url'] = asset.s3_url
                 validated_data['thumbnail_key'] = asset.s3_key
-                
-        return super().create(validated_data)
+
+        except Exception as e:
+            print(f'[Thumbnail Error] {e}')
+
+        instance = super().create(validated_data)
+        print(f"[DB Save] Media File saved: {instance.id} - {instance.title}")
+        return instance
 
 
 
