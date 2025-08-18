@@ -33,7 +33,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from userauth.models import UserProfile, NewsletterSubscriber, UserAddress
 from timecapsoul.utils import send_html_email
 from userauth.apis.serializers.serializers import  (
-    RegistrationSerializer, UserProfileUpdateSerializer, GoogleIDTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
+    RegistrationSerializer, UserProfileUpdateSerializer, GoogleAccessTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
     CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer,UserAddressSerializer
     )
 
@@ -65,9 +65,55 @@ class ContactUsAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
+# class GoogleAuthView(APIView):
+#     permission_classes = [AllowAny]
+#     serializer_class = GoogleIDTokenSerializer
+
+#     def post(self, request, *args, **kwargs):
+#         serializer = self.serializer_class(
+#             data=request.data,
+#             context={'request': request, 'view': self}
+#         )
+#         serializer.is_valid(raise_exception=True)
+
+#         sociallogin = serializer.save()
+#         user = sociallogin.user
+
+#         if not user.is_active:
+#             raise serializers.ValidationError("This account is inactive.")
+
+#         try:
+#             perform_login(request, user, email_verification='optional')
+#             is_new_user = getattr(serializer, 'is_new_user', False)
+#         except ImmediateHttpResponse as e:
+#             return e.response
+
+#         if is_new_user:
+#             send_html_email(
+#                 subject='Welcome to Yurayi',
+#                 to_email=user.email,
+#                 template_name='userauth/registeration_confirmation.html',
+#                 context={'email': user.email},
+#             )
+
+#         refresh = RefreshToken.for_user(user)
+
+#         return Response({
+#             'access': str(refresh.access_token),
+#             'refresh': str(refresh),
+#             'user': {
+#                 'id': user.id,
+#                 'email': user.email,
+#                 'username': user.username,
+#                 'first_name': user.first_name,
+#                 'last_name': user.last_name,
+#             },
+#             'is_new_user': is_new_user
+#         })
+
 class GoogleAuthView(APIView):
     permission_classes = [AllowAny]
-    serializer_class = GoogleIDTokenSerializer
+    serializer_class = GoogleAccessTokenSerializer
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(
