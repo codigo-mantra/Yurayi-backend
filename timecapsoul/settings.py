@@ -100,12 +100,12 @@ TEMPLATES = [
 # WSGI_APPLICATION = 'timecapsoul.wsgi.application'
 ASGI_APPLICATION = "timecapsoul.asgi.application"
 
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
-    }
-}
+# DATABASES = {
+#     'default': {
+#         'ENGINE': 'django.db.backends.sqlite3',
+#         'NAME': BASE_DIR / 'db.sqlite3',
+#     }
+# }
 
 # local db config
 # DATABASES = {
@@ -124,19 +124,19 @@ DATABASES = {
 # }
 
 # production db config
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': AWS_SECRET['DB_NAME'],
-#         'USER': AWS_SECRET['DB_USER'],
-#         'PASSWORD': AWS_SECRET['DB_PASSWORD'],
-#         'HOST': AWS_SECRET['DB_HOST'],
-#         'PORT': '3306',
-#         'OPTIONS': {
-#             'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-#         },
-#     }
-# }
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': AWS_SECRET['DB_NAME'],
+        'USER': AWS_SECRET['DB_USER'],
+        'PASSWORD': AWS_SECRET['DB_PASSWORD'],
+        'HOST': AWS_SECRET['DB_HOST'],
+        'PORT': '3306',
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+        },
+    }
+}
 
 AUTH_PASSWORD_VALIDATORS = [
     {
