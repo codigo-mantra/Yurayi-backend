@@ -187,6 +187,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         validated_data['file_size'] = get_readable_file_size_from_bytes(file.size)
         file_bytes = file.read()
         s3_key = f"{user.s3_storage_id}/memory-room-files/{file.name}.enc"
+        s3_key=s3_key.replace(" ", "_")
         # s3_key = f"memory-room-files/{file.name}.enc"
 
 
