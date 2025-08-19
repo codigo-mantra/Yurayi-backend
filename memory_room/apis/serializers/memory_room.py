@@ -10,11 +10,17 @@ from memory_room.models import (
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
-
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image
 MODE = settings.MODE
 from django.core.files.base import ContentFile
 
 s3_bucket_handler = S3FileHandler()
+
+# AWS_KMS_REGION = settings.AWS_KMS_REGION
+# AWS_KMS_KEY_ID = settings.AWS_KMS_KEY_ID
+AWS_KMS_REGION = 'ap-south-1'
+AWS_KMS_KEY_ID = '843da3bb-9a57-4d9f-a8ab-879a6109f460'
+MEDIA_FILES_BUCKET = settings.MEDIA_FILES_BUCKET
 
 from timecapsoul.utils import MediaThumbnailExtractor
 
@@ -174,28 +180,38 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         if not file:
             raise serializers.ValidationError({"file": "No file provided."})
 
-        file_category = get_file_category(file.name)
-        if file_category == 'invalid':
+        file_type = get_file_category(file.name)
+        if file_type == 'invalid':
             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
         validated_data['file_size'] = get_readable_file_size_from_bytes(file.size)
+        file_bytes = file.read()
+        # s3_key = f"{user.storage_id}/memory-room-files/{file.name}.enc"
+        s3_key = f"memory-room-files/{file.name}.enc"
+
 
         try:
-            s3_url, file_type, s3_key = s3_bucket_handler.upload_file_to_s3_bucket(
-                file=file,
-                file_category=file_category,
-                progress_callback=self.context.get("progress_callback")
+            # s3_url, file_type, s3_key = s3_bucket_handler.upload_file_to_s3_bucket(
+            #     file=file,
+            #     file_category=file_category,
+            #     progress_callback=self.context.get("progress_callback")
+            # )
+            upload_media_obj = encrypt_and_upload_file(
+                key=s3_key,
+                plaintext_bytes=file_bytes,
+                content_type=file.content_type,
+                file_category=file_type
             )
         except Exception as e:
             print(f'[Upload Error] {e}')
             raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
 
         # Assign uploaded file details
-        validated_data['s3_url'] = s3_url
+        # validated_data['s3_url'] = s3_url
         validated_data['file_type'] = file_type
         validated_data['s3_key'] = s3_key
         validated_data['title'] = file.name
-        validated_data['file'] = file  # This will be stored in the FileField
+        validated_data['file'] = file  
 
         # Reset file pointer before further processing
         file.seek(0)
@@ -247,8 +263,17 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'user',  'file_url', 'cover_image', 'file_title']
 
+    # def get_file_url(self, obj):
+    #     # generate descrpted url to access the media files with expiration time
+    #     descpted_url = decrypt_and_get_image(obj.s3_key)
+        
+    #     return obj.s3_url
+    
     def get_file_url(self, obj):
-        return obj.s3_url
+        site_url = settings.SITE_LIVE_URL
+        file_url = f'{site_url}/api/v0/memory-rooms/access/memory-room/{obj.memory_room.id}/media/{obj.id}/'
+        return file_url
+        
     
     def get_file_name(self,path: str):
         return path.split("/")[-1]

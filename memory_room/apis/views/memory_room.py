@@ -399,3 +399,44 @@ class MemoryRoomMediaFileFilterView(SecuredView):
 
         serializer = MemoryRoomMediaFileReadOnlySerializer(paginated_queryset, many=True)
         return paginator.get_paginated_response({'media_files': serializer.data})
+
+MEDIA_FILES_BUCKET = settings.MEDIA_FILES_BUCKET
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image
+from django.http import StreamingHttpResponse, HttpResponse
+
+
+class GetMedia(SecuredView):
+    """
+    Securely stream a media file from S3 (decrypted).
+    User must own the MemoryRoom and MediaFile.
+    """
+
+    def get(self, request, memory_room_id, media_file_id):
+        user = self.get_current_user(request)
+
+        # ✅ Verify ownership
+        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+        media_file = get_object_or_404(
+            MemoryRoomMediaFile,
+            id=media_file_id,
+            user=user,
+            memory_room=memory_room
+        )
+
+        # ✅ Get decrypted bytes
+        file_bytes = decrypt_and_get_image(media_file.s3_key)
+        content_type = getattr(media_file, "content_type", "application/octet-stream")
+
+        response = HttpResponse(file_bytes, content_type=content_type)
+        response["Content-Disposition"] = f'inline; filename="{media_file.s3_key}"'
+        return response
+
+        # # ✅ Detect MIME type (so browser knows what to do)
+        # mime_type, _ = mimetypes.guess_type(media_file.s3_key)
+        # if not mime_type:
+        #     mime_type = "application/octet-stream"
+
+        # # ✅ Stream response
+        # response = HttpResponse(file_bytes, content_type=mime_type)
+        # response["Content-Disposition"] = f'inline; filename="{media_file.title or media_file.s3_key}"'
+        # return response

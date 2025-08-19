@@ -1,0 +1,178 @@
+"""
+Encryption/Decryption utilities for S3 images.
+"""
+# crypto_utils.py
+import base64, os
+import boto3
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from django.conf import settings
+
+
+# AWS_KMS_REGION = settings.AWS_KMS_REGION
+# AWS_KMS_KEY_ID = settings.AWS_KMS_KEY_ID
+# MEDIA_FILES_BUCKET = settings.MEDIA_FILES_BUCKET
+
+AWS_KMS_REGION = 'ap-south-1'
+AWS_KMS_KEY_ID = '843da3bb-9a57-4d9f-a8ab-879a6109f460'
+MEDIA_FILES_BUCKET = 'yurayi-media'
+
+
+s3 = boto3.client("s3", region_name=AWS_KMS_REGION,
+    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+)
+
+kms = boto3.client(
+    "kms",
+    region_name=AWS_KMS_REGION,
+    aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+    aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+)
+
+# def encrypt_and_upload_image(*, bucket, key, plaintext_bytes, kms_key_id, content_type="image/jpeg"):
+#     # 1) Create a fresh data key from KMS (plaintext+encrypted)
+#     resp = kms.generate_data_key(KeyId=kms_key_id, KeySpec="AES_256")
+#     data_key_plain = resp["Plaintext"]          # bytes 
+#     data_key_encrypted = resp["CiphertextBlob"] # bytes
+
+#     # 2) Encrypt image with AES-GCM using the plaintext data key
+#     aesgcm = AESGCM(data_key_plain)
+#     nonce = os.urandom(12)  # GCM nonce
+#     ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, associated_data=None)
+
+#     # 3) Upload ciphertext to S3, store EDK + nonce in metadata (base64)
+#     obj = s3.put_object(
+#         Bucket=bucket,
+#         Key=key,
+#         Body=ciphertext,
+#         ContentType="application/octet-stream",  # ciphertext isn't an image
+#         Metadata={
+#             "edk": base64.b64encode(data_key_encrypted).decode(),
+#             "nonce": base64.b64encode(nonce).decode(),
+#             "orig-content-type": content_type,
+#         }
+#     )
+#     print(f"✅ File uploaded successfully!")
+#     print(f"S3 Key: {key}")
+#     return obj
+
+
+
+def encrypt_and_upload_file(*, key, plaintext_bytes,  content_type="application/octet-stream", file_category=None):
+    """
+    Encrypts and uploads file to S3 using KMS data key.
+    """
+    try:
+
+        # 1) Generate KMS data key (plaintext + encrypted)
+        resp = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+        data_key_plain = resp["Plaintext"]          # bytes 
+        data_key_encrypted = resp["CiphertextBlob"] # bytes
+
+        # 2) Encrypt file using AES-GCM
+        aesgcm = AESGCM(data_key_plain)
+        nonce = os.urandom(12)  # 12-byte nonce for GCM
+        ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, associated_data=None)
+
+        # 3) Upload encrypted file to S3
+        obj = s3.put_object(
+            Bucket=MEDIA_FILES_BUCKET,
+            Key=key,
+            Body=ciphertext,
+            ContentType="application/octet-stream",  # ciphertext is binary
+            Metadata={
+                "edk": base64.b64encode(data_key_encrypted).decode(),
+                "nonce": base64.b64encode(nonce).decode(),
+                "orig-content-type": content_type,
+                "file-category": file_category
+            }
+        )
+
+        print(f"✅ File uploaded successfully! S3 Key: {key}")
+        return obj
+    except Exception as e:
+        print(f'exception as ',e)
+
+
+
+
+
+
+# def decrypt_and_get_image(bucket: str, key: str) -> bytes:
+#     """
+#     Download, decrypt and return image bytes from S3.
+#     """
+#     obj = s3.get_object(Bucket=bucket, Key=key)
+#     ciphertext = obj["Body"].read()
+
+#     # Metadata contains encrypted data key + nonce
+#     metadata = obj["Metadata"]
+#     encrypted_data_key_b64 = metadata["edk"]
+#     nonce_b64 = metadata["nonce"]
+
+#     encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
+#     nonce = base64.b64decode(nonce_b64)
+
+#     # 1) Decrypt the data key with KMS
+#     resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
+#     data_key = resp["Plaintext"]
+
+#     # 2) Decrypt ciphertext with AESGCM
+#     aesgcm = AESGCM(data_key)
+#     plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+
+#     return plaintext
+
+
+def decrypt_and_get_image(key: str):
+    """
+    Download, decrypt and return file bytes + content type from S3.
+    Works for all file types (image, video, audio, other).
+    
+    Returns:
+        plaintext (bytes): Decrypted file bytes
+        content_type (str): Original content type from metadata
+    """
+    # 1) Fetch encrypted object
+    obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
+    ciphertext = obj["Body"].read()
+
+    # 2) Extract encryption metadata
+    metadata = obj["Metadata"]
+    encrypted_data_key_b64 = metadata["edk"]
+    nonce_b64 = metadata["nonce"]
+    orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
+
+    encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
+    nonce = base64.b64decode(nonce_b64)
+
+    # 3) Decrypt the data key with KMS
+    resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
+    data_key = resp["Plaintext"]
+
+    # 4) Decrypt ciphertext with AES-GCM
+    aesgcm = AESGCM(data_key)
+    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+
+    return plaintext, orig_content_type
+
+
+
+def download_and_decrypt_image(*, bucket, key):
+    # 1) Get ciphertext + metadata
+    obj = s3.get_object(Bucket=bucket, Key=key)
+    ciphertext = obj["Body"].read()
+    md = obj["Metadata"]
+    edk_b64 = md["edk"]
+    nonce_b64 = md["nonce"]
+    content_type = md.get("orig-content-type", "application/octet-stream")
+
+    # 2) Decrypt the encrypted data key with KMS
+    edk = base64.b64decode(edk_b64)
+    nonce = base64.b64decode(nonce_b64)
+    data_key_plain = kms.decrypt(CiphertextBlob=edk)["Plaintext"]
+
+    # 3) Decrypt with AES-GCM
+    aesgcm = AESGCM(data_key_plain)
+    plaintext = aesgcm.decrypt(nonce, ciphertext, associated_data=None)
+    return plaintext, content_type
