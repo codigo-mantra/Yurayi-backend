@@ -10,7 +10,7 @@ from memory_room.models import (
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path
 MODE = settings.MODE
 from django.core.files.base import ContentFile
 
@@ -186,8 +186,8 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
         validated_data['file_size'] = get_readable_file_size_from_bytes(file.size)
         file_bytes = file.read()
-        # s3_key = f"{user.storage_id}/memory-room-files/{file.name}.enc"
-        s3_key = f"memory-room-files/{file.name}.enc"
+        s3_key = f"{user.s3_storage_id}/memory-room-files/{file.name}.enc"
+        # s3_key = f"memory-room-files/{file.name}.enc"
 
 
         try:
@@ -241,7 +241,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             print(f'[Thumbnail Error] {e}')
 
         instance = super().create(validated_data)
-        print(f"[DB Save] Media File saved: {instance.id} - {instance.title}")
+        # print(f"[DB Save] Media File saved: {instance.id} - {instance.title}")
         return instance
 
 
@@ -263,16 +263,17 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ['id', 'user',  'file_url', 'cover_image', 'file_title']
 
-    # def get_file_url(self, obj):
-    #     # generate descrpted url to access the media files with expiration time
-    #     descpted_url = decrypt_and_get_image(obj.s3_key)
-        
-    #     return obj.s3_url
-    
+
     def get_file_url(self, obj):
-        site_url = settings.SITE_LIVE_URL
-        file_url = f'{site_url}/api/v0/memory-rooms/access/memory-room/{obj.memory_room.id}/media/{obj.id}/'
-        return file_url
+        import time, base64, hmac, hashlib
+
+        exp = int(time.time()) + 120  # 10 minutes expiry
+        raw = f"{obj.s3_key}:{exp}"
+        sig = base64.urlsafe_b64encode(
+            hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
+        ).decode().rstrip("=")
+
+        return f"/api/v0/memory-rooms/api/media/serve/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
         
     
     def get_file_name(self,path: str):

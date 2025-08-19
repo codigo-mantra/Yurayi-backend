@@ -176,3 +176,28 @@ def download_and_decrypt_image(*, bucket, key):
     aesgcm = AESGCM(data_key_plain)
     plaintext = aesgcm.decrypt(nonce, ciphertext, associated_data=None)
     return plaintext, content_type
+
+
+import base64
+import hashlib
+import hmac
+import time
+from urllib.parse import quote
+
+from django.conf import settings
+
+
+def generate_signed_path(s3_key: str, expiry_seconds: int = 60) -> str:
+    """
+    Generate a relative signed URL for a media file.
+    """
+    secret = settings.SECRET_KEY.encode()
+    expires_at = int(time.time()) + expiry_seconds
+
+    data = f"{s3_key}:{expires_at}".encode()
+    signature = base64.urlsafe_b64encode(
+        hmac.new(secret, data, hashlib.sha256).digest()
+    ).decode()
+
+    path = f"/api/media/serve/{quote(s3_key, safe='')}?exp={expires_at}&sig={signature}"
+    return path

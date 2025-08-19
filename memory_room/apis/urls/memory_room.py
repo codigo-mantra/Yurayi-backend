@@ -1,7 +1,7 @@
 from django.urls import path
 from memory_room.apis.views.memory_room import (
     UserMemoryRoomListView,MemoryRoomCoverView ,MediaFileDownloadView,SetMemoryRoomCoverImageAPIView,
-    MemoryRoomTemplateDefaultViewSet, CreateMemoryRoomView, MemoryRoomMediaFileListCreateAPI, MemoryRoomMediaFileFilterView,UpdateMediaFileDescriptionView, GetMedia
+    MemoryRoomTemplateDefaultViewSet, CreateMemoryRoomView, MemoryRoomMediaFileListCreateAPI, MemoryRoomMediaFileFilterView,UpdateMediaFileDescriptionView, ServeMedia,RefreshMediaURL
 
     )
 
@@ -17,9 +17,11 @@ urlpatterns = [
     path('default-templates/', MemoryRoomTemplateDefaultViewSet.as_view(), name='default-memory-templates'),
     path('media-file/<int:media_file_id>/memory-room/<int:memory_room_id>/download/', MediaFileDownloadView.as_view(), name='media-file-download'),
     path('media-file/<int:media_file_id>/memory_room/<int:memory_room_id>/update-description/', UpdateMediaFileDescriptionView.as_view(), name='update-media-file-description'),
+     
+     # media files
+    path("api/media/serve/<path:s3_key>", ServeMedia.as_view(), name="serve-media"),
+    path("media/refresh/access-token/", RefreshMediaURL.as_view(), name="refresh_media",),
 
-    # 
-    path('access/memory-room/<int:memory_room_id>/media/<int:media_file_id>/', GetMedia.as_view(), name='get-media')
 
 
 

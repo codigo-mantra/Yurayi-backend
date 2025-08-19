@@ -5,7 +5,7 @@ import mimetypes
 
 from botocore.exceptions import ClientError
 from django.conf import settings
-from django.http import StreamingHttpResponse, Http404
+from django.http import StreamingHttpResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 
 from rest_framework import generics, permissions, status
@@ -40,7 +40,7 @@ from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 
 from memory_room.utils import determine_download_chunk_size
 
-
+from memory_room.crypto_utils import generate_signed_path
 
 class MemoryRoomCoverView(generics.ListAPIView):
     """
@@ -134,7 +134,7 @@ class CreateMemoryRoomView(SecuredView):
 
 class SetMemoryRoomCoverImageAPIView(SecuredView):
     def post(self, request, memory_room_id, cover_image_id):
-        print(f'Requst received')
+        # print(f'Requst received')
 
         user = self.get_current_user(request)
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
@@ -179,6 +179,9 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         files = request.FILES.getlist('file')
         created_objects = []
         results = []
+
+        if len(files) == 0: 
+            raise ValidationError({'file': "Media files is required"})
 
         def file_upload_stream():
             for uploaded_file in files:
@@ -234,7 +237,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                     })
                     yield f"data: {uploaded_file.name} upload failed: {str(e)}\n\n"
 
-            print(f'[Final Results] {results}')
+            # print(f'[Final Results] {results}')
             yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
 
         return StreamingHttpResponse(
@@ -440,3 +443,90 @@ class GetMedia(SecuredView):
         # response = HttpResponse(file_bytes, content_type=mime_type)
         # response["Content-Disposition"] = f'inline; filename="{media_file.title or media_file.s3_key}"'
         # return response
+
+# views/media_views.py
+import hmac
+import hashlib
+import base64
+import time
+
+from django.conf import settings
+from django.http import HttpResponseForbidden, HttpResponseRedirect
+from django.views import View
+
+import boto3
+
+
+s3_client = boto3.client("s3")
+SECRET = settings.SECRET_KEY.encode()
+
+
+# views/media_views.py
+import hmac
+import hashlib
+import base64
+import time
+import boto3
+from django.conf import settings
+from django.http import HttpResponse, HttpResponseForbidden
+from django.views import View
+
+s3_client = boto3.client("s3")
+SECRET = settings.SECRET_KEY.encode()
+
+
+class ServeMedia(SecuredView):
+    """
+    Securely serve decrypted media from S3 via Django.
+    """
+
+    def get(self, request, s3_key):
+        user  = self.get_current_user(request)
+        exp = request.GET.get("exp")
+        sig = request.GET.get("sig")
+        s3_storage_id = user.s3_storage_id
+        s3_key = f'{s3_storage_id}/{s3_key}'
+
+        if not exp or not sig:
+            return HttpResponseForbidden("Missing signature or expiry")
+
+        if int(exp) < int(time.time()):
+            return HttpResponseForbidden("Media file access url link expired")
+
+        expected_sig = base64.urlsafe_b64encode(
+            hmac.new(SECRET, f"{s3_key}:{exp}".encode(), hashlib.sha256).digest()
+        ).decode().rstrip("=")
+
+        if not hmac.compare_digest(sig, expected_sig):
+            return HttpResponseForbidden("Invalid signature")
+
+        # Decrypt actual file bytes
+        file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+
+
+        #  Serve decrypt file via Django
+        response = HttpResponse(file_bytes, content_type=content_type)
+        response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
+        return response
+
+
+class RefreshMediaURL(SecuredView):
+    """
+    Refresh expired signed URLs for media.
+    """
+
+    def get(self, request):
+        user = self.get_current_user(request)
+        s3_key = request.GET.get("s3_key")
+
+        if not s3_key:
+            return JsonResponse({"error": "Missing s3_key"}, status=400)
+
+        # Always prepend user's storage ID
+        s3_storage_id = user.s3_storage_id
+        full_key = f"{s3_storage_id}/{s3_key}"
+
+        # Generate new signed path (short-lived)
+        new_url = generate_signed_path(full_key, expiry_seconds=60)
+
+        return JsonResponse({"url": new_url})

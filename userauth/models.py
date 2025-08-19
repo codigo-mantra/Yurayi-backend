@@ -94,6 +94,7 @@ class User(AbstractBaseUser, PermissionsMixin):
         verbose_name="Google ID"
     )
     gender = models.CharField(blank=True, null=True,max_length=255)
+    s3_storage_id = models.UUIDField(default=None, blank=True, null=True)
 
 
     objects = UserManager()

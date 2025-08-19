@@ -5,7 +5,7 @@ from .models import User, UserProfile, Assets, ContactUs, NewsletterSubscriber, 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     model = User
-    list_display = ('username', 'email', 'is_staff', 'is_active')
+    list_display = ('username', 'email', 'is_staff', 'is_active', 's3_storage_id')
     list_filter = ('is_staff', 'is_active')
     search_fields = ('username', 'email')
     ordering = ('created_at',)

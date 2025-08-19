@@ -14,6 +14,15 @@ def testing_view(request):
     # return HttpResponse('<h1>All good</h1>')
     email = 'krishnayadav.codigomantra@gmail.com'
     email = 'admin@gmail.com'
+    import uuid
+    from userauth.models import User
+
+    objs = []
+    for user in User.objects.filter(s3_storage_id__isnull=True):
+        user.s3_storage_id = uuid.uuid4()
+        objs.append(user)
+
+    User.objects.bulk_update(objs, ['s3_storage_id'])
 
     try:
         is_testing = True
