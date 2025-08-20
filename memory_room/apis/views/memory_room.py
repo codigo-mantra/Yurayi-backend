@@ -2,6 +2,7 @@ import boto3
 import json
 import time
 import mimetypes
+from rest_framework import serializers
 
 from botocore.exceptions import ClientError
 from django.conf import settings
@@ -577,6 +578,8 @@ class ServeMedia(NewSecuredView):
 
     def get(self, request, s3_key):
         user  = self.get_current_user(request)
+        if user is None:
+            raise serializers.ValidationError({'token': 'User access-token invalid or expired'})
         exp = request.GET.get("exp")
         sig = request.GET.get("sig")
         s3_storage_id = user.s3_storage_id
