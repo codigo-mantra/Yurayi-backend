@@ -410,3 +410,44 @@ class TimeCapsoulMediaFileFilterView(SecuredView):
 
         serializer = TimeCapSoulMediaFileReadOnlySerializer(paginated_queryset, many=True)
         return paginator.get_paginated_response({'media_files': serializer.data})
+
+
+
+class TimeCapsoulFilterView(SecuredView):
+
+    def get(self, request):
+        user = self.get_current_user(request)
+        query_params = request.query_params
+
+        # Filter conditions
+        timecap_soul_filters = {
+            key: value for key, value in {
+                'user': user,
+                'status': query_params.get('status'),
+                'created_at__date': query_params.get('date'),
+            }.items() if value is not None
+        }
+
+        queryset = TimeCapSoul.objects.filter(**timecap_soul_filters)
+
+        # Sorting logic
+        sort_by = query_params.get('sort_by')        # alphabetical / upload_date
+        sort_order = query_params.get('sort_order')  # asc / desc
+
+        if sort_by == 'alphabetical':
+            sort_field = 'title'
+        else:
+            sort_field = 'created_at'
+
+        if sort_order == 'asc':
+            queryset = queryset.order_by(sort_field)
+        else:
+            queryset = queryset.order_by(f'-{sort_field}')
+
+        # Pagination
+        paginator = PageNumberPagination()
+        paginator.page_size = 8
+        paginated_queryset = paginator.paginate_queryset(queryset, request)
+
+        serializer = TimeCapSoulSerializer(paginated_queryset, many=True)
+        return paginator.get_paginated_response({'time_capsoul': serializer.data})
