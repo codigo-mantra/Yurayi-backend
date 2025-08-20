@@ -363,7 +363,7 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
     def get_file_url(self, obj):
         import time, base64, hmac, hashlib
 
-        exp = int(time.time()) + 120  # 10 minutes expiry
+        exp = int(time.time()) + 60*5  # 5 minutes expiry
         raw = f"{obj.s3_key}:{exp}"
         sig = base64.urlsafe_b64encode(
             hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()

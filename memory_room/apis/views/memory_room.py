@@ -570,7 +570,7 @@ s3_client = boto3.client("s3")
 SECRET = settings.SECRET_KEY.encode()
 
 
-class ServeMedia(SecuredView):
+class ServeMedia(NewSecuredView):
     """
     Securely serve decrypted media from S3 via Django.
     """

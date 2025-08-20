@@ -293,11 +293,14 @@ class NewSecuredView(APIView):
         if not token:
             token = request.data.get("token")
 
-        #  3. Then check Authorization header
         if not token and "Authorization" in request.headers:
             auth_header = request.headers.get("Authorization")
             if auth_header.startswith("Bearer "):
                 token = auth_header[7:]  # Remove 'Bearer ' prefix
+        
+
+        if not token:
+            raise serializers.ValidationError({'Token': 'Access token is required'})
 
         #  4. Validate and return user
         if token:

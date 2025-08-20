@@ -3,7 +3,7 @@ from django.dispatch import receiver
 from django.conf import settings
 from .models import  User, UserProfile
 from timecapsoul.utils import send_html_email
-import os
+import os, uuid
 
 
 @receiver(post_save, sender=User)
@@ -11,6 +11,8 @@ def create_user_profile(sender, instance, created, **kwargs):
     if created:
         try:
             user = UserProfile.objects.create(user=instance)
+            instance.s3_storage_id = uuid.uuid4()
+            instance.save(update_fields=["s3_storage_id"])
         except Exception as e:
             print(f'\n Exception while creating user profile in signal as: {e}')
         else:
