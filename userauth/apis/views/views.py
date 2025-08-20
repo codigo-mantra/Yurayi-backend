@@ -264,21 +264,47 @@ class SecuredView(APIView):
 
 class NewSecuredView(APIView):
 
-    def get_current_user(self, request):
-        """Retrieve the current user from query parameter or header token"""
-        token = request.GET.get('token')  # from query parameter
+    # def get_current_user(self, request):
+        # """Retrieve the current user from query parameter or header token"""
+        # token = request.GET.get('token')  # from query parameter
 
-        if not token and 'Authorization' in request.headers:
-            auth_header = request.headers.get('Authorization')
-            if auth_header.startswith('Bearer '):
+        # if not token and 'Authorization' in request.headers:
+        #     auth_header = request.headers.get('Authorization')
+        #     if auth_header.startswith('Bearer '):
+        #         token = auth_header[7:]  # Remove 'Bearer ' prefix
+
+        # if token:
+        #     try:
+        #         user = jwtTokens.get_user_from_token(token=token)
+        #         return user
+        #     except Exception as e:
+        #         # Token is invalid/expired
+        #         return None
+        # return None
+    
+    def get_current_user(self, request):
+        """Retrieve the current user from query parameter, headers, or POST body"""
+        token = None
+
+        #  1. First check query params (GET)
+        token = request.GET.get("token")
+
+        #  2. Then check POST body (JSON/form-data)
+        if not token:
+            token = request.data.get("token")
+
+        #  3. Then check Authorization header
+        if not token and "Authorization" in request.headers:
+            auth_header = request.headers.get("Authorization")
+            if auth_header.startswith("Bearer "):
                 token = auth_header[7:]  # Remove 'Bearer ' prefix
 
+        #  4. Validate and return user
         if token:
             try:
                 user = jwtTokens.get_user_from_token(token=token)
                 return user
-            except Exception as e:
-                # Token is invalid/expired
+            except Exception:
                 return None
         return None
 

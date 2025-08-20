@@ -10,7 +10,7 @@ from memory_room.models import (
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file
 MODE = settings.MODE
 from django.core.files.base import ContentFile
 
@@ -152,10 +152,108 @@ class MemoryRoomUpdationSerializer(serializers.ModelSerializer):
         return instance
 
 
+# class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
+#     """
+#     Handles creation of MemoryRoomMediaFile, including upload to S3.
+#     """
+
+#     class Meta:
+#         model = MemoryRoomMediaFile
+#         fields = (
+#             'file_type',
+#             'file',
+#             'memory_room',
+#             'user',
+#             'thumbnail_url',
+#             'cover_image'
+#         )
+#         read_only_fields = ['thumbnail_url']
+
+#     def create(self, validated_data):
+#         user = self.context['user']
+#         memory_room = self.context['memory_room']
+#         file = validated_data.pop('file', None)
+
+#         validated_data['user'] = user
+#         validated_data['memory_room'] = memory_room
+
+#         if not file:
+#             raise serializers.ValidationError({"file": "No file provided."})
+
+#         file_type = get_file_category(file.name)
+#         if file_type == 'invalid':
+#             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+
+#         validated_data['file_size'] = get_readable_file_size_from_bytes(file.size)
+#         file_bytes = file.read()
+#         s3_key = f"{user.s3_storage_id}/memory-room-files/{file.name}.enc"
+#         s3_key=s3_key.replace(" ", "_")
+#         # s3_key = f"memory-room-files/{file.name}.enc"
+
+
+#         try:
+#             # s3_url, file_type, s3_key = s3_bucket_handler.upload_file_to_s3_bucket(
+#             #     file=file,
+#             #     file_category=file_category,
+#             #     progress_callback=self.context.get("progress_callback")
+#             # )
+#             upload_media_obj = encrypt_and_upload_file(
+#                 key=s3_key,
+#                 plaintext_bytes=file_bytes,
+#                 content_type=file.content_type,
+#                 file_category=file_type
+#             )
+#         except Exception as e:
+#             print(f'[Upload Error] {e}')
+#             raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
+
+#         # Assign uploaded file details
+#         # validated_data['s3_url'] = s3_url
+#         validated_data['file_type'] = file_type
+#         validated_data['s3_key'] = s3_key
+#         validated_data['title'] = file.name
+#         validated_data['file'] = file  
+
+#         # Reset file pointer before further processing
+#         file.seek(0)
+
+#         try:
+#             from userauth.models import Assets
+
+#             if file_type == 'audio':
+#                 ext = os.path.splitext(file.name)[1]
+#                 extractor = MediaThumbnailExtractor(file, ext)
+#                 thumbnail_data = extractor.extract()
+#                 if thumbnail_data:
+#                     image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+#                     asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Audio')
+#                     validated_data['cover_image'] = asset
+#                     validated_data['thumbnail_url'] = asset.s3_url
+#                     validated_data['thumbnail_key'] = asset.s3_key
+
+#             elif file_type == 'image':
+#                 image_file = ImageFile(file)
+#                 asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
+#                 validated_data['cover_image'] = asset
+#                 validated_data['thumbnail_url'] = asset.s3_url
+#                 validated_data['thumbnail_key'] = asset.s3_key
+
+#         except Exception as e:
+#             print(f'[Thumbnail Error] {e}')
+
+#         instance = super().create(validated_data)
+#         # print(f"[DB Save] Media File saved: {instance.id} - {instance.title}")
+#         return instance
+
+
 class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
     """
-    Handles creation of MemoryRoomMediaFile, including upload to S3.
+    Handles creation of MemoryRoomMediaFile, including decrypting uploaded file
+    and re-uploading to S3.
     """
+
+    # accept IV from frontend
+    iv = serializers.CharField(write_only=True, required=True)
 
     class Meta:
         model = MemoryRoomMediaFile
@@ -165,13 +263,15 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             'memory_room',
             'user',
             'thumbnail_url',
-            'cover_image'
+            'cover_image',
+            'iv',   # <-- NEW
         )
-        read_only_fields = ['thumbnail_url']
+        read_only_fields = ['thumbnail_url', 'cover_image']
 
     def create(self, validated_data):
         user = self.context['user']
         memory_room = self.context['memory_room']
+        iv = validated_data.pop('iv')
         file = validated_data.pop('file', None)
 
         validated_data['user'] = user
@@ -180,26 +280,27 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         if not file:
             raise serializers.ValidationError({"file": "No file provided."})
 
+
+        try:
+            # 🔑 Decrypt using shared AES key + IV
+            decrypted_bytes = decrypt_frontend_file(file, iv)
+        except Exception as e:
+            raise serializers.ValidationError({'decryption_error': f'File decryption failed: {str(e)}'})
+
+        # Infer file type from original name
         file_type = get_file_category(file.name)
         if file_type == 'invalid':
             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
-        validated_data['file_size'] = get_readable_file_size_from_bytes(file.size)
-        file_bytes = file.read()
-        s3_key = f"{user.s3_storage_id}/memory-room-files/{file.name}.enc"
-        s3_key=s3_key.replace(" ", "_")
-        # s3_key = f"memory-room-files/{file.name}.enc"
-
+        validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
+        s3_key = f"{user.s3_storage_id}/memory-room-files/{file.name}"
+        s3_key = s3_key.replace(" ", "_")
 
         try:
-            # s3_url, file_type, s3_key = s3_bucket_handler.upload_file_to_s3_bucket(
-            #     file=file,
-            #     file_category=file_category,
-            #     progress_callback=self.context.get("progress_callback")
-            # )
+            # Upload decrypted file
             upload_media_obj = encrypt_and_upload_file(
                 key=s3_key,
-                plaintext_bytes=file_bytes,
+                plaintext_bytes=decrypted_bytes,
                 content_type=file.content_type,
                 file_category=file_type
             )
@@ -208,21 +309,17 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
 
         # Assign uploaded file details
-        # validated_data['s3_url'] = s3_url
         validated_data['file_type'] = file_type
         validated_data['s3_key'] = s3_key
         validated_data['title'] = file.name
-        validated_data['file'] = file  
+        validated_data['file'] = file  # keep reference (but it’s encrypted version)
 
-        # Reset file pointer before further processing
-        file.seek(0)
-
+        # === Thumbnail / cover generation ===
         try:
             from userauth.models import Assets
-
             if file_type == 'audio':
                 ext = os.path.splitext(file.name)[1]
-                extractor = MediaThumbnailExtractor(file, ext)
+                extractor = MediaThumbnailExtractor(ContentFile(decrypted_bytes, name=file.name), ext)
                 thumbnail_data = extractor.extract()
                 if thumbnail_data:
                     image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
@@ -232,7 +329,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                     validated_data['thumbnail_key'] = asset.s3_key
 
             elif file_type == 'image':
-                image_file = ImageFile(file)
+                image_file = ImageFile(ContentFile(decrypted_bytes, name=file.name))
                 asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
                 validated_data['cover_image'] = asset
                 validated_data['thumbnail_url'] = asset.s3_url
@@ -242,9 +339,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             print(f'[Thumbnail Error] {e}')
 
         instance = super().create(validated_data)
-        # print(f"[DB Save] Media File saved: {instance.id} - {instance.title}")
         return instance
-
 
 
 class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):

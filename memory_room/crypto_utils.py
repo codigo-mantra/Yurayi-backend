@@ -201,3 +201,52 @@ def generate_signed_path(s3_key: str, expiry_seconds: int = 60) -> str:
 
     path = f"/api/media/serve/{quote(s3_key, safe='')}?exp={expires_at}&sig={signature}"
     return path
+
+
+import base64
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from django.conf import settings
+
+def decrypt_frontend_file(uploaded_file, iv_str: str) -> bytes:
+    """
+    Decrypt AES-256-GCM encrypted Django TemporaryUploadedFile.
+    """
+    # Read the uploaded file content
+    ciphertext = uploaded_file.read()  # <--- bytes
+
+    # Now you can safely split ciphertext and auth_tag
+    if len(ciphertext) < 16:
+        raise ValueError("Ciphertext too short for GCM mode (missing authentication tag)")
+
+    encrypted_data = ciphertext[:-16]
+    auth_tag = ciphertext[-16:]
+
+    # Convert IV string to bytes
+    try:
+        if all(c in "0123456789abcdefABCDEF" for c in iv_str.strip()):
+            iv = bytes.fromhex(iv_str)
+        else:
+            import base64
+            iv = base64.b64decode(iv_str)
+    except Exception as e:
+        raise ValueError(f"Invalid IV format: {e}")
+
+    key = settings.ENCRYPTION_KEY
+    if isinstance(key, str):
+        import base64
+        key = base64.b64decode(key)
+
+    if len(key) != 32:
+        raise ValueError(f"Key must be 32 bytes for AES-256, got {len(key)} bytes")
+
+    cipher = Cipher(
+        algorithms.AES(key),
+        modes.GCM(iv, auth_tag),
+        backend=default_backend()
+    )
+    decryptor = cipher.decryptor()
+
+    decrypted_bytes = decryptor.update(encrypted_data) + decryptor.finalize()
+    return decrypted_bytes
+
