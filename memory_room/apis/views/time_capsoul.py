@@ -83,7 +83,7 @@ class CreateTimeCapSoulView(SecuredView):
         serializer = TimeCapSoulCreationSerializer(data=request.data, context={'user': user})
         serializer.is_valid(raise_exception=True)
         timecapsoul = serializer.validated_data.get('time_capsoul')
-        serialized_data = TimeCapSoulSerializer(timecapsoul).data if timecapsoul else {}
+        serialized_data = TimeCapSoulSerializer(timecapsoul, context={'user': user}).data if timecapsoul else {}
 
         return Response({
             'message': 'Time CapSoul created successfully',
@@ -94,7 +94,7 @@ class CreateTimeCapSoulView(SecuredView):
         """Time CapSoul list"""
         user = self.get_current_user(request)
         time_capsoul = TimeCapSoul.objects.filter(user = user)
-        serializer = TimeCapSoulSerializer(time_capsoul, many=True)
+        serializer = TimeCapSoulSerializer(time_capsoul, many=True, context={'user': user})
         return Response(serializer.data)
 
         
@@ -106,7 +106,7 @@ class TimeCapSoulUpdationView(SecuredView):
         serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul_detail.time_capsoul, data=request.data, partial = True, context ={'time_capsoul_detial': time_capsoul_detail})
         if serializer.is_valid():
             update_time_capsoul = serializer.save()
-            return Response(TimeCapSoulSerializer(update_time_capsoul).data)
+            return Response(TimeCapSoulSerializer(update_time_capsoul, context={'user': user}).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     def delete(self, request, time_capsoul_id):
@@ -560,7 +560,7 @@ class TimeCapsoulFilterView(SecuredView):
         paginator.page_size = 8
         paginated_queryset = paginator.paginate_queryset(queryset, request)
 
-        serializer = TimeCapSoulSerializer(paginated_queryset, many=True)
+        serializer = TimeCapSoulSerializer(paginated_queryset, many=True, context={'user': user})
         return paginator.get_paginated_response({'time_capsoul': serializer.data})
 
 

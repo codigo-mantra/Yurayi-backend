@@ -113,6 +113,79 @@ class TimeCapSoulReplicaReadOnlySerializer(serializers.ModelSerializer):
         read_only_fields = fields
 
 
+# class TimeCapSoulSerializer(serializers.ModelSerializer):
+#     status = serializers.SerializerMethodField()
+#     name = serializers.SerializerMethodField()
+#     summary = serializers.SerializerMethodField()
+#     cover_image = serializers.SerializerMethodField()
+#     is_default_template = serializers.SerializerMethodField()
+#     unlocked_data = serializers.SerializerMethodField()
+#     time_capsoul_replica = serializers.SerializerMethodField()
+#     total_files = serializers.SerializerMethodField()
+#     is_owner = serializers.SerializerMethodField()
+#     tagged_members = serializers.SerializerMethodField()
+
+
+#     class Meta:
+#         model = TimeCapSoul
+#         fields = ['id', 'status','total_files','is_owner', 'is_default_template', 'unlocked_data', 'name', 'summary', 'cover_image','created_at', 'updated_at', 'time_capsoul_replica', 'tagged_members']
+    
+#     def get_tagged_members(self, obj):
+#         time_capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul = obj)
+#         serializer = RecipientsDetailSerializer(time_capsoul_recipients, many=True)
+#         return serializer.data
+    
+#     def get_is_owner(self, obj):
+#         is_owner = False
+#         user = self.context('user', None)
+#         if user:
+#             if user == user:
+#                 is_owner = True
+#         return is_owner
+    
+#     def get_total_files(self, obj):
+#         # Access related MemoryRoomDetail
+#         try:
+#             detail = obj.details  
+#             return detail.media_files.count()
+#         except TimeCapSoulDetail.DoesNotExist:
+#             return 0
+    
+#     def get_time_capsoul_replica(self, obj):
+#         try:
+#             replica = TimeCapSoulReplica.objects.get(parent_time_capsoul = obj)
+#         except TimeCapSoulReplica.DoesNotExist:
+#             replica = {}
+#         else:
+#             replica = TimeCapSoulReplicaReadOnlySerializer(replica).data
+#         finally:
+#             return replica
+
+    
+#     def get_status(self, obj):
+#         return obj.get_status_display()
+    
+#     def get_is_default_template(self, obj):
+#         return True if obj.capsoul_template.default_template else False
+    
+#     def get_unlocked_data(self, obj):
+#         details = getattr(obj, 'details', None)
+#         if not details:
+#             return None
+#         return {
+#             "is_locked": details.is_locked,
+#             "unlock_date": details.unlock_date,
+#         }
+#     def get_name(self, obj):
+#         return obj.capsoul_template.name
+    
+#     def get_summary(self, obj):
+#         return obj.capsoul_template.summary
+    
+#     def get_cover_image(self, obj):
+#         cover_image = obj.capsoul_template.cover_image
+#         return AssetSerializer(cover_image).data
+
 class TimeCapSoulSerializer(serializers.ModelSerializer):
     status = serializers.SerializerMethodField()
     name = serializers.SerializerMethodField()
@@ -121,30 +194,53 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
     is_default_template = serializers.SerializerMethodField()
     unlocked_data = serializers.SerializerMethodField()
     time_capsoul_replica = serializers.SerializerMethodField()
-
-
+    total_files = serializers.SerializerMethodField()
+    is_owner = serializers.SerializerMethodField()
+    tagged_members = serializers.SerializerMethodField()
 
     class Meta:
         model = TimeCapSoul
-        fields = ['id', 'status','is_default_template', 'unlocked_data', 'name', 'summary', 'cover_image','created_at', 'updated_at', 'time_capsoul_replica']
-    
+        fields = [
+            'id', 'status', 'total_files', 'is_owner',
+            'is_default_template', 'unlocked_data',
+            'name', 'summary', 'cover_image',
+            'created_at', 'updated_at',
+            'time_capsoul_replica', 'tagged_members'
+        ]
+
+    def get_tagged_members(self, obj):
+        time_capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul=obj)
+        serializer = RecipientsDetailSerializer(time_capsoul_recipients, many=True)
+        return serializer.data
+
+    def get_is_owner(self, obj):
+        user = self.context.get('user', None)  
+        if user and hasattr(obj, "user"):
+            return obj.user == user
+        return False
+
+    def get_total_files(self, obj):
+        try:
+            detail = obj.details
+            return detail.media_files.count()
+        except TimeCapSoulDetail.DoesNotExist:
+            return 0
+        except AttributeError:
+            return 0
+
     def get_time_capsoul_replica(self, obj):
         try:
-            replica = TimeCapSoulReplica.objects.get(parent_time_capsoul = obj)
+            replica = TimeCapSoulReplica.objects.get(parent_time_capsoul=obj)
+            return TimeCapSoulReplicaReadOnlySerializer(replica).data
         except TimeCapSoulReplica.DoesNotExist:
-            replica = {}
-        else:
-            replica = TimeCapSoulReplicaReadOnlySerializer(replica).data
-        finally:
-            return replica
+            return {}
 
-    
     def get_status(self, obj):
         return obj.get_status_display()
-    
+
     def get_is_default_template(self, obj):
-        return True if obj.capsoul_template.default_template else False
-    
+        return bool(getattr(obj.capsoul_template, "default_template", False))
+
     def get_unlocked_data(self, obj):
         details = getattr(obj, 'details', None)
         if not details:
@@ -153,15 +249,18 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
             "is_locked": details.is_locked,
             "unlock_date": details.unlock_date,
         }
+
     def get_name(self, obj):
-        return obj.capsoul_template.name
-    
+        return getattr(obj.capsoul_template, "name", None)
+
     def get_summary(self, obj):
-        return obj.capsoul_template.summary
-    
+        return getattr(obj.capsoul_template, "summary", None)
+
     def get_cover_image(self, obj):
-        cover_image = obj.capsoul_template.cover_image
-        return AssetSerializer(cover_image).data
+        cover_image = getattr(obj.capsoul_template, "cover_image", None)
+        if cover_image:
+            return AssetSerializer(cover_image).data
+        return None
 
 
 class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
