@@ -37,7 +37,11 @@ from userauth.apis.serializers.serializers import  (
     CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer,UserAddressSerializer
     )
 
+from memory_room.utils import JWTEncryptionManager
+
 from allauth.account.utils import perform_login
+
+jwt_manager = JWTEncryptionManager()
 
 
 # jwt token handler

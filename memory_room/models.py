@@ -278,9 +278,10 @@ class AbstractMediaFile(BaseModel):
         null=True,
         verbose_name="Description"
     )
-    file_size = models.BigIntegerField(
+    file_size = models.CharField(
         blank=True,
         null=True,
+        max_length=255,
         verbose_name="File Size"
     )
     s3_url = models.URLField(

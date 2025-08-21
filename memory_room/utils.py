@@ -327,3 +327,36 @@ class S3FileHandler:
         finally:
             return is_deleted
 
+
+
+import jwt
+from cryptography.fernet import Fernet
+from django.conf import settings
+
+
+class JWTEncryptionManager:
+    def __init__(self, jwt_secret=None, fernet_key='vYkhUkBpskFnpYZphr05aIBgubkFfPmk_vm16J-XjV4='):
+        # Load from Django settings or pass directly
+        self.jwt_secret = jwt_secret or settings.SECRET_KEY
+        self.fernet_key = fernet_key or getattr(settings, "FERNET_KEY", None)
+
+        if not self.fernet_key:
+            raise ValueError("FERNET_KEY must be defined in Django settings.")
+
+        self.fernet = Fernet(self.fernet_key)
+
+    def create_token(self, payload: dict, algorithm: str = "HS256") -> str:
+        """
+        Create a signed JWT and then encrypt it.
+        """
+        token = jwt.encode(payload, self.jwt_secret, algorithm=algorithm)
+        encrypted = self.fernet.encrypt(token.encode())
+        return encrypted.decode()
+
+    def decode_token(self, encrypted_token: str, algorithm: str = "HS256") -> dict:
+        """
+        Decrypt token and then verify + decode JWT.
+        """
+        decrypted = self.fernet.decrypt(encrypted_token.encode()).decode()
+        payload = jwt.decode(decrypted, self.jwt_secret, algorithms=[algorithm])
+        return payload

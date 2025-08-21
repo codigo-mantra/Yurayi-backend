@@ -513,7 +513,7 @@ class GetMedia(SecuredView):
     def get(self, request, memory_room_id, media_file_id):
         user = self.get_current_user(request)
 
-        # ✅ Verify ownership
+        # Verify ownership
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
         media_file = get_object_or_404(
             MemoryRoomMediaFile,
@@ -522,7 +522,7 @@ class GetMedia(SecuredView):
             memory_room=memory_room
         )
 
-        # ✅ Get decrypted bytes
+        # Get decrypted bytes
         file_bytes = decrypt_and_get_image(media_file.s3_key)
         content_type = getattr(media_file, "content_type", "application/octet-stream")
 
@@ -530,34 +530,8 @@ class GetMedia(SecuredView):
         response["Content-Disposition"] = f'inline; filename="{media_file.s3_key}"'
         return response
 
-        # # ✅ Detect MIME type (so browser knows what to do)
-        # mime_type, _ = mimetypes.guess_type(media_file.s3_key)
-        # if not mime_type:
-        #     mime_type = "application/octet-stream"
-
-        # # ✅ Stream response
-        # response = HttpResponse(file_bytes, content_type=mime_type)
-        # response["Content-Disposition"] = f'inline; filename="{media_file.title or media_file.s3_key}"'
-        # return response
-
-# views/media_views.py
-import hmac
-import hashlib
-import base64
-import time
-
-from django.conf import settings
-from django.http import HttpResponseForbidden, HttpResponseRedirect
-from django.views import View
 
 import boto3
-
-
-s3_client = boto3.client("s3")
-SECRET = settings.SECRET_KEY.encode()
-
-
-# views/media_views.py
 import hmac
 import hashlib
 import base64
@@ -567,7 +541,6 @@ from django.conf import settings
 from django.http import HttpResponse, HttpResponseForbidden
 from django.views import View
 
-s3_client = boto3.client("s3")
 SECRET = settings.SECRET_KEY.encode()
 
 
@@ -586,17 +559,17 @@ class ServeMedia(NewSecuredView):
         s3_key = f'{s3_storage_id}/{s3_key}'
 
         if not exp or not sig:
-            return HttpResponseForbidden("Missing signature or expiry")
+            return Http404()
 
         if int(exp) < int(time.time()):
-            return HttpResponseForbidden("Media file access url link expired")
+            return Http404()
 
         expected_sig = base64.urlsafe_b64encode(
             hmac.new(SECRET, f"{s3_key}:{exp}".encode(), hashlib.sha256).digest()
         ).decode().rstrip("=")
 
         if not hmac.compare_digest(sig, expected_sig):
-            return HttpResponseForbidden("Invalid signature")
+            return Http404()
 
         # Decrypt actual file bytes
         file_bytes,content_type = decrypt_and_get_image(str(s3_key))

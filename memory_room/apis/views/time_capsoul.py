@@ -5,11 +5,17 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from botocore.exceptions import ClientError
 from django.conf import settings
-from django.http import StreamingHttpResponse, Http404
+from django.http import StreamingHttpResponse, Http404,HttpResponse
 from memory_room.utils import determine_download_chunk_size
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
-
+from rest_framework import serializers
+import json
+import hmac
+import hashlib
+import base64
+import time
+from django.http import HttpResponseForbidden, HttpResponseRedirect,Http404
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView,NewSecuredView
@@ -29,6 +35,8 @@ from memory_room.apis.serializers.time_capsoul import (
     TimeCapSoulSerializer, TimeCapSoulUpdationSerializer,TimeCapSoulMediaFileSerializer,TimeCapSoulMediaFilesReadOnlySerailizer, TimeCapsoulMediaFileUpdationSerializer,
     TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,
 )
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image
+
 
 class TimeCapSoulCoverView(generics.ListAPIView):
     """
@@ -134,37 +142,140 @@ class TimeCapSoulMediaFilesView(SecuredView):
         media_files = TimeCapSoulDetail.objects.filter(time_capsoul=time_capsoul).order_by('-created_at')
         return Response(TimeCapSoulMediaFilesReadOnlySerailizer(media_files, many=True).data)
 
-    
+
     def post(self, request, time_capsoul_id):
         """
-        Upload multiple media files to a time-capsoul room.
+        Upload multiple media files to a TimeCapSoul with streaming progress updates.
+        Each file has its own IV for decryption.
         """
         user = self.get_current_user(request)
         time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id)
-        if not time_capsoul_detail.is_locked:
-            files = request.FILES.getlist('file')
-            if len(files)  == 0:
-                return Response({'message': "Files are required to upload in time-capsoul"})
-            else:
-                created_objects = []
 
-                for uploaded_file in files:
+        if time_capsoul_detail.is_locked:
+            return Response(
+                {'message': 'Sorry, this TimeCapSoul is locked. Media file uploads are not allowed.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        files = request.FILES.getlist('file')
+        created_objects = []
+        results = []
+
+        if len(files) == 0: 
+            raise serializers.ValidationError({'file': "Media files are required"})
+
+        # Parse IVs from frontend
+        try:
+            ivs_json = request.POST.get('ivs', '[]')
+            ivs = json.loads(ivs_json)
+        except json.JSONDecodeError:
+            raise serializers.ValidationError({'ivs': "Invalid IVs format"})
+
+        # Ensure we have an IV for each file
+        if len(ivs) != len(files):
+            raise serializers.ValidationError({
+                'ivs': f"Number of IVs ({len(ivs)}) must match number of files ({len(files)})"
+            })
+
+        def file_upload_stream():
+            for index, uploaded_file in enumerate(files):
+                file_iv = ivs[index]
+                yield f"data: Starting upload of {uploaded_file.name}\n\n"
+                file_size = uploaded_file.size
+                chunk_size = determine_download_chunk_size(file_size)  # same helper you use for memory room
+                uploaded_so_far = 0
+                percentage = 0
+
+                try:
+                    # Read file chunks and send progress updates
+                    for chunk in uploaded_file.chunks(chunk_size):
+                        uploaded_so_far += len(chunk)
+                        new_percentage = int((uploaded_so_far / file_size) * 100)
+                        if new_percentage > percentage:
+                            percentage = new_percentage
+                            yield f"data: {uploaded_file.name} -> {percentage}\n\n"
+
+                    # Reset file pointer before saving
+                    uploaded_file.seek(0)
+
+                    # Use same serializer you already have
                     serializer = TimeCapSoulMediaFileSerializer(
-                        data={**request.data, 'file': uploaded_file},
+                        data={
+                            'file': uploaded_file,
+                            'iv': file_iv
+                        },
                         context={'user': user, 'time_capsoul': time_capsoul_detail.time_capsoul}
                     )
+
                     if serializer.is_valid():
                         media_file = serializer.save()
                         created_objects.append(media_file)
+                        results.append({
+                            "file": uploaded_file.name,
+                            "status": "success",
+                            "progress": 100,
+                            "data": TimeCapSoulMediaFileReadOnlySerializer(media_file).data
+                        })
+                        yield f"data: {uploaded_file.name} -> 100\n\n"
+                        yield f"data: {uploaded_file.name} upload completed successfully\n\n"
                     else:
-                        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+                        results.append({
+                            "file": uploaded_file.name,
+                            "status": "failed",
+                            "progress": percentage,
+                            "errors": serializer.errors
+                        })
+                        yield f"data: {uploaded_file.name} upload failed: {json.dumps(serializer.errors)}\n\n"
 
-                return Response(
-                    TimeCapSoulMediaFileReadOnlySerializer(created_objects, many=True).data,
-                    status=status.HTTP_201_CREATED
-                )
-        else:
-            return Response({'message': 'Soory Time capsoul is locked now media files uploads not applicable'})
+                except Exception as e:
+                    results.append({
+                        "file": uploaded_file.name,
+                        "status": "failed",
+                        "progress": percentage,
+                        "error": str(e)
+                    })
+                    yield f"data: {uploaded_file.name} upload failed: {str(e)}\n\n"
+
+            # Send final results
+            yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
+
+        return StreamingHttpResponse(
+            file_upload_stream(),
+            content_type='text/event-stream',
+            status=status.HTTP_200_OK
+        )
+
+    
+    # def post(self, request, time_capsoul_id):
+    #     """
+    #     Upload multiple media files to a time-capsoul room.
+    #     """
+    #     user = self.get_current_user(request)
+    #     time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id)
+    #     if not time_capsoul_detail.is_locked:
+    #         files = request.FILES.getlist('file')
+    #         if len(files)  == 0:
+    #             return Response({'message': "Files are required to upload in time-capsoul"})
+    #         else:
+    #             created_objects = []
+
+    #             for uploaded_file in files:
+    #                 serializer = TimeCapSoulMediaFileSerializer(
+    #                     data={**request.data, 'file': uploaded_file},
+    #                     context={'user': user, 'time_capsoul': time_capsoul_detail.time_capsoul}
+    #                 )
+    #                 if serializer.is_valid():
+    #                     media_file = serializer.save()
+    #                     created_objects.append(media_file)
+    #                 else:
+    #                     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+    #             return Response(
+    #                 TimeCapSoulMediaFileReadOnlySerializer(created_objects, many=True).data,
+    #                 status=status.HTTP_201_CREATED
+    #             )
+    #     else:
+    #         return Response({'message': 'Soory Time capsoul is locked now media files uploads not applicable'})
 
 class MoveTimeCapSoulMediaFile(SecuredView):
     def post(self, request, old_cap_soul_id, media_file_id, new_capsoul_id):
@@ -451,3 +562,42 @@ class TimeCapsoulFilterView(SecuredView):
 
         serializer = TimeCapSoulSerializer(paginated_queryset, many=True)
         return paginator.get_paginated_response({'time_capsoul': serializer.data})
+
+
+SECRET = settings.SECRET_KEY.encode()
+
+class ServeTimeCapSoulMedia(NewSecuredView):
+    """
+    Securely serve decrypted media from S3 via Django.
+    """
+
+    def get(self, request, s3_key):
+        user  = self.get_current_user(request)
+        if user is None:
+            raise serializers.ValidationError({'token': 'User access-token invalid or expired'})
+        exp = request.GET.get("exp")
+        sig = request.GET.get("sig")
+        s3_storage_id = user.s3_storage_id
+        s3_key = f'{s3_storage_id}/{s3_key}'
+
+        if not exp or not sig:
+            return Http404("Missing signature or expiry")
+
+        if int(exp) < int(time.time()):
+            return Http404("Media file access url link expired")
+
+        expected_sig = base64.urlsafe_b64encode(
+            hmac.new(SECRET, f"{s3_key}:{exp}".encode(), hashlib.sha256).digest()
+        ).decode().rstrip("=")
+
+        if not hmac.compare_digest(sig, expected_sig):
+            return Http404("Invalid signature")
+
+        # Decrypt actual file bytes
+        file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+
+
+        #  Serve decrypt file via Django
+        response = HttpResponse(file_bytes, content_type=content_type)
+        response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
+        return response
