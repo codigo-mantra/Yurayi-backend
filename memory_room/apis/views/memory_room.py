@@ -1,4 +1,4 @@
-import boto3
+import boto3, io
 import json
 import time
 import mimetypes
@@ -402,24 +402,16 @@ class MediaFileDownloadView(NewSecuredView):
             memory_room=memory_room
         )
 
-        s3_key = media_file.s3_key
-        file_name = s3_key.split("/")[-1]
-
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_S3_REGION_NAME
-        )
+        file_name = media_file.title
+        file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
 
         try:
-            s3_response = s3.get_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=s3_key)
-            file_stream = s3_response['Body']
-            file_size = s3_response['ContentLength']
+            file_size = len(file_bytes)
             chunk_size = determine_download_chunk_size(file_size)
+            file_stream = io.BytesIO(file_bytes)
 
             mime_type = (
-                s3_response.get('ContentType')
+                content_type
                 or mimetypes.guess_type(file_name)[0]
                 or 'application/octet-stream'
             )
@@ -444,7 +436,7 @@ class MediaFileDownloadView(NewSecuredView):
             return response
 
         except ClientError as e:
-            raise Http404(f"Could not retrieve file: {e}")
+            raise Http404(f"Could not retrieve file")
 
 class MemoryRoomMediaFileFilterView(SecuredView):
 

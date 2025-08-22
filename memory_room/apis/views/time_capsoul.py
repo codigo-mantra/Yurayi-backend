@@ -10,7 +10,7 @@ from memory_room.utils import determine_download_chunk_size
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
 from rest_framework import serializers
-import json
+import json,io
 import hmac
 import hashlib
 import base64
@@ -376,25 +376,26 @@ class TimeCapSoulMediaFileDownloadView(NewSecuredView):
             user=user,
             time_capsoul=timecapsoul
         )
-
-        s3_key = media_file.s3_key
         file_name = media_file.title
-
-        s3 = boto3.client(
-            's3',
-            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-            region_name=settings.AWS_S3_REGION_NAME
-        )
+        file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
+        
+        # s3 = boto3.client(
+        #     's3',
+        #     aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        #     aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        #     region_name=settings.AWS_S3_REGION_NAME
+        # )
 
         try:
-            s3_response = s3.get_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=s3_key)
-            file_stream = s3_response['Body']
-            file_size = s3_response['ContentLength']
+            # s3_response = s3.get_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=s3_key)
+            # file_stream = s3_response['Body']
+            # file_size = s3_response['ContentLength']
+            file_size = len(file_bytes)
             chunk_size = determine_download_chunk_size(file_size)
+            file_stream = io.BytesIO(file_bytes)
 
             mime_type = (
-                s3_response.get('ContentType')
+                content_type
                 or mimetypes.guess_type(file_name)[0]
                 or 'application/octet-stream'
             )
@@ -419,7 +420,7 @@ class TimeCapSoulMediaFileDownloadView(NewSecuredView):
             return response
 
         except ClientError as e:
-            raise Http404(f"Could not retrieve file: {e}")
+            raise Http404(f"Could not retrieve file")
 
 
 

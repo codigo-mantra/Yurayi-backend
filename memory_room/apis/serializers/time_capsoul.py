@@ -393,17 +393,20 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             if file_type == 'audio':
                 try:
                     # Extract thumbnail 
-                    ext = os.path.splitext(file.name)[1]
-                    extractor = MediaThumbnailExtractor(file, ext)
-                    thumbnail_data = extractor.extract()
+                    try:
+                        ext = os.path.splitext(file.name)[1]
+                        extractor = MediaThumbnailExtractor(file, ext)
+                        thumbnail_data = extractor.extract()
+                    except Exception as e:
+                        print(f'Exception while media thumbnail extraction: {e}')
+                    else:
+                        if thumbnail_data:
+                            from django.core.files.base import ContentFile
+                            from userauth.models import Assets 
 
-                    if thumbnail_data:
-                        from django.core.files.base import ContentFile
-                        from userauth.models import Assets 
-
-                        image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
-                        asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
-                        validated_data['thumbnail'] = asset
+                            image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+                            asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
+                            validated_data['thumbnail'] = asset
 
 
                         # validated_data['cover_image'] = asset
@@ -432,7 +435,7 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
     s3_url = serializers.SerializerMethodField()
     class Meta:
         model = TimeCapSoulMediaFile
-        fields = ('id', 'file_type', 's3_url', 'title', 'description', 'thumbnail', 'file_size', 'replica_media')
+        fields = ('id', 'created_at', 'updated_at','file_size', 'file_type', 's3_url', 'title', 'description', 'thumbnail', 'replica_media')
 
     def get_s3_url(self, obj):
         import time, base64, hmac, hashlib
