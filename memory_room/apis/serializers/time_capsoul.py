@@ -11,7 +11,7 @@ from memory_room.models import (
     TimeCapSoulTemplateDefault,CustomTimeCapSoulTemplate,TimeCapSoul,TimeCapSoulRecipient,RecipientsDetail,
     TimeCapSoulMediaFile,TimeCapSoulDetail, TimeCapSoulMediaFileReplica, TimeCapSoulReplica,
     )
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,save_and_upload_decrypted_file, encrypt_and_upload_file_no_iv
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
 
 from rest_framework import serializers
@@ -469,54 +469,36 @@ class TimeCapSoulMediaFilesReadOnlySerailizer(serializers.ModelSerializer):
 
 
 class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
-    cover_type = serializers.CharField(required = False)
+    set_as_cover = serializers.CharField(required = False)
 
     class Meta:
         model = TimeCapSoulMediaFile
-        fields = ('description',  'cover_type')
+        fields = ('description', 'title',  'set_as_cover')
 
     def update(self, instance, validated_data):
-        time_capsoul_detail = self.context['time_capsoul_detial']
-        cover_type  = validated_data.get('cover_type', None)
-        validated_data.pop('cover_type', None)
+
+        media_file = instance
+        user = instance.user
+        time_capsoul  = instance.time_capsoul
+        set_as_cover = validated_data.pop('set_as_cover', None)
+        title = validated_data.get('title', instance.title)
         description = validated_data.get('description', instance.description)
-
-        if time_capsoul_detail.is_locked:
-            # Create or retrieve replica
-            replica, created = TimeCapSoulMediaFileReplica.objects.get_or_create(
-                parent_media_file=instance,
-                defaults={
-                    'user': instance.user,
-                    'time_capsoul': instance.time_capsoul,
-                    'file': instance.file,
-                    'file_type': instance.file_type,
-                    'title': instance.title,
-                    'description': validated_data.get('description'),
-                    'thumbnail': instance.thumbnail,
-                    'file_size': instance.file_size,
-                    's3_url': instance.s3_url,
-                    's3_key': instance.s3_key,
-                    'is_cover_image': instance.is_cover_image
-                }
-            )
-            self.context['replica_media_file'] = replica
+        if time_capsoul.status == 'unclock':
+            # create replica here
+            pass
         else:
-            # Update instance normally
+            instance.title = title
             instance.description = description
-            time_capsoul_template = time_capsoul_detail.time_capsoul.capsoul_template
-
-            if cover_type == 'audio':
-                if instance.thumbnail is not None:
-                    time_capsoul_template.cover_image = instance.thumbnail
-                    instance.is_cover_image = True
-            elif instance.file_type == 'image' and not instance.is_cover_image:
-                asset = Assets.objects.create(title=instance.title, image=instance.file)
-                time_capsoul_template.cover_image = asset
-                instance.thumbnail = asset
-
-            time_capsoul_template.save()
-
-        instance.save()
+            if set_as_cover == True:
+                media_s3_key =  str(media_file.s3_key)
+                file_name = media_s3_key.split('/')[-1]
+                file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
+                custom_template = time_capsoul.capsoul_template 
+                custom_template.cover_image = assets_obj
+                custom_template.save()
+                instance.save()
         return instance
 
 
