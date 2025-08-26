@@ -12,7 +12,8 @@ def create_user_profile(sender, instance, created, **kwargs):
         try:
             user = UserProfile.objects.create(user=instance)
             instance.s3_storage_id = uuid.uuid4()
-            instance.save(update_fields=["s3_storage_id"])
+            # instance.save(update_fields=["s3_storage_id"])
+            instance.save()
         except Exception as e:
             print(f'\n Exception while creating user profile in signal as: {e}')
         else:

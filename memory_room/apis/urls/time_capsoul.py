@@ -2,7 +2,7 @@ from django.urls import path
 from memory_room.apis.views.time_capsoul import (
     TimeCapSoulCoverView, TimeCapSoulDefaultTemplateAPI, CreateTimeCapSoulView,TimeCapSoulUpdationView,
     TimeCapSoulMediaFilesView, TimeCapSoulMediaFileUpdationView, TimeCapSoulUnlockView, MoveTimeCapSoulMediaFile,TimeCapSoulMediaFileDownloadView,RecipientsDetailCreateOrUpdateView,TimeCapsoulMediaFileFilterView, TimeCapsoulFilterView,
-    ServeTimeCapSoulMedia
+    ServeTimeCapSoulMedia,SetTimeCapSoulCover
 )
 
 urlpatterns = [
@@ -14,11 +14,13 @@ urlpatterns = [
     path('<int:time_capsoul_id>/media/upload/', TimeCapSoulMediaFilesView.as_view(), name='time_capsoul_media_files'),
     path('<int:time_capsoul_id>/media/<int:media_file_id>/updation/', TimeCapSoulMediaFileUpdationView.as_view(), name='time_capsoul_media_files_updation'),
     path('<int:old_cap_soul_id>/media/<int:media_file_id>/move-to/<int:new_capsoul_id>/',MoveTimeCapSoulMediaFile.as_view(), name='move_timecapsoul_media_file'),
+    path('set-as-cover/media/<int:media_file_id>/<int:capsoul_id>/',SetTimeCapSoulCover.as_view(), name='set_as_cover'),
     path('<int:timecapsoul_id>/media/<int:media_file_id>/download/',TimeCapSoulMediaFileDownloadView.as_view(), name='download_timecapsoul_media'),
     path('<int:time_capsoul_id>/recipients/', RecipientsDetailCreateOrUpdateView.as_view(), name='recipients-crud'),
     path('media/filter/', TimeCapsoulMediaFileFilterView.as_view(), name='timecapsoul-media-filter'),
     path('filter/', TimeCapsoulFilterView.as_view(), name='timecapsoul-filter'),
     path("api/media/serve/<path:s3_key>", ServeTimeCapSoulMedia.as_view(), name="serve-media"),
+
 
 
 

@@ -352,6 +352,14 @@ class TimeCapSoulReplica(BaseModel):
         blank=True, null=True
     )
     parent_time_capsoul  = models.OneToOneField(TimeCapSoul, on_delete=models.CASCADE, related_name='time_capsoul_replica',blank=True, null=True)
+    refrence_replica = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,   
+        null=True,
+        blank=True,
+        related_name="referenced_by",
+        verbose_name="Reference Replica"
+    )
 
 
 class TimeCapSoulMediaFile(AbstractMediaFile):
@@ -400,18 +408,31 @@ class TimeCapSoulMediaFileReplica(AbstractMediaFile):
         related_name='timecapsoul_media_file_replicas_thumbnails',
         verbose_name="Thumbnail"
     )
-    time_capsoul = models.ForeignKey(
-        TimeCapSoul,
+    time_capsoul = models.OneToOneField(
+        TimeCapSoulReplica,
         on_delete=models.CASCADE,
         blank=True,
         null=True,
         related_name='media_file_replicas'
     )
-    parent_media_file = models.OneToOneField(
+    parent_media_file = models.ForeignKey(
         TimeCapSoulMediaFile,
         on_delete=models.CASCADE,
-        related_name='replica'
+        related_name='replica', 
+        blank=True, 
+        null=True
     )
+    refrence_replica = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,   
+        null=True,
+        blank=True,
+        related_name="referenced_by_media",
+        verbose_name="Reference Replica"
+    )
+
+    def __str__(self):
+        return f'{self.time_capsoul.capsoul_template.name}'
 
     class Meta:
         verbose_name = "TimeCapSoul Media File Replica"

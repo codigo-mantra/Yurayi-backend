@@ -97,6 +97,7 @@ class CustomTimeCapSoulTemplateSerializer(serializers.ModelSerializer):
 
 class TimeCapSoulReplicaReadOnlySerializer(serializers.ModelSerializer):
     cover_image = AssetSerializer()
+    total_files = serializers.SerializerMethodField()
 
     class Meta:
         model = TimeCapSoulReplica
@@ -104,6 +105,7 @@ class TimeCapSoulReplicaReadOnlySerializer(serializers.ModelSerializer):
             'id',
             'name',
             'slug',
+            'total_files',
             'summary',
             'status',
             'cover_image',
@@ -111,6 +113,9 @@ class TimeCapSoulReplicaReadOnlySerializer(serializers.ModelSerializer):
             'updated_at',
         ]
         read_only_fields = fields
+    def get_total_files(self, obj):
+        files = TimeCapSoulMediaFileReplica.objects.filter(time_capsoul = obj)
+        return files.count()
 
 
 # class TimeCapSoulSerializer(serializers.ModelSerializer):
@@ -230,8 +235,8 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
 
     def get_time_capsoul_replica(self, obj):
         try:
-            replica = TimeCapSoulReplica.objects.get(parent_time_capsoul=obj)
-            return TimeCapSoulReplicaReadOnlySerializer(replica).data
+            replica = TimeCapSoulReplica.objects.filter(parent_time_capsoul=obj)
+            return TimeCapSoulReplicaReadOnlySerializer(replica, many=True).data
         except TimeCapSoulReplica.DoesNotExist:
             return {}
 
@@ -279,39 +284,40 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
         try:
             return Assets.objects.get(id=value, asset_types='Time CapSoul Cover')
         except Assets.DoesNotExist:
-            raise serializers.ValidationError("Cover image with this ID does not exist.")
+            raise serializers.ValidationError("Cover image  id is invalid.")
 
     def update(self, instance, validated_data):
-        if instance.capsoul_template.default_template is None:
-            time_capsoul_detail: TimeCapSoulDetail = self.context['time_capsoul_detial']
-            user = instance.user
+        user = instance.user
+        time_capsoul = instance
+        name = validated_data.get('name', instance.capsoul_template.name)
+        summary = validated_data.get('summary', instance.capsoul_template.summary)
+        cover_image = validated_data.get('cover_image')
 
-            name = validated_data.get('name', instance.capsoul_template.name)
-            summary = validated_data.get('summary', instance.capsoul_template.summary)
-            cover_image = validated_data.get('cover_image')
+        if isinstance(cover_image, int):
+            cover_image = self.validate_cover_image(cover_image)
+                
+        if cover_image is None:
+            cover_image = instance.capsoul_template.cover_image
 
-            if isinstance(cover_image, int):
-                cover_image = self.validate_cover_image(cover_image)
 
-            # If locked, create or get replica
-            if time_capsoul_detail.is_locked:
-                replica_instance, created = TimeCapSoulReplica.objects.get_or_create(
+        # If locked, create or get replica
+        if instance.status == 'unlocked':
+
+            try:
+                replica_instance = TimeCapSoulReplica.objects.get(parent_time_capsoul = time_capsoul)
+            except Exception as e:
+                replica_instance = TimeCapSoulReplica.objects.create(
                     parent_time_capsoul=instance,
-                    defaults={
-                        'name': name,
-                        'user': user,
-                        'summary': summary,
-                        'cover_image': cover_image,
-                        'status': instance.status,
-
-                    }
+                    name=name,
+                    user = user,
+                    summary = summary,
+                    cover_image = cover_image,
+                    status = instance.status
                 )
                 replica_instance.slug = generate_unique_slug(replica_instance)
                 replica_instance.save()
-                
-                self.context['replica_instance'] = replica_instance
-            else:
-                # Otherwise, update existing template
+        else:
+            if instance.capsoul_template.default_template is None: # create from scratch
                 template = instance.capsoul_template
                 template.name = name
                 template.summary = summary
@@ -320,7 +326,6 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 template.save()
 
         return instance
-  
 
 
 class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
@@ -421,21 +426,165 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
-class TimeCapSoulMediaFileReplicaSerializer(serializers.ModelSerializer):
-    thumbnail = AssetSerializer()
+class TimecapSoulReplicaMediaFileCreation(serializers.ModelSerializer):
+    """
+    Handles creation of TimeCapSoulMediaFile, including upload to S3.
+    """
+    iv = serializers.CharField(write_only=True, required=True)
+
+
     class Meta:
         model = TimeCapSoulMediaFileReplica
-        fields = ('id', 'file_type', 's3_url', 'title', 'description', 'thumbnail', 'file_size')
+        fields = ('file','iv')
+
+
+    def create(self, validated_data):
+        user = self.context['user']
+        iv  = validated_data.pop('iv')
+        file = validated_data.pop('file', None)
+        time_capsoul = self.context['time_capsoul']
+
+        try:
+            time_cap_soul_replica = TimeCapSoulReplica.objects.get(parent_time_capsoul = time_capsoul)
+        except TimeCapSoulReplica.DoesNotExist:
+            time_capsoul_replica = TimeCapSoulReplica.objects.create(
+                user = user,
+                name =time_capsoul.capsoul_template.name,
+                slug = time_capsoul.capsoul_template.slug,
+                summary = time_capsoul.capsoul_template.summary,
+                status = time_capsoul.status,
+                cover_image = time_capsoul.capsoul_template.cover_image,
+                parent_time_capsoul = time_capsoul
+                )
+        finally:
+            validated_data['parent_time_capsoul'] = time_cap_soul_replica
+
+
+
+        # validated_data['user'] = user
+        # validated_data['time_capsoul'] = time_capsoul
+      
+        if not file:
+            raise serializers.ValidationError({"file": "No file provided."})
+        
+        try:
+            #Decrypt using shared AES key + IV
+            decrypted_bytes = decrypt_frontend_file(file, iv)
+        except Exception as e:
+            raise serializers.ValidationError({'decryption_error': f'File decryption failed: {str(e)}'})
+        
+        file_type = get_file_category(file.name)
+        if file_type == 'invalid':
+            raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+
+
+
+        if file:
+            validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
+            s3_key = f"{user.s3_storage_id}/time-capsoul-files/{file.name}"
+            s3_key = s3_key.replace(" ", "_") # remove white spaces
+
+            try:
+                # Upload decrypted file
+                upload_media_obj = encrypt_and_upload_file(
+                    key=s3_key,
+                    plaintext_bytes=decrypted_bytes,
+                    content_type=file.content_type,
+                    file_category=file_type
+                )
+            except Exception as e:
+                print(f'[Upload Error] {e}')
+                raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
+
+            
+            validated_data['title'] = file.name
+            validated_data['file_type'] = file_type
+            validated_data['s3_key'] = s3_key
+            validated_data['file'] = file
+
+            # s3_url, file_type,s3_key = upload_file_to_s3_bucket(file, folder='memory_media_files')
+            # validated_data['s3_url'] = s3_url
+            
+            # validated_data['title'] =  validated_data['s3_key'].split('/')[-1]
+            
+
+
+
+            # Set the file field 
+            if file_type == 'audio':
+                try:
+                    # Extract thumbnail 
+                    try:
+                        ext = os.path.splitext(file.name)[1]
+                        extractor = MediaThumbnailExtractor(file, ext)
+                        thumbnail_data = extractor.extract()
+                    except Exception as e:
+                        print(f'Exception while media thumbnail extraction: {e}')
+                    else:
+                        if thumbnail_data:
+                            from django.core.files.base import ContentFile
+                            from userauth.models import Assets 
+
+                            image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+                            asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
+                            validated_data['thumbnail'] = asset
+
+
+                        # validated_data['cover_image'] = asset
+                        # print(f'S3 url: ',asset.s3_url)
+                        # validated_data['thumbnail_url'] = asset.s3_url
+                        # print(f'thubmnail: {validated_data['thumbnail_url']}')
+                        # validated_data['thumbnail_key'] = asset.s3_key
+                except Exception as e:
+                    print(f'\n Exception while extracting thumbnail: \n{e}')
+            
+                
+        return super().create(validated_data)
+
+
+class ChildMediaFileReplicaSerializer(serializers.ModelSerializer):
+    thumbnail = AssetSerializer()
+    refrence_replica = serializers.SerializerMethodField()
+    class Meta:
+        model = TimeCapSoulMediaFileReplica
+        fields = ('id', 'file_type', 's3_url', 'title', 'description', 'thumbnail', 'file_size', 'refrence_replica')
+    
+
+class TimeCapSoulMediaFileReplicaSerializer(serializers.ModelSerializer):
+    thumbnail = AssetSerializer()
+    s3_url = serializers.SerializerMethodField()
+    refrence_replica = serializers.SerializerMethodField()
+    class Meta:
+        model = TimeCapSoulMediaFileReplica
+        fields = ('id', 'create_at', 'updated_at', 'file_type', 's3_url', 'title', 'description', 'thumbnail', 'file_size', 'refrence_replica')
+    
+    def get_refrence_replica(self, obj):
+        if obj.refrence_replica:
+            serializer = TimeCapSoulMediaFileReplicaSerializer(obj)
+            return serializer.data
+    
+    def get_s3_url(self, obj):
+        import time, base64, hmac, hashlib
+
+        exp = int(time.time()) + 60*5  # 5 minutes expiry
+        raw = f"{obj.s3_key}:{exp}"
+        sig = base64.urlsafe_b64encode(
+            hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
+        ).decode().rstrip("=")
+        return f"/api/v0/time-capsoul/api/media/serve/replica-files/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
+        # return f"/api/v0/time-capsoul/api/media/serve/replica-files/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
+
+
 
 
 
 class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
     thumbnail = AssetSerializer()
-    replica_media = serializers.SerializerMethodField()
+    # replica_media = serializers.SerializerMethodField()
     s3_url = serializers.SerializerMethodField()
     class Meta:
         model = TimeCapSoulMediaFile
-        fields = ('id', 'created_at', 'updated_at','file_size', 'file_type', 's3_url', 'title', 'description', 'thumbnail', 'replica_media')
+        fields = ('id', 'created_at', 'updated_at','file_size', 'file_type', 's3_url', 'title', 'description', 'thumbnail')
 
     def get_s3_url(self, obj):
         import time, base64, hmac, hashlib
@@ -447,15 +596,16 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
         ).decode().rstrip("=")
         return f"/api/v0/time-capsoul/api/media/serve/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
 
-    def get_replica_media(self, obj):
-        try:
-            replica_media_file = TimeCapSoulMediaFileReplica.objects.get(parent_media_file = obj)
-        except TimeCapSoulMediaFileReplica.DoesNotExist:
-            response = {}
-        else:
-            response = TimeCapSoulMediaFileReplicaSerializer(replica_media_file).data
-        finally:
-            return response
+    # def get_replica_media(self, obj):
+    #     response = {}
+    #     try:
+    #         replica_media_file = TimeCapSoulMediaFileReplica.objects.filter(parent_media_file = obj)
+    #     except TimeCapSoulMediaFileReplica.DoesNotExist:
+    #         response = {}
+    #     else:
+    #         response = TimeCapSoulMediaFileReplicaSerializer(replica_media_file,many=True).data
+    #     finally:
+    #         return response
 
 
 
@@ -483,9 +633,68 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
         set_as_cover = validated_data.pop('set_as_cover', None)
         title = validated_data.get('title', instance.title)
         description = validated_data.get('description', instance.description)
-        if time_capsoul.status == 'unclock':
+        if time_capsoul.status == 'unlocked':
             # create replica here
-            pass
+            try:
+                time_capsoul_replica = TimeCapSoulReplica.objects.get(parent_time_capsoul = time_capsoul)
+            except TimeCapSoulReplica.DoesNotExist:
+                time_capsoul_replica = TimeCapSoulReplica.objects.create(
+                    user = user,
+                    name =time_capsoul.capsoul_template.name,
+                    slug = time_capsoul.capsoul_template.slug,
+                    summary = time_capsoul.capsoul_template.summary,
+                    status = time_capsoul.status,
+                    cover_image = time_capsoul.capsoul_template.cover_image,
+                    parent_time_capsoul = time_capsoul
+                )
+            except Exception as e:
+                print(f'Exception while creating time-capsoul replica as: {e}')
+                pass 
+
+            else:
+                # here upload file to s3 bucket with kms encryption
+                media_s3_key =  str(media_file.s3_key)
+                file_name = media_s3_key.split('/')[-1]
+                try:
+                    file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                except Exception as e:
+                    print(f'Exception while media file decryption as {e}')
+                else:
+                    new_s3_key = f"{user.s3_storage_id}/time-capsoul/replica-files/{file_name}"
+                    response = encrypt_and_upload_file_no_iv( # upload encrypted file to s3
+                        key=new_s3_key,
+                        plaintext_bytes=file_bytes,
+                        content_type=content_type,
+                        file_category=media_file.file_type   
+                    )
+                    if bool(set_as_cover) == True: # set as cover
+                        if media_file.file_type == 'image':
+                            # here uploading plain file  without any encryption to s3 with public access
+                            s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                            assets_obj = Assets.objects.create(image = media_file.file, s3_key = s3_key, s3_url = url)
+                            time_capsoul_replica.cover_image = assets_obj
+                    time_capsoul_replica.save()
+                    
+                    # create media-file replica here
+                    try:
+                        media_replica = TimeCapSoulMediaFileReplica.objects.create(
+                            user = user,
+                            file = media_file.file,
+                            file_type= media_file.file_type,
+                            title = title,
+                            file_size = media_file.file_size,
+                            description = description,
+                            s3_url = None,
+                            s3_key = new_s3_key,
+                            is_cover_image = True,
+                            thumbnail = media_file.thumbnail,
+                            parent_media_file = media_file,
+                        )
+                        media_replica.save()
+
+                    except Exception as e:
+                        print(f'Exception while media file decryption as {e}')
+                        pass
         else:
             instance.title = title
             instance.description = description
@@ -498,9 +707,8 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 custom_template = time_capsoul.capsoul_template 
                 custom_template.cover_image = assets_obj
                 custom_template.save()
-                instance.save()
+            instance.save()
         return instance
-
 
 
 class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):

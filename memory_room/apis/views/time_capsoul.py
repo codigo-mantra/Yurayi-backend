@@ -5,7 +5,7 @@ from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from botocore.exceptions import ClientError
 from django.conf import settings
-from django.http import StreamingHttpResponse, Http404,HttpResponse
+from django.http import StreamingHttpResponse, Http404,HttpResponse, JsonResponse, HttpResponseNotFound
 from memory_room.utils import determine_download_chunk_size
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
@@ -33,9 +33,9 @@ from memory_room.models import (
 from memory_room.apis.serializers.time_capsoul import (
     TimeCapSoulTemplateDefaultReadOnlySerializer, TimeCapSoulCreationSerializer,TimeCapSoulMediaFileReadOnlySerializer,
     TimeCapSoulSerializer, TimeCapSoulUpdationSerializer,TimeCapSoulMediaFileSerializer,TimeCapSoulMediaFilesReadOnlySerailizer, TimeCapsoulMediaFileUpdationSerializer,
-    TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,
+    TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimecapSoulReplicaMediaFileCreation,TimeCapSoulMediaFileReplicaSerializer
 )
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files
 
 
 class TimeCapSoulCoverView(generics.ListAPIView):
@@ -102,8 +102,8 @@ class TimeCapSoulUpdationView(SecuredView):
 
     def patch(self, request, time_capsoul_id):
         user = self.get_current_user(request)
-        time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id)
-        serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul_detail.time_capsoul, data=request.data, partial = True, context ={'time_capsoul_detial': time_capsoul_detail})
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True)
         if serializer.is_valid():
             update_time_capsoul = serializer.save()
             return Response(TimeCapSoulSerializer(update_time_capsoul, context={'user': user}).data)
@@ -140,7 +140,17 @@ class TimeCapSoulMediaFilesView(SecuredView):
         user = self.get_current_user(request)
         time_capsoul = self.get_time_capsoul(user, time_capsoul_id)
         media_files = TimeCapSoulDetail.objects.filter(time_capsoul=time_capsoul).order_by('-created_at')
-        return Response(TimeCapSoulMediaFilesReadOnlySerailizer(media_files, many=True).data)
+        replica_data = {}
+        if media_files.count() > 0:
+            time_capsoul_obj = media_files[0].time_capsoul
+            media_replica = TimeCapSoulMediaFileReplica.objects.filter(time_capsoul__parent_time_capsoul = time_capsoul_obj)
+            replica_data = TimeCapSoulMediaFileReplicaSerializer(media_replica, many=True).data
+        serializer = TimeCapSoulMediaFilesReadOnlySerailizer(media_files, many=True)
+        response = {
+            'media_files': serializer.data,
+            'replica_files': replica_data
+        }
+        return Response(response)
 
 
     def post(self, request, time_capsoul_id):
@@ -149,13 +159,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         Each file has its own IV for decryption.
         """
         user = self.get_current_user(request)
-        time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id)
-
-        if time_capsoul_detail.is_locked:
-            return Response(
-                {'message': 'Sorry, this TimeCapSoul is locked. Media file uploads are not allowed.'},
-                status=status.HTTP_403_FORBIDDEN
-            )
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
 
         files = request.FILES.getlist('file')
         created_objects = []
@@ -198,15 +202,24 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     # Reset file pointer before saving
                     uploaded_file.seek(0)
 
-                    # Use same serializer you already have
-                    serializer = TimeCapSoulMediaFileSerializer(
-                        data={
-                            'file': uploaded_file,
-                            'iv': file_iv
-                        },
-                        context={'user': user, 'time_capsoul': time_capsoul_detail.time_capsoul}
-                    )
-
+                    if time_capsoul.status == 'unlocked':
+                        # some other serializer
+                        serializer = TimecapSoulReplicaMediaFileCreation(
+                            data={
+                                'file': uploaded_file,
+                                'iv': file_iv
+                            },
+                            context={'user': user, 'time_capsoul': time_capsoul}
+                        )
+                    else:
+                        # Use same serializer you already have
+                        serializer = TimeCapSoulMediaFileSerializer(
+                            data={
+                                'file': uploaded_file,
+                                'iv': file_iv
+                            },
+                            context={'user': user, 'time_capsoul': time_capsoul}
+                        )
                     if serializer.is_valid():
                         media_file = serializer.save()
                         created_objects.append(media_file)
@@ -277,6 +290,80 @@ class TimeCapSoulMediaFilesView(SecuredView):
     #     else:
     #         return Response({'message': 'Soory Time capsoul is locked now media files uploads not applicable'})
 
+
+class SetTimeCapSoulCover(SecuredView):
+    "Set as time-capsoul cover"
+   
+    def patch(self, request,  media_file_id, capsoul_id):
+        """Move media file from one TimeCapsoul to another"""
+        user = self.get_current_user(request)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=capsoul_id, user=user)
+        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
+
+        title = request.data.get('title', None)
+        summary = request.data.get('summary', None)
+        set_as_cover = request.data.get('set_as_cover', False)
+
+
+        if time_capsoul.status == 'sealed' :
+            # create or get replica
+            try:
+                time_capsoul_replica = TimeCapSoulReplica.objects.get(parent_time_capsoul = time_capsoul)
+            except TimeCapSoulReplica.DoesNotExist as e:
+                time_capsoul_replica = TimeCapSoulReplica.objects.create(
+                    name =time_capsoul.capsoul_template.name,
+                    slug = time_capsoul.capsoul_template.slug,
+                    summary = time_capsoul.capsoul_template.summary,
+                    status = time_capsoul.status,
+                    cover_image = time_capsoul.capsoul_template.cover_image,
+                    user = user,
+                    parent_time_capsoul = time_capsoul
+                )
+                if title:
+                    time_capsoul_replica.name = title
+                
+                if summary:
+                    time_capsoul_replica.summary = summary
+
+                if bool(set_as_cover) == True:
+                    if media_file.file_type == 'image':
+                        media_s3_key =  str(media_file.s3_key)
+                        file_name = media_s3_key.split('/')[-1]
+                        file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                        s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                        assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
+                        custom_template = time_capsoul.capsoul_template
+                        custom_template.cover_image = assets_obj
+                        custom_template.save()
+                        media_file.is_cover_image = True
+                        media_file.save()
+                time_capsoul_replica.save()
+            except Exception as e:
+                pass
+            else:
+                pass
+        else:
+            if not time_capsoul.capsoul_template.default_template:
+                if title:
+                    time_capsoul.capsoul_template.name = title
+                    
+                if summary:
+                    time_capsoul.capsoul_template.summary = summary
+                
+                if bool(set_as_cover) == True:
+                    if media_file.file_type == 'image':
+                        file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
+                        s3_key, url = save_and_upload_decrypted_file(filename='', decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                        assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
+                        custom_template = time_capsoul.capsoul_template
+                        custom_template.cover_image = assets_obj
+                        custom_template.save()
+                        media_file.is_cover_image = True
+                        media_file.save()
+            else:
+                return Response({'message': "Time can not be updated its default template"})
+
+
 class MoveTimeCapSoulMediaFile(SecuredView):
     def post(self, request, old_cap_soul_id, media_file_id, new_capsoul_id):
         """Move media file from one TimeCapsoul to another"""
@@ -303,7 +390,28 @@ class MoveTimeCapSoulMediaFile(SecuredView):
         new_time_capsoul.media_files.add(media_file)
 
         return Response({'message': 'Media file moved successfully'}, status=200)
+   
+    
 
+        # # Prevent move if either source or destination is locked
+        # if old_time_capsoul.is_locked or new_time_capsoul.is_locked:
+        #     return Response({'message': 'Sorry, media file cannot be moved because either the source or destination TimeCapsoul is locked.'}, status=400)
+
+        # # Fetch the media file
+        # media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user, time_capsoul=old_time_capsoul.time_capsoul)
+
+        # # Remove from old TimeCapsoul's related set
+        # old_time_capsoul.media_files.remove(media_file)
+
+        # # Update the FK on media file
+        # media_file.time_capsoul = new_time_capsoul.time_capsoul
+        # media_file.save()
+
+        # # Add to new TimeCapsoul's related set
+        # new_time_capsoul.media_files.add(media_file)
+
+        return Response({'message': 'Media file set as cover successfully'}, status=200)
+   
 
 
 class TimeCapSoulMediaFileUpdationView(SecuredView):
@@ -331,12 +439,81 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
     
     def patch(self, request, time_capsoul_id, media_file_id):
         user = self.get_current_user(request)
-        time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id)
-        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user, time_capsoul=time_capsoul_detail.time_capsoul)
-        serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data  = request.data, partial = True, context = {'time_capsoul_detial': time_capsoul_detail})
+        # time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
+        serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True)
         serializer.is_valid(raise_exception=True)
         update_media_file = serializer.save()
         return Response(TimeCapSoulMediaFileReadOnlySerializer(update_media_file).data)
+
+
+class ReplicaTimeCapSoulMediaFileUpdationView(SecuredView):
+
+    
+
+
+    def delete(self, request,  replica_media_file_id):
+        """Delete time-capsoul media file"""
+        user = self.get_current_user(request)
+        replica_media_file = get_object_or_404(TimeCapSoulMediaFileReplica, id=replica_media_file_id)
+
+
+
+        # time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id)
+        # if time_capsoul_detail.is_locked:
+        #     return Response({'message': 'Soory Time capsoul is locked its media files cant be deleted'})
+        # else:
+        #     media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user, time_capsoul=time_capsoul_detail.time_capsoul)
+        #     media_file.delete()
+        #     return Response({'message': 'Time Capsoul media deleted successfully'})
+
+    
+    def patch(self, request, replica_media_file_id):
+        user = self.get_current_user(request)
+        media_file = get_object_or_404(TimeCapSoulMediaFileReplica, id=replica_media_file_id)
+        # create new replica here
+        title = request.data.get('title', media_file.title)
+        set_as_cover = request.data.get('set_as_cover', False)
+        description = request.data.get('description', media_file.description)
+
+
+        if bool(set_as_cover) == True:
+            if media_file.file_type == 'image':
+                # updating time-capsoul replica
+                media_s3_key =  str(media_file.s3_key)
+                file_name = media_s3_key.split('/')[-1]
+                file_bytes,content_type = decrypt_and_get_image(media_s3_key) # image get from s3
+                s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                assets_obj = Assets.objects.create(image = media_file.file, s3_key = s3_key, s3_url = url)
+                # media_file.
+        
+
+        media_replica = TimeCapSoulMediaFileReplica.objects.create(
+        user = user,
+        file = media_file.file,
+        file_type= media_file.file_type,
+        title = title,
+        file_size = media_file.file_size,
+        description = description,
+        s3_url = assets_obj.s3_key,
+        s3_key = assets_obj.s3_url,
+        is_cover_image = True,
+        thumbnail = media_file.thumbnail,
+        parent_media_file = media_file,
+    )
+    # media_replica.save()
+
+        
+        
+
+        # user = self.get_current_user(request)
+        # # time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        # media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
+        # serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True)
+        # serializer.is_valid(raise_exception=True)
+        # update_media_file = serializer.save()
+        # return Response(TimeCapSoulMediaFileReadOnlySerializer(update_media_file).data)
+
 
 
 class TimeCapSoulUnlockView(SecuredView):
@@ -578,27 +755,41 @@ class ServeTimeCapSoulMedia(NewSecuredView):
             raise serializers.ValidationError({'token': 'User access-token invalid or expired'})
         exp = request.GET.get("exp")
         sig = request.GET.get("sig")
+        media_type = request.GET.get('media_type', None)
+        if media_type == 'replica':
+            s3_key  = s3_key[14:]
+
         s3_storage_id = user.s3_storage_id
         s3_key = f'{s3_storage_id}/{s3_key}'
 
         if not exp or not sig:
-            return Http404("Missing signature or expiry")
+            return JsonResponse({}, status=404)
+
 
         if int(exp) < int(time.time()):
-            return Http404("Media file access url link expired")
+            return JsonResponse({},status=404)
+
+
 
         expected_sig = base64.urlsafe_b64encode(
             hmac.new(SECRET, f"{s3_key}:{exp}".encode(), hashlib.sha256).digest()
         ).decode().rstrip("=")
 
         if not hmac.compare_digest(sig, expected_sig):
-            return Http404("Invalid signature")
-
+            return JsonResponse({},status=404)
+            
         # Decrypt actual file bytes
-        file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+        try:
+            if media_type == 'replica':
+                file_bytes, content_type = decrypt_and_replicat_files(str(s3_key))
+            else:
+                file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+        except Exception as e:
+            print(f'Exception while serving media file')
+            return JsonResponse({},status=404)
 
-
-        #  Serve decrypt file via Django
-        response = HttpResponse(file_bytes, content_type=content_type)
-        response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
-        return response
+        else:
+            #  Serve decrypt file via Django
+            response = HttpResponse(file_bytes, content_type=content_type)
+            response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
+            return response

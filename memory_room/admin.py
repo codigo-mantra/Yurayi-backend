@@ -8,12 +8,20 @@ from .models import (
     TimeCapSoulTemplateDefault,
     CustomTimeCapSoulTemplate,
     TimeCapSoul,
+    TimeCapSoulMediaFile,
     TimeCapSoulDetail,
     TimeCapSoulRecipient,
     RecipientsDetail,
     UserMapper,
     TimeCapSoulReplica
 )
+
+
+
+
+@admin.register(TimeCapSoulMediaFile)
+class TimeCapSoulMediaFileAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "time_capsoul",)
 
 
 @admin.register(TimeCapSoulReplica)
