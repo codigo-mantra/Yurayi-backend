@@ -13,7 +13,8 @@ from .models import (
     TimeCapSoulRecipient,
     RecipientsDetail,
     UserMapper,
-    TimeCapSoulReplica
+    TimeCapSoulReplica,
+    TimeCapSoulMediaFileReplica,
 )
 
 
@@ -28,6 +29,11 @@ class TimeCapSoulMediaFileAdmin(admin.ModelAdmin):
 class TimeCapSoulReplicaAdmin(admin.ModelAdmin):
     list_display = ("name", "slug", "created_at", "parent_time_capsoul")
     search_fields = ("name", "slug")
+
+
+@admin.register(TimeCapSoulMediaFileReplica)
+class TimeCapSoulReplicaAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "created_at", "time_capsoul", 'parent_media_file')
 
 
 @admin.register(MemoryRoomTemplateDefault)

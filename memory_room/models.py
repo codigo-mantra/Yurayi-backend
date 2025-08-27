@@ -431,8 +431,8 @@ class TimeCapSoulMediaFileReplica(AbstractMediaFile):
         verbose_name="Reference Replica"
     )
 
-    def __str__(self):
-        return f'{self.time_capsoul.capsoul_template.name}'
+    # def __str__(self):
+    #     return f'{self.time_capsoul.name } | '
 
     class Meta:
         verbose_name = "TimeCapSoul Media File Replica"
