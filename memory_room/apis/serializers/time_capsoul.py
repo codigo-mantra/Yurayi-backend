@@ -664,6 +664,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         thumbnail_obj = None
+        is_cover_image = False
         media_file = instance
         user = instance.user
         time_capsoul  = instance.time_capsoul
@@ -707,11 +708,13 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 
                 if bool(set_as_cover) == True: # set as cover
                     if media_file.file_type == 'image':
+                        from userauth.models import Assets
                         # here uploading plain file  without any encryption to s3 with public access
                         s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
                         assets_obj = Assets.objects.create(image = media_file.file, s3_key = s3_key, s3_url = url)
                         time_capsoul_replica.capsoul_template.cover_image = assets_obj
                         time_capsoul_replica.save()
+                        is_cover_image= True
 
                 if media_file.file_type == 'audio':
                     try:
@@ -747,7 +750,9 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                         title = title,
                         description = description,
                         file_size  = media_file.file_size,
-                        thumbnail = thumbnail_obj
+                        thumbnail = thumbnail_obj,
+                        is_cover_image = is_cover_image
+
                     )
                 except Exception as e:
                     print(f'Exception while creating time-capsoul replica as: {e}')
