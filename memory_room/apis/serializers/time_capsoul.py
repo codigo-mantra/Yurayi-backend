@@ -663,7 +663,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
         fields = ('description', 'title',  'set_as_cover')
 
     def update(self, instance, validated_data):
-
+        thumbnail_obj = None
         media_file = instance
         user = instance.user
         time_capsoul  = instance.time_capsoul
@@ -730,9 +730,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
 
                                 image_file = ContentFile(thumbnail_data, name=f"thumbnail_{media_file.file.name}.jpg")
                                 thumbnail_obj = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
-                            else:
-                                thumbnail_obj = None
-                                # validated_data['thumbnail'] = asset
+                                
                     except Exception as e:
                         print(f'\n Exception while extracting thumbnail: \n{e}')
                 
