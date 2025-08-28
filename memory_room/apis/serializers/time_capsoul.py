@@ -758,6 +758,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
             instance.title = title
             instance.description = description
             if bool(set_as_cover) == True:
+                from userauth.models import Assets
                 media_s3_key =  str(media_file.s3_key)
                 file_name = media_s3_key.split('/')[-1]
                 file_bytes,content_type = decrypt_and_get_image(media_s3_key)
