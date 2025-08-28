@@ -489,6 +489,7 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
         serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True)
         serializer.is_valid(raise_exception=True)
+        # update_media_file = serializer.validated_data.get('instance')
         update_media_file = serializer.save()
         return Response(TimeCapSoulMediaFileReadOnlySerializer(update_media_file).data)
 
@@ -826,15 +827,16 @@ class ServeTimeCapSoulMedia(NewSecuredView):
             
         # Decrypt actual file bytes
         try:
-            if media_type == 'replica':
-                file_bytes, content_type = decrypt_and_replicat_files(str(s3_key))
-            else:
-                file_bytes,content_type = decrypt_and_get_image(str(s3_key))
-        except Exception as e:
-            print(f'Exception while serving media file')
-            return JsonResponse({},status=404)
 
-        else:
+            # if media_type == 'replica':
+            file_bytes, content_type = decrypt_and_replicat_files(str(s3_key))
+            # else:
+        except Exception as e:
+            file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+            print(f'Exception while serving media file')
+            # return JsonResponse({},status=404)
+
+        finally:
             #  Serve decrypt file via Django
             response = HttpResponse(file_bytes, content_type=content_type)
             response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'

@@ -689,48 +689,73 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                                                             capsoul_template=template_replica,
                                                             status = 'created',
                                                             capsoul_replica_refrence = time_capsoul)
+            # here upload file to s3 bucket with kms encryption
+            media_s3_key =  str(media_file.s3_key)
+            file_name = media_s3_key.split('/')[-1]
+            try:
+                file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+            except Exception as e:
+                print(f'Exception while media file decryption as {e}')
             else:
-                # here upload file to s3 bucket with kms encryption
-                media_s3_key =  str(media_file.s3_key)
-                file_name = media_s3_key.split('/')[-1]
-                try:
-                    file_bytes,content_type = decrypt_and_get_image(media_s3_key)
-                except Exception as e:
-                    print(f'Exception while media file decryption as {e}')
-                else:
-                    new_s3_key = f"{user.s3_storage_id}/time-capsoul/{file_name}"
-                    response = encrypt_and_upload_file_no_iv( # upload encrypted file to s3
-                        key=new_s3_key,
-                        plaintext_bytes=file_bytes,
-                        content_type=content_type,
-                        file_category=media_file.file_type   
-                    )
-                    
-                    if bool(set_as_cover) == True: # set as cover
-                        if media_file.file_type == 'image':
-                            # here uploading plain file  without any encryption to s3 with public access
-                            s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
-                            assets_obj = Assets.objects.create(image = media_file.file, s3_key = s3_key, s3_url = url)
-                            time_capsoul_replica.capsoul_template.cover_image = assets_obj
-                            time_capsoul_replica.save()
-                    
-                    # now create get or create media-file replica here
+                new_s3_key = f"{user.s3_storage_id}/time-capsoul/{file_name}"
+                response = encrypt_and_upload_file_no_iv( # upload encrypted file to s3
+                    key=new_s3_key,
+                    plaintext_bytes=file_bytes,
+                    content_type=content_type,
+                    file_category=media_file.file_type   
+                )
+                
+                if bool(set_as_cover) == True: # set as cover
+                    if media_file.file_type == 'image':
+                        # here uploading plain file  without any encryption to s3 with public access
+                        s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                        assets_obj = Assets.objects.create(image = media_file.file, s3_key = s3_key, s3_url = url)
+                        time_capsoul_replica.capsoul_template.cover_image = assets_obj
+                        time_capsoul_replica.save()
+
+                if media_file.file_type == 'audio':
                     try:
-                        media_file_replica = TimeCapSoulMediaFile.objects.get(time_capsoul=time_capsoul_replica, media_refrence_replica = instance)
-                    except TimeCapSoulMediaFile.DoesNotExist:
-                        media_file_replica = TimeCapSoulMediaFile.objects.create(
-                            user = user,
-                            time_capsoul = time_capsoul_replica,
-                            media_refrence_replica = instance,
-                            s3_key = new_s3_key,
-                            file_type = media_file.file_type,
-                            title = title,
-                            description = description,
-                            file_size  = media_file.file_size
-                        )
+                        # Extract thumbnail 
+                        try:
+                            ext = os.path.splitext(file_name)[1]
+                            extractor = MediaThumbnailExtractor(media_file.file, ext)
+                            thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(decrypted_bytes = file_bytes, extension=ext )
+
+                        except Exception as e:
+                            print(f'Exception while media thumbnail extraction: {e}')
+                        else:
+                            if thumbnail_data:
+                                from django.core.files.base import ContentFile
+                                from userauth.models import Assets 
+
+                                image_file = ContentFile(thumbnail_data, name=f"thumbnail_{media_file.file.name}.jpg")
+                                thumbnail_obj = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
+                            else:
+                                thumbnail_obj = None
+                                # validated_data['thumbnail'] = asset
                     except Exception as e:
-                        print(f'Exception while creating time-capsoul replica as: {e}')
-                        pass 
+                        print(f'\n Exception while extracting thumbnail: \n{e}')
+                
+                # now create get or create media-file replica here
+                try:
+                    media_file_replica = TimeCapSoulMediaFile.objects.get(time_capsoul=time_capsoul_replica, media_refrence_replica = instance)
+                except TimeCapSoulMediaFile.DoesNotExist:
+                    media_file_replica = TimeCapSoulMediaFile.objects.create(
+                        user = user,
+                        time_capsoul = time_capsoul_replica,
+                        media_refrence_replica = instance,
+                        s3_key = new_s3_key,
+                        file_type = media_file.file_type,
+                        title = title,
+                        description = description,
+                        file_size  = media_file.file_size,
+                        thumbnail = thumbnail_obj
+                    )
+                except Exception as e:
+                    print(f'Exception while creating time-capsoul replica as: {e}')
+                    pass 
+                # validated_data['instance'] = instance
+                return instance
         else:
             instance.title = title
             instance.description = description
@@ -744,6 +769,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 custom_template.cover_image = assets_obj
                 custom_template.save()
             instance.save()
+            # validated_data['instance'] = instance
         return instance
 
 
