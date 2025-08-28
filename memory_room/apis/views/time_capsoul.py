@@ -16,6 +16,7 @@ import hashlib
 import base64
 import time
 from django.http import HttpResponseForbidden, HttpResponseRedirect,Http404
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView,NewSecuredView
@@ -27,13 +28,13 @@ from memory_room.apis.serializers.memory_room import (
 
 from memory_room.models import (
     TimeCapSoulTemplateDefault, TimeCapSoul, TimeCapSoulDetail, TimeCapSoulMediaFile,RecipientsDetail,
-    TimeCapSoulReplica, TimeCapSoulMediaFileReplica,TimeCapSoulRecipient,FILE_TYPES
+    TimeCapSoulReplica, TimeCapSoulMediaFileReplica,TimeCapSoulRecipient,FILE_TYPES, CustomTimeCapSoulTemplate
     )
 
 from memory_room.apis.serializers.time_capsoul import (
     TimeCapSoulTemplateDefaultReadOnlySerializer, TimeCapSoulCreationSerializer,TimeCapSoulMediaFileReadOnlySerializer,
     TimeCapSoulSerializer, TimeCapSoulUpdationSerializer,TimeCapSoulMediaFileSerializer,TimeCapSoulMediaFilesReadOnlySerailizer, TimeCapsoulMediaFileUpdationSerializer,
-    TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimecapSoulReplicaMediaFileCreation,TimeCapSoulMediaFileReplicaSerializer
+    TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimecapSoulReplicaMediaFileCreation,TimeCapSoulMediaFileReplicaSerializer,TimeCapSoulMediaFileReadOnlySerializer
 )
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files
 
@@ -93,9 +94,21 @@ class CreateTimeCapSoulView(SecuredView):
     def get(self, request, format=None):
         """Time CapSoul list"""
         user = self.get_current_user(request)
-        time_capsoul = TimeCapSoul.objects.filter(user = user)
-        serializer = TimeCapSoulSerializer(time_capsoul, many=True, context={'user': user})
-        return Response(serializer.data)
+        time_capsouls = TimeCapSoul.objects.filter(user=user)
+
+        # Get all replicas in one query (instead of loop)
+        time_capsoul_replicas = TimeCapSoul.objects.filter(
+            user=user,
+            capsoul_replica_refrence__in=time_capsouls
+        )
+        serializer = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user})
+        replica_serializer = TimeCapSoulSerializer(time_capsoul_replicas, many=True, context={'user': user})
+
+        response = {
+            'time_capsoul': serializer.data,
+            'replica_capsoul': replica_serializer.data
+        }
+        return Response(response)
 
         
 class TimeCapSoulUpdationView(SecuredView):
@@ -139,16 +152,51 @@ class TimeCapSoulMediaFilesView(SecuredView):
         """
         user = self.get_current_user(request)
         time_capsoul = self.get_time_capsoul(user, time_capsoul_id)
-        media_files = TimeCapSoulDetail.objects.filter(time_capsoul=time_capsoul).order_by('-created_at')
-        replica_data = {}
-        if media_files.count() > 0:
-            time_capsoul_obj = media_files[0].time_capsoul
-            media_replica = TimeCapSoulMediaFileReplica.objects.filter(time_capsoul__parent_time_capsoul = time_capsoul_obj)
-            replica_data = TimeCapSoulMediaFileReplicaSerializer(media_replica, many=True).data
-        serializer = TimeCapSoulMediaFilesReadOnlySerailizer(media_files, many=True)
+        detail = (
+            TimeCapSoulDetail.objects
+            .filter(time_capsoul=time_capsoul)
+            .order_by('-created_at')
+            .select_related("time_capsoul")       
+            .prefetch_related("media_files")      
+            .first()
+        )
+        try:
+            capsoul = TimeCapSoul.objects.get(capsoul_replica_refrence = detail.time_capsoul)
+        except TimeCapSoul.DoesNotExist:
+            media_files_replicas = []
+        else:
+            media_files_replicas = TimeCapSoulMediaFile.objects.filter(
+            user=user,
+            time_capsoul = capsoul
+        )
+        
+        if not detail:
+            return Response(
+                {"error": "No details found for this TimeCapSoul"},
+                status=404
+            )
+
+        # Serialize detail's media files
+        serializer = TimeCapSoulMediaFilesReadOnlySerailizer(detail)
+
+        # Get replicas 
+        # media_files_replicas = TimeCapSoulMediaFile.objects.filter(
+        #     user=user,
+        #     media_refrence_replica__in=detail.media_files.all()
+        # )
+        # media_files_replicas = TimeCapSoulMediaFile.objects.filter(
+        #     user=user,
+        #     time_capsoul = 
+        # )
+
+        replica_serializer = TimeCapSoulMediaFileReadOnlySerializer(
+            media_files_replicas,
+            many=True
+        )
+
         response = {
-            'media_files': serializer.data,
-            'replica_files': replica_data
+            "media_files": serializer.data,
+            "media_files_replicas": replica_serializer.data,
         }
         return Response(response)
 
@@ -201,25 +249,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                     # Reset file pointer before saving
                     uploaded_file.seek(0)
-
-                    if time_capsoul.status == 'unlocked':
-                        # some other serializer
-                        serializer = TimecapSoulReplicaMediaFileCreation(
-                            data={
-                                'file': uploaded_file,
-                                'iv': file_iv
-                            },
-                            context={'user': user, 'time_capsoul': time_capsoul}
-                        )
-                    else:
-                        # Use same serializer you already have
-                        serializer = TimeCapSoulMediaFileSerializer(
-                            data={
-                                'file': uploaded_file,
-                                'iv': file_iv
-                            },
-                            context={'user': user, 'time_capsoul': time_capsoul}
-                        )
+                    serializer = TimeCapSoulMediaFileSerializer(
+                        data={
+                            'file': uploaded_file,
+                            'iv': file_iv
+                        },
+                        context={'user': user, 'time_capsoul': time_capsoul}
+                    )
                     if serializer.is_valid():
                         media_file = serializer.save()
                         created_objects.append(media_file)
@@ -299,49 +335,59 @@ class SetTimeCapSoulCover(SecuredView):
         user = self.get_current_user(request)
         time_capsoul = get_object_or_404(TimeCapSoul, id=capsoul_id, user=user)
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
+        capsoul_template = time_capsoul.capsoul_template
 
-        title = request.data.get('title', None)
-        summary = request.data.get('summary', None)
-        set_as_cover = request.data.get('set_as_cover', False)
+        title = request.data.get('title', capsoul_template.name)
+        summary = request.data.get('summary', capsoul_template.summary)
+        set_as_cover = request.data.get('set_as_cover', None)
+        cover_image = capsoul_template.cover_image
 
-
-        if time_capsoul.status == 'sealed' :
-            # create or get replica
+        
+        if time_capsoul.status == 'unlocked':
+            # If status == unlocked create replica
             try:
-                time_capsoul_replica = TimeCapSoulReplica.objects.get(parent_time_capsoul = time_capsoul)
-            except TimeCapSoulReplica.DoesNotExist as e:
-                time_capsoul_replica = TimeCapSoulReplica.objects.create(
-                    name =time_capsoul.capsoul_template.name,
-                    slug = time_capsoul.capsoul_template.slug,
-                    summary = time_capsoul.capsoul_template.summary,
-                    status = time_capsoul.status,
-                    cover_image = time_capsoul.capsoul_template.cover_image,
-                    user = user,
-                    parent_time_capsoul = time_capsoul
+                replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul)
+            except TimeCapSoul.DoesNotExist as e:
+                # create custom template for replica
+                template = CustomTimeCapSoulTemplate.objects.create(
+                    name = title,
+                    summary = summary,
+                    cover_image = cover_image,
+                    default_template = time_capsoul.capsoul_template.default_template
                 )
-                if title:
-                    time_capsoul_replica.name = title
-                
-                if summary:
-                    time_capsoul_replica.summary = summary
+                template.slug = generate_unique_slug(replica_instance)
+                replica_instance = TimeCapSoul.objects.create(
+                                                            user = user,
+                                                            capsoul_template=template,
+                                                            status = 'created',
+                                                            capsoul_replica_refrence = time_capsoul
+                                                            )
+            if bool(set_as_cover) == True:
+                if media_file.file_type == 'image':
+                    media_s3_key =  str(media_file.s3_key)
+                    file_name = media_s3_key.split('/')[-1]
+                    file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                    s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                    assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
+                    template.cover_image = assets_obj
+            
+            # now create get or create media-file replica here
+            try:
+                media_file_replica = TimeCapSoulMediaFile.objects.get(time_capsoul=time_capsoul_replica, media_refrence_replica = instance)
+            except TimeCapSoulMediaFile.DoesNotExist:
+                media_file_replica = TimeCapSoulMediaFile.objects.create(
+                    user = user,
+                    time_capsoul = replica_instance,
+                    media_refrence_replica = media_file,
+                    s3_key = media_file.s3_key,
+                    file_size  = media_file.file_size,
+                    file_type = media_file.file_type
 
-                if bool(set_as_cover) == True:
-                    if media_file.file_type == 'image':
-                        media_s3_key =  str(media_file.s3_key)
-                        file_name = media_s3_key.split('/')[-1]
-                        file_bytes,content_type = decrypt_and_get_image(media_s3_key)
-                        s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
-                        assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
-                        custom_template = time_capsoul.capsoul_template
-                        custom_template.cover_image = assets_obj
-                        custom_template.save()
-                        media_file.is_cover_image = True
-                        media_file.save()
-                time_capsoul_replica.save()
+
+                )
             except Exception as e:
-                pass
-            else:
-                pass
+                print(f'Exception while creating time-capsoul replica as: {e}')
+                pass 
         else:
             if not time_capsoul.capsoul_template.default_template:
                 if title:

@@ -322,6 +322,15 @@ class TimeCapSoul(BaseModel):
         verbose_name="CapSoul Template"
     )
     status = models.CharField(choices=STATUS_CHOICES, default='created', max_length=255)
+    capsoul_replica_refrence = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,   
+        null=True,
+        blank=True,
+        related_name="referenced_by",
+        verbose_name="Reference Replica"
+    )
+    
 
 
     class Meta:
@@ -384,6 +393,14 @@ class TimeCapSoulMediaFile(AbstractMediaFile):
         null=True,
         related_name='time_capsoul_media_thumbnails',
         verbose_name="Thumbnail"
+    )
+    media_refrence_replica = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,   
+        null=True,
+        blank=True,
+        related_name="referenced_by_media",
+        verbose_name="Reference Replica"
     )
 
     class Meta:

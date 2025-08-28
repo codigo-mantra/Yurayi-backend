@@ -18,13 +18,14 @@ from django.template.loader import render_to_string
 from django.conf import settings
 
 class MediaThumbnailExtractor:
-    def __init__(self, file, file_ext):
+    def __init__(self, file=None, file_ext=None):
         """
         :param file: Django InMemoryUploadedFile or TemporaryUploadedFile
         :param file_ext: File extension like '.mp3', '.m4a', '.mp4', '.flac'
         """
         self.file = file
         self.extension = file_ext.lower()
+        pass
 
     def extract(self):
         if self.extension in ['.mp3', '.m4a', '.mp4', '.flac']:
@@ -60,6 +61,43 @@ class MediaThumbnailExtractor:
                     return audio['covr'][0]
 
             elif self.extension == ".flac":
+                audio = FLAC(data)
+                if audio.pictures:
+                    return audio.pictures[0].data
+
+        except Exception as e:
+            print(f"❌ Thumbnail extraction failed: {e}")
+        return None
+    
+    def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):
+        if extension  not in ['.mp3', '.m4a', '.mp4', '.flac']:
+            return None
+        try:
+            data = BytesIO(decrypted_bytes)
+            data.seek(0)
+
+            if extension == ".mp3":
+                try:
+                    audio = MP3(data, ID3=ID3)
+                except Exception as e:
+                    print("🔴 MP3 header sync issue, trying raw ID3")
+                    try:
+                        audio = ID3(data)
+                    except Exception as e2:
+                        print(f"❌ Failed to read ID3 tags: {e2}")
+                        return None
+
+                tags = getattr(audio, 'tags', audio)
+                for tag in tags.values():
+                    if isinstance(tag, APIC):
+                        return tag.data
+
+            elif extension in [".m4a", ".mp4"]:
+                audio = MP4(data)
+                if 'covr' in audio:
+                    return audio['covr'][0]
+
+            elif extension == ".flac":
                 audio = FLAC(data)
                 if audio.pictures:
                     return audio.pictures[0].data
