@@ -724,9 +724,9 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                             media_refrence_replica = instance,
                             s3_key = new_s3_key,
                             file_type = media_file.file_type,
-                            file_size  = get_readable_file_size_from_bytes(len(file_bytes))
-
-
+                            title = title,
+                            description = description,
+                            file_size  = media_file.file_size
                         )
                     except Exception as e:
                         print(f'Exception while creating time-capsoul replica as: {e}')
