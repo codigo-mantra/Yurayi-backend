@@ -762,18 +762,21 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 # validated_data['instance'] = instance
                 return instance
         else:
+            
             instance.title = title
             instance.description = description
-            if bool(set_as_cover) == True:
-                from userauth.models import Assets
-                media_s3_key =  str(media_file.s3_key)
-                file_name = media_s3_key.split('/')[-1]
-                file_bytes,content_type = decrypt_and_get_image(media_s3_key)
-                s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
-                assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
-                custom_template = time_capsoul.capsoul_template 
-                custom_template.cover_image = assets_obj
-                custom_template.save()
+            if  time_capsoul.capsoul_template.default_template is None:
+                if bool(set_as_cover) == True:
+                    if media_file.file_type == "image":
+                        from userauth.models import Assets
+                        media_s3_key =  str(media_file.s3_key)
+                        file_name = media_s3_key.split('/')[-1]
+                        file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                        s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                        assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
+                        custom_template = time_capsoul.capsoul_template 
+                        custom_template.cover_image = assets_obj
+                        custom_template.save()
             instance.save()
             # validated_data['instance'] = instance
         return instance
