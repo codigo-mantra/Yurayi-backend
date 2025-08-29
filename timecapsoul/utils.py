@@ -106,7 +106,7 @@ class MediaThumbnailExtractor:
             print(f"❌ Thumbnail extraction failed: {e}")
         return None
 
-def send_html_email(subject, to_email, template_name, context=None, inline_images=None):
+def send_html_email(subject, to_email, template_name, context=None, inline_images=None, email_list = None):
     """
     Send an HTML email using a template and context.
 
@@ -118,8 +118,12 @@ def send_html_email(subject, to_email, template_name, context=None, inline_image
     """
     
     from_email = settings.DEFAULT_FROM_EMAIL
-    if isinstance(to_email, str):
-        to_email = [to_email]
+    if email_list is None:
+        if isinstance(to_email, str):
+            to_email = [to_email]
+    else:
+        to_email = email_list
+        
     if context is None:
         context = {}
 

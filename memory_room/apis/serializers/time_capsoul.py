@@ -12,6 +12,8 @@ from memory_room.models import (
     TimeCapSoulTemplateDefault,CustomTimeCapSoulTemplate,TimeCapSoul,TimeCapSoulRecipient,RecipientsDetail,
     TimeCapSoulMediaFile,TimeCapSoulDetail, TimeCapSoulMediaFileReplica, TimeCapSoulReplica,
     )
+from timecapsoul.utils import send_html_email
+
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,save_and_upload_decrypted_file, encrypt_and_upload_file_no_iv
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
 
@@ -786,7 +788,7 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         unlock_date = attrs.get('unlock_date')
-        instance = self.instance  # This is the current TimeCapSoulDetail object
+        instance = self.instance 
 
         if unlock_date is None:
             raise serializers.ValidationError({
@@ -808,12 +810,39 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         # Locking the TimeCapsoul for the first and only time
-        instance.unlock_date = validated_data['unlock_date']
-        instance.is_locked = True
         time_capsoul = instance.time_capsoul
-        time_capsoul.status = 'sealed'
-        time_capsoul.save()
-        instance.save()
+        if time_capsoul.status == 'created':
+            instance.unlock_date = validated_data['unlock_date']
+            time_capsoul.status = 'sealed'
+            instance.is_locked = True
+            time_capsoul.save()
+            # send email here tagged 
+            time_cap_owner = instance.time_capsoul.user.first_name if instance.time_capsoul.user.first_name else instance.time_capsoul.user.email
+            try:
+                capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =instance.time_capsoul).first()
+                if capsoul_recipients:
+                    all_recipients = capsoul_recipients.recipients.all()
+                    for recipient in all_recipients:
+                        try:
+                            send_html_email(
+                                subject="You’ve received a Time Capsoul sealed with love.",
+                                to_email=[recipient.email,],
+                                template_name="userauth/time_capsoul_tagged.html",
+                                context={
+                                    "user": recipient.name,
+                                    'sender_name': time_cap_owner,
+                                    'unlock_date': str(instance.unlock_date)
+                                },
+                            )
+                        except Exception as e:
+                            print('Exception ')
+                            pass
+                        else:
+                            # print('yes')
+                            pass
+            except Exception as e:
+                pass
+            instance.save()
         return instance
 
 

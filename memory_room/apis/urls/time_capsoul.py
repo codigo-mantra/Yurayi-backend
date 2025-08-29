@@ -20,10 +20,4 @@ urlpatterns = [
     path('media/filter/', TimeCapsoulMediaFileFilterView.as_view(), name='timecapsoul-media-filter'),
     path('filter/', TimeCapsoulFilterView.as_view(), name='timecapsoul-filter'),
     path("api/media/serve/<path:s3_key>", ServeTimeCapSoulMedia.as_view(), name="serve-media"),
-
-
-
-
-
-
 ]

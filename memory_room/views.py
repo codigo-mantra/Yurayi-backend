@@ -1,8 +1,9 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 from allauth.socialaccount.models import SocialAccount
-from memory_room.models import MemoryRoom, MemoryRoomMediaFile
+from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoul, RecipientsDetail, TimeCapSoulDetail
 from memory_room.utils import get_readable_file_size_from_bytes
+from timecapsoul.utils import send_html_email
 
 # from timecapsoul.utils import MediaThumbnailExtractor
 # Create your views here.
@@ -14,15 +15,38 @@ def testing_view(request):
     # return HttpResponse('<h1>All good</h1>')
     email = 'krishnayadav.codigomantra@gmail.com'
     email = 'admin@gmail.com'
-    import uuid
-    from userauth.models import User
+    # import uuid
+    # from userauth.models import User
 
-    objs = []
-    for user in User.objects.filter(s3_storage_id__isnull=True):
-        user.s3_storage_id = uuid.uuid4()
-        objs.append(user)
+    # objs = []
+    # for user in User.objects.filter(s3_storage_id__isnull=True):
+    #     user.s3_storage_id = uuid.uuid4()
+    #     objs.append(user)
 
-    User.objects.bulk_update(objs, ['s3_storage_id'])
+    # User.objects.bulk_update(objs, ['s3_storage_id'])
+    
+    # user = User.objects.get(email = 'krishna123.codigomantra@gmail.com')
+    # time_capsoul =TimeCapSoul.objects.filter(user = user, status = 'sealed').first()
+    # recipients  = RecipientsDetail.objects.filter(time_capsoul = time_capsoul)
+    # all_recipients = recipients[0].recipients.all()
+    # all_recipients = recipients[0].recipients.all()
+    # names = list(all_recipients.values_list('name', flat=True))
+    # emails = list(all_recipients.values_list('email', flat=True))
+
+    
+    
+    # send_html_email(
+    #         subject="Time Capsoul Tagged",
+    #         to_email=['krishnayadav.codigomantra@gmail.com', 'jasvir.codigo@gmail.com', 'Shubhleencodigomantra@gmail.com' ],
+    #         template_name="userauth/time_capsoul_tagged.html",
+    #         context={
+    #             "user": user,
+    #             "reset_url": 'https://app.slack.com/client/T05M10D7PFU/C06EJGP2WDN',
+    #             'sender_name': 'Krishna yadav',
+    #             'unlock_date': '12-10-2025'
+    #         },
+            
+    #     )
 
     try:
         is_testing = True
