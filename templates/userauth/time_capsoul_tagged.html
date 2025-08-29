@@ -1,0 +1,72 @@
+{% extends './base_email.html' %} 
+{% load static %}
+
+{% block main_content %}
+ <!-- Main Content -->
+  <style>
+    .a6S{
+      display: none !important;
+    }
+    .ii a[href] {
+      color: #15c;
+      text-decoration: none;
+      cursor: no-drop;
+
+  }
+</style>
+    <tr>
+      <td style="padding:40px 30px; background: url('https://time-capsoul-files.s3.ap-south-1.amazonaws.com/image/assets/background_image.png') no-repeat; min-height: 559px;margin: 60px 0px;">
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;">
+          <tr>
+            <td>
+              <h2 style="font-family:'Mauline',serif;font-size:30px;font-weight:400;color:#000;margin:0 0 15px;line-height:1.2;">
+                You’ve received a Time Capsoul sealed with love.
+              </h2>
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 30px;">
+                A memory has found its way to you.
+              </p>
+              <a href="https://yurayi.com/dashboard" style="display:inline-block;background:#EB629B;color:#FFF;text-decoration:none;border-radius:100px;padding:14px 40px;font-size:14px;font-weight:600;transition:background-color .3s;">
+                See the Update →
+              </a>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding-top:30px; text-decoration: none;">
+              <p style="font-size:14px;font-weight:600;color:#17252E;margin:0 0 15px; text-decoration: none;" >
+                Dear {{user}},
+              </p>
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 15px;">
+                {{sender_name}} thought of you and chose this moment to share a memory.
+              </p>
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 15px;">
+                Inside this Time Capsoul is something they wanted you to feel, hear, or hold again. Maybe it’s a voice from the past. A letter written just for you. A photo that still says everything.
+              </p>
+              
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 15px;">
+                It was saved with care. Delivered with meaning. And it’s yours to open on {{unlock_date}}. 
+              </p>
+
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 15px;">
+                It’s all yours, open with full heart and get ready to witness something worth remembering.
+              </p>
+
+              
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding-top:20px;">
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0 0 5px;">
+                <b> Thank you,</b>
+              </p>
+              <p style="font-size:14px;font-weight:400;color:#17252E;line-height:140%;margin:0;">
+               <b> The Yurayi Team </b>
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+
+{% endblock main_content %}
