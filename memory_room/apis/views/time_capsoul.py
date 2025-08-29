@@ -157,6 +157,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
         Utility method to get a time-capsoul owned by the user.
         """
         return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+    
+    def get__tagged_time_capsoul(self, time_capsoul_id):
+        """
+        Utility method to get a time-capsoul owned by the user.
+        """
+        return get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+
 
     # def get(self, request, time_capsoul_id):
     #     """
@@ -225,11 +232,11 @@ class TimeCapSoulMediaFilesView(SecuredView):
         except TimeCapSoul.DoesNotExist:
             # time_capsoul = TimeCapSoul.objects.get(id =time_capsoul_id)
             
-            time_capsoul = TimeCapSoul.objects.get(id =time_capsoul_id)
+            time_capsoul = self.get__tagged_time_capsoul(time_capsoul_id)
             if time_capsoul.status == 'unlocked':
                 capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =time_capsoul).first()
                 capsoul_recipients = capsoul_recipients.recipients.all()
-                recipients_data    = list(capsoul_recipients.values('email',))
+                recipients_data = list(capsoul_recipients.values_list('email', flat=True))
 
                 if  user.email not in recipients_data:
                     return Response([])
