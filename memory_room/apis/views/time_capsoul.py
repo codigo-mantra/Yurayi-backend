@@ -95,12 +95,24 @@ class CreateTimeCapSoulView(SecuredView):
         """Time CapSoul list"""
         user = self.get_current_user(request)
         time_capsouls = TimeCapSoul.objects.filter(user=user)
+        try:
+            tagged_time_capsouls = TimeCapSoul.objects.filter(
+                recipient_details__recipients__email=user.email
+            )
+        except TimeCapSoulRecipient.DoesNotExist:
+            tagged_time_capsouls = None
+        # else:
+            # time_capsouls = time_capsouls + tagged_time_capsouls
 
         # Get all replicas in one query (instead of loop)
         time_capsoul_replicas = TimeCapSoul.objects.filter(
             user=user,
             capsoul_replica_refrence__in=time_capsouls
         )
+        if tagged_time_capsouls:
+            time_capsouls = time_capsouls.union(tagged_time_capsouls)
+        
+
         serializer = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user})
         replica_serializer = TimeCapSoulSerializer(time_capsoul_replicas, many=True, context={'user': user})
 

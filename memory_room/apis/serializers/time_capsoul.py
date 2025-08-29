@@ -826,7 +826,7 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                         try:
                             send_html_email(
                                 subject="You’ve received a Time Capsoul sealed with love.",
-                                to_email=[recipient.email,],
+                                to_email=recipient.email,
                                 template_name="userauth/time_capsoul_tagged.html",
                                 context={
                                     "user": recipient.name,
