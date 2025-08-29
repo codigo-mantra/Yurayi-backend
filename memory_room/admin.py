@@ -87,9 +87,15 @@ class CustomTimeCapSoulTemplatesAdmin(admin.ModelAdmin):
 
 @admin.register(TimeCapSoul)
 class TimeCapSoulAdmin(admin.ModelAdmin):
-    list_display = ("user", "capsoul_template", "created_at")
+    list_display = ('get_name', 'status', "user",  "created_at", 'get_unlock_date')
     list_filter = ("capsoul_template",)
     search_fields = ("user__username",)
+    
+    def get_name(self, obj):
+        return obj.capsoul_template.name
+    
+    def get_unlock_date(self, obj):
+        return obj.details.unlock_date if obj.details.unlock_date else 'Not Available'
 
 
 @admin.register(TimeCapSoulDetail)

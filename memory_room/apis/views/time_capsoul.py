@@ -158,12 +158,82 @@ class TimeCapSoulMediaFilesView(SecuredView):
         """
         return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
 
+    # def get(self, request, time_capsoul_id):
+    #     """
+    #     List all media files of a time-capsoul.
+    #     """
+    #     user = self.get_current_user(request)
+    #     time_capsoul = self.get_time_capsoul(user, time_capsoul_id)
+    #     detail = (
+    #         TimeCapSoulDetail.objects
+    #         .filter(time_capsoul=time_capsoul)
+    #         .order_by('-created_at')
+    #         .select_related("time_capsoul")       
+    #         .prefetch_related("media_files")      
+    #         .first()
+    #     )
+    #     try: # getting time-capsoul replica here
+    #         capsoul = TimeCapSoul.objects.get(capsoul_replica_refrence = detail.time_capsoul)
+    #     except TimeCapSoul.DoesNotExist:
+    #         media_files_replicas = []
+    #     else:
+    #         media_files_replicas = TimeCapSoulMediaFile.objects.filter(
+    #         user=user,
+    #         time_capsoul = capsoul
+    #     )
+        
+    #     if not detail:
+    #         return Response(
+    #             {"error": "No details found for this TimeCapSoul"},
+    #             status=404
+    #         )
+
+    #     # Serialize detail's media files
+    #     serializer = TimeCapSoulMediaFilesReadOnlySerailizer(detail)
+
+    #     # Get replicas 
+    #     # media_files_replicas = TimeCapSoulMediaFile.objects.filter(
+    #     #     user=user,
+    #     #     media_refrence_replica__in=detail.media_files.all()
+    #     # )
+    #     # media_files_replicas = TimeCapSoulMediaFile.objects.filter(
+    #     #     user=user,
+    #     #     time_capsoul = 
+    #     # )
+
+    #     replica_serializer = TimeCapSoulMediaFileReadOnlySerializer(
+    #         media_files_replicas,
+    #         many=True
+    #     )
+
+    #     response = {
+    #         "media_files": serializer.data,
+    #         "media_files_replicas": replica_serializer.data,
+    #     }
+    #     return Response(response)
+    
     def get(self, request, time_capsoul_id):
         """
         List all media files of a time-capsoul.
         """
         user = self.get_current_user(request)
-        time_capsoul = self.get_time_capsoul(user, time_capsoul_id)
+        # time_capsoul = self.get_time_capsoul(user, time_capsoul_id)
+        time_capsoul = None
+        
+        try:
+            time_capsoul = TimeCapSoul.objects.get(id =time_capsoul_id, user = user)
+        except TimeCapSoul.DoesNotExist:
+            # time_capsoul = TimeCapSoul.objects.get(id =time_capsoul_id)
+            
+            time_capsoul = TimeCapSoul.objects.get(id =time_capsoul_id)
+            if time_capsoul.status == 'unlocked':
+                capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =time_capsoul).first()
+                capsoul_recipients = capsoul_recipients.recipients.all()
+                recipients_data    = list(capsoul_recipients.values('email',))
+
+                if  user.email not in recipients_data:
+                    return Response([])
+                
         detail = (
             TimeCapSoulDetail.objects
             .filter(time_capsoul=time_capsoul)
@@ -171,15 +241,6 @@ class TimeCapSoulMediaFilesView(SecuredView):
             .select_related("time_capsoul")       
             .prefetch_related("media_files")      
             .first()
-        )
-        try:
-            capsoul = TimeCapSoul.objects.get(capsoul_replica_refrence = detail.time_capsoul)
-        except TimeCapSoul.DoesNotExist:
-            media_files_replicas = []
-        else:
-            media_files_replicas = TimeCapSoulMediaFile.objects.filter(
-            user=user,
-            time_capsoul = capsoul
         )
         
         if not detail:
@@ -190,25 +251,9 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
         # Serialize detail's media files
         serializer = TimeCapSoulMediaFilesReadOnlySerailizer(detail)
-
-        # Get replicas 
-        # media_files_replicas = TimeCapSoulMediaFile.objects.filter(
-        #     user=user,
-        #     media_refrence_replica__in=detail.media_files.all()
-        # )
-        # media_files_replicas = TimeCapSoulMediaFile.objects.filter(
-        #     user=user,
-        #     time_capsoul = 
-        # )
-
-        replica_serializer = TimeCapSoulMediaFileReadOnlySerializer(
-            media_files_replicas,
-            many=True
-        )
-
         response = {
             "media_files": serializer.data,
-            "media_files_replicas": replica_serializer.data,
+            # "media_files_replicas": replica_serializer.data,
         }
         return Response(response)
 
