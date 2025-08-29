@@ -127,7 +127,7 @@ class TimeCapSoulUpdationView(SecuredView):
 
     def patch(self, request, time_capsoul_id):
         user = self.get_current_user(request)
-        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        time_capsoul = get_object_or_404(id=time_capsoul_id, user = user)
         serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True)
         if serializer.is_valid():
             update_time_capsoul = serializer.save()
@@ -136,7 +136,7 @@ class TimeCapSoulUpdationView(SecuredView):
     
     def delete(self, request, time_capsoul_id):
         user = self.get_current_user(request)
-        time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id)
+        time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id, time_capsoul__user = user)
 
         if time_capsoul_detail.is_locked:
             return Response({'message': 'Soory Time capsoul is locked it cant be deleted'})
@@ -271,7 +271,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         Each file has its own IV for decryption.
         """
         user = self.get_current_user(request)
-        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
 
         files = request.FILES.getlist('file')
         created_objects = []
