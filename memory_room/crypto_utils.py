@@ -357,3 +357,13 @@ def decrypt_and_replicat_files(key: str):
     plaintext = aesgcm.decrypt(nonce, ciphertext, None)
 
     return plaintext, orig_content_type
+
+
+def generate_signature(s3_key: str, exp: str) -> str:
+    raw = f"{s3_key}:{exp}"
+    sig_bytes = hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(sig_bytes).decode().rstrip("=")
+
+def verify_signature(s3_key: str, exp: str, sig: str) -> bool:
+    expected = generate_signature(s3_key, exp)
+    return hmac.compare_digest(sig, expected)
