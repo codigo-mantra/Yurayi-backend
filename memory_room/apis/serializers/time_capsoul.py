@@ -222,8 +222,9 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
 
     def get_is_owner(self, obj):
         user = self.context.get('user', None)  
-        if user and hasattr(obj, "user"):
-            return obj.user == user
+        if user:
+            if obj.user == user:
+                return True
         return False
 
     def get_total_files(self, obj):
