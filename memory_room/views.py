@@ -87,5 +87,12 @@ def testing_view(request):
     except:
         print('Not deleted')
     else:
-         print('Yes deleted')
-    return render(request, 'userauth/new_letter_subscription.html')
+        # capsoul = TimeCapSoulDetail.objects.get(id=25)
+        print('Yes deleted')
+    # return render(request, 'userauth/time_capsoul_tagged.html', context={
+    #     'user': "Krishna yadav",
+    #     'sender_name': "Karan",
+    #     'unlock_date': capsoul.unlock_date
+        
+    # })
+    return render(request, 'userauth/time_capsoul_tagged.html')

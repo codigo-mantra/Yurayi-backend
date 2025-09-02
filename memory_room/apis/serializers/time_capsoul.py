@@ -317,7 +317,7 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
             except TimeCapSoul.DoesNotExist as e:
                 # create custom template for replica
                 template = CustomTimeCapSoulTemplate.objects.create(
-                    name = name,
+                    name = name + '(1)',
                     summary = summary,
                     cover_image = cover_image,
                     default_template = time_capsoul.capsoul_template.default_template
@@ -678,7 +678,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 # create custom template for replica
                 template = time_capsoul.capsoul_template
                 template_replica = CustomTimeCapSoulTemplate.objects.create(
-                    name = template.name,
+                    name = template.name + '(1)',
                     summary = template.summary,
                     cover_image = template.cover_image,
                     default_template = time_capsoul.capsoul_template.default_template
@@ -702,7 +702,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     media_refrence_replica = instance,
                     s3_key = media_file.s3_key,
                     file_type = media_file.file_type,
-                    title = title,
+                    title = title + '(1)',
                     description = description,
                     file_size  = media_file.file_size,
                     thumbnail = media_file.thumbnail,

@@ -100,7 +100,7 @@ class TimeCapSoulAdmin(admin.ModelAdmin):
 
 @admin.register(TimeCapSoulDetail)
 class TimeCapSoulDetailAdmin(admin.ModelAdmin):
-    list_display = ("time_capsoul", "unlock_date", "created_at")
+    list_display = ('id', "time_capsoul", "unlock_date", "created_at")
     filter_horizontal = ("media_files",)
 
 

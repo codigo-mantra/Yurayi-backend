@@ -176,32 +176,28 @@ class TimeCapSoulMediaFilesView(SecuredView):
         except TimeCapSoul.DoesNotExist:
             time_capsoul = self.get__tagged_time_capsoul(time_capsoul_id)
             if time_capsoul.status != 'unlocked':
-                return Response({'media_files': {'media_files': []}}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response({'media_files': {'media_files': []}}, status=status.HTTP_404_NOT_FOUND)
             
             capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =time_capsoul).first()
             capsoul_recipients = capsoul_recipients.recipients.all()
             recipients_data = list(capsoul_recipients.values_list('email', flat=True))
 
             if  user.email not in recipients_data:
-                return Response({'media_files': {'media_files': []}}, status=status.HTTP_401_UNAUTHORIZED)
-                
-        detail = (
-            TimeCapSoulDetail.objects
-            .filter(time_capsoul=time_capsoul)
-            .order_by('-created_at')
-            .select_related("time_capsoul")       
-            .prefetch_related("media_files")      
-            .first()
-        )
-        
-        if not detail:
-                return Response({'media_files': {'media_files': []}}, status=status.HTTP_401_UNAUTHORIZED)
+                return Response({'media_files': {'media_files': []}}, status=status.HTTP_404_NOT_FOUND)
+       
+        media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul,is_delete = False)
+        parent_media_files = []
+        if time_capsoul.capsoul_replica_refrence: # get media-replica files
+            existing_ids = media_files.values_list("id", flat=True)
+            parent_media_files = TimeCapSoulMediaFile.objects.filter(
+                time_capsoul=time_capsoul.capsoul_replica_refrence
+            ).exclude(id__in=existing_ids)
+        combined_files = (media_files | parent_media_files).distinct()
 
         # Serialize detail's media files
-        serializer = TimeCapSoulMediaFilesReadOnlySerailizer(detail)
+        serializer = TimeCapSoulMediaFileReadOnlySerializer(combined_files, many=True)
         response = {
             "media_files": serializer.data,
-            # "media_files_replicas": replica_serializer.data,
         }
         return Response(response)
 
