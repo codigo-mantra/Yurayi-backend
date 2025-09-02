@@ -87,7 +87,7 @@ class CustomTimeCapSoulTemplatesAdmin(admin.ModelAdmin):
 
 @admin.register(TimeCapSoul)
 class TimeCapSoulAdmin(admin.ModelAdmin):
-    list_display = ('get_name', 'status', "user",  "created_at", 'get_unlock_date')
+    list_display = ('id', 'get_name', 'status', "user",  "created_at", 'get_unlock_date')
     list_filter = ("capsoul_template",)
     search_fields = ("user__username",)
     

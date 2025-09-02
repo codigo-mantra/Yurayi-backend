@@ -694,8 +694,29 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
             try:
                 media_file_replica = TimeCapSoulMediaFile.objects.get(time_capsoul=time_capsoul_replica, media_refrence_replica = instance)
             except TimeCapSoulMediaFile.DoesNotExist:
+                is_cover_image = False
                 title = validated_data.get('title', instance.title)
                 description = validated_data.get('description', instance.description)
+                
+                if  bool(set_as_cover) == True and  media_file.is_cover_image == False and media_file.file_type == "image":
+                    if time_capsoul_replica.capsoul_template.default_template is None:
+                        from userauth.models import Assets
+                        # here upload file to s3 bucket with kms encryption
+                        media_s3_key =  str(media_file.s3_key)
+                        file_name = media_s3_key.split('/')[-1]
+                        try:
+                            file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                        except Exception as e:
+                            print(f'Exception while media file decryption as {e}')
+                        else:
+                            # here uploading plain file  without any encryption to s3 with public access
+                            s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                            assets_obj = Assets.objects.create(image = media_file.file, s3_key = s3_key, s3_url = url)
+                            template = time_capsoul_replica.capsoul_template
+                            template.cover_image = assets_obj
+                            template.save() # save template
+                            is_cover_image =True
+                                    
                 media_file_replica = TimeCapSoulMediaFile.objects.create(
                     user = user,
                     time_capsoul = time_capsoul_replica,
@@ -706,13 +727,13 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     description = description,
                     file_size  = media_file.file_size,
                     thumbnail = media_file.thumbnail,
-                    is_cover_image = media_file.is_cover_image
+                    is_cover_image = is_cover_image
                 )
             except Exception as e:
                 print(f'Exception while creating time-capsoul replica as: {e}')
                 pass 
             
-            finally:
+            else:
                 if  bool(set_as_cover) == True and  media_file_replica.is_cover_image == False and media_file_replica.file_type == "image":
                     if time_capsoul_replica.capsoul_template.default_template is None:
                                 from userauth.models import Assets
