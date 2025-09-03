@@ -11,6 +11,13 @@ EMAIL_REGEX = r"[^@]+@[^@]+\.[^@]+"
 
 import re
 
+class LoginSerializer(serializers.Serializer):
+    identifier = serializers.CharField()
+    password = serializers.CharField(write_only=True)
+    device_name = serializers.CharField(required=False, allow_blank=True)
+
+
+
 class ContactUsSerializer(serializers.ModelSerializer):
     class Meta:
         model = ContactUs

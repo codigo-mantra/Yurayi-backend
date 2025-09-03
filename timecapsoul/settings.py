@@ -193,7 +193,7 @@ else:
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-CORS_ALLOWED_ORIGINS = ["http://localhost:3000", 'https://yurayi.com']
+# CORS_ALLOWED_ORIGINS = ["http://localhost:3000", 'https://yurayi.com']
 
 CORS_ALLOW_ALL_ORIGINS = True
 
@@ -205,6 +205,8 @@ REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'dj_rest_auth.jwt_auth.JWTCookieAuthentication',
         'rest_framework_simplejwt.authentication.JWTAuthentication',
+        "userauth.authentication.BearerJWTAuthentication",  # Our custom class
+
     ),
     'DEFAULT_RENDERER_CLASSES': (
         'rest_framework.renderers.JSONRenderer',
@@ -294,3 +296,75 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 1024 * 1024 * 1024  # 1 GB
 PASSWORD_RESET_TIMEOUT = 3600  # 1 hour
 
 SITE_LIVE_URL = env('SITE_LIVE_URL')
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
+SESSION_COOKIE_SAMESITE = 'Lax'  # or 'None' for cross-origin
+SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+CSRF_COOKIE_SAMESITE = 'Lax'   # or 'None' for cross-origin
+CSRF_COOKIE_SECURE = False 
+
+SIMPLE_JWT = {
+    "AUTH_COOKIE": "access",   # Cookie name
+    "AUTH_COOKIE_SECURE": False,  # True in prod with HTTPS
+    "AUTH_COOKIE_HTTP_ONLY": True,
+    "AUTH_COOKIE_SAMESITE": "Lax",
+}
+ACCESS_TOKEN_TTL_MINUTES = 15
+REFRESH_TOKEN_TTL_DAYS = 30
+JWT_SECRET = SECRET_KEY
+JWT_ALGORITHM = "HS256"
+JWT_ISSUER = "secure_auth"
+
+COOKIE_DOMAIN = None  # set to your domain in prod
+REFRESH_COOKIE_NAME = "refresh_token"
+REFRESH_COOKIE_SAMESITE = "Strict"
+REFRESH_COOKIE_SECURE = not DEBUG
+REFRESH_COOKIE_HTTPONLY = True
+REFRESH_COOKIE_PATH = "/"
+
+
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "my_cache_table",
+    }
+}
+
+# Access token cookie
+ACCESS_COOKIE_NAME = "access_token"
+ACCESS_COOKIE_SECURE = True          # True in production (HTTPS), False for local dev
+ACCESS_COOKIE_HTTPONLY = True        # Prevent JS access (XSS protection)
+ACCESS_COOKIE_SAMESITE = "None"      # "Strict" | "Lax" | "None"
+ACCESS_COOKIE_PATH = "/"
+ACCESS_TOKEN_LIFETIME = 60 * 15      # 15 minutes (example)
+
+# Refresh token cookie
+REFRESH_COOKIE_NAME = "refresh_token"
+REFRESH_COOKIE_SECURE = True
+REFRESH_COOKIE_HTTPONLY = True
+REFRESH_COOKIE_SAMESITE = "None"
+REFRESH_COOKIE_PATH = "/auth/refresh/"
+REFRESH_TTL_DAYS = 7
+
+
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://yurayi.com",
+]
+CSRF_TRUSTED_ORIGINS = [
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "https://yurayi.com"
+]

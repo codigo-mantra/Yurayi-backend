@@ -181,3 +181,42 @@ class UserAddress(BaseModel):
 
     def __str__(self):
         return f"{self.user.username} - {self.address_line_1}"
+
+
+import uuid
+
+class Session(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="sessions")
+    name = models.CharField(max_length=255, blank=True, null=True)
+    user_agent = models.TextField(blank=True, null=True)
+    ip_address = models.GenericIPAddressField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    last_used_at = models.DateTimeField(default=timezone.now)
+    revoked = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"{self.user.username} — {self.name or 'device'} — {self.id}"
+
+
+class RefreshToken(models.Model):
+    token = models.CharField(max_length=255, unique=True)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    session = models.ForeignKey(Session, on_delete=models.CASCADE, related_name="refresh_tokens")
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
+    revoked = models.BooleanField(default=False)
+    last_used_at = models.DateTimeField(blank=True, null=True)
+    replaced_by = models.OneToOneField("self", null=True, blank=True, on_delete=models.SET_NULL, related_name="replaces")
+
+    def __str__(self):
+        return f"Refresh({self.user_id}, revoked={self.revoked})"
+
+
+class RevokedToken(models.Model):
+    """Stores revoked Access JWT JTIs until original expiry."""
+    jti = models.CharField(max_length=255, unique=True)
+    expires_at = models.DateTimeField()
+
+    def __str__(self):
+        return f"Revoked({self.jti})"
