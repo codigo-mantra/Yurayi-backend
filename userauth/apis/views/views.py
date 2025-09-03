@@ -214,7 +214,7 @@ def _gen_refresh_value():
     return secrets.token_urlsafe(48)
 
 
-class AuthenticatedAPIView(APIView):
+class SecuredView(APIView):
     """
     Base API view that authenticates users via access token in cookies.
     Provides `self.current_user`, `self.session`, and `self.token_payload`.
@@ -273,7 +273,17 @@ class AuthenticatedAPIView(APIView):
         self.current_user = get_object_or_404(User, id=user_id)
         self.token_payload = payload
         
-
+    def get_current_user(self, request):
+        try:
+            if self.current_user is None:
+                raise NotAuthenticated()
+            else:
+                return self.current_user
+        except Exception as e:
+            print(f'Exception while getting user as: {e} ')
+            pass
+                
+            
     def unauthorized(self, message):
         raise NotAuthenticated()
         # return Response({"detail": message}, status=status.HTTP_401_UNAUTHORIZED)
@@ -445,16 +455,16 @@ class CustomPasswordChangeView(PasswordChangeView):
 
 
 # Base class for authenticated users      
-class SecuredView(APIView):
-    authentication_classes   = [JWTAuthentication] # authentication classes
-    permission_classes       = [IsAuthenticated]   # permission classes
+# class SecuredView(APIView):
+#     authentication_classes   = [JWTAuthentication] # authentication classes
+#     permission_classes       = [IsAuthenticated]   # permission classes
     
-    # get the current user from user token
-    def get_current_user(self, request):
-        """get current user from token"""
-        token = request.headers['Authorization'][7:]
-        user  = jwtTokens.get_user_from_token(token=token)
-        return user
+#     # get the current user from user token
+#     def get_current_user(self, request):
+#         """get current user from token"""
+#         token = request.headers['Authorization'][7:]
+#         user  = jwtTokens.get_user_from_token(token=token)
+#         return user
 
 class NewSecuredView(APIView):
 
@@ -514,7 +524,7 @@ class NewSecuredView(APIView):
         # Proceed with authorized logic
         return Response({'message': f'Hello {user.username}'})
 
-class DashboardAPIView(AuthenticatedAPIView):
+class DashboardAPIView(SecuredView):
 
     def get(self, request, format=None):
         user   = self.current_user
@@ -613,7 +623,7 @@ class NewsletterSubscribeAPIView(APIView):
         }, status=status.HTTP_200_OK)
 from rest_framework.parsers import MultiPartParser, FormParser
 
-class UserProfileUpdateView(AuthenticatedAPIView):
+class UserProfileUpdateView(SecuredView):
     """
     Handles retrieving and updating the authenticated user's profile.
     Includes nested updates to UserProfile and UserAddress.
@@ -645,7 +655,7 @@ class UserProfileUpdateView(AuthenticatedAPIView):
 
 
 
-class UserAddressListCreateView(AuthenticatedAPIView):
+class UserAddressListCreateView(SecuredView):
     def get(self, request):
         user = self.current_user
         if user is None:
@@ -665,7 +675,7 @@ class UserAddressListCreateView(AuthenticatedAPIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class UserAddressDetailView(AuthenticatedAPIView):
+class UserAddressDetailView(SecuredView):
     def get_object(self, pk, user):
         try:
             return UserAddress.objects.get(pk=pk, user=user)
