@@ -6,17 +6,46 @@ from memory_room.utils import get_readable_file_size_from_bytes
 from timecapsoul.utils import send_html_email
 
 # from timecapsoul.utils import MediaThumbnailExtractor
-# Create your views here.
+# # Create your views here.
+
+# time_cap_owner = instance.time_capsoul.user.first_name if instance.time_capsoul.user.first_name else instance.time_capsoul.user.email
+# try:
+#     capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =instance.time_capsoul).first()
+#     if capsoul_recipients:
+#         all_recipients = capsoul_recipients.recipients.all()
+#         for recipient in all_recipients:
+#             try:
+#                 send_html_email(
+#                     subject="You’ve received a Time Capsoul sealed with love.",
+#                     to_email=recipient.email,
+#                     template_name="userauth/time_capsoul_tagged.html",
+#                     context={
+#                         "user": recipient.name,
+#                         'sender_name': time_cap_owner,
+#                         'unlock_date': str(instance.unlock_date)
+#                     },
+#                 )
+#             except Exception as e:
+#                 print('Exception ')
+#                 pass
+#             else:
+#                 # print('yes')
+#                 pass
+# except Exception as e:
+#     pass
 
 from userauth.models import User
 
 def testing_view(request):
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
-    email = 'krishnayadav.codigomantra@gmail.com'
-    email = 'admin@gmail.com'
+    # email = 'krishnayadav.codigomantra@gmail.com'
+    email = 'krishnayadavpb07@gmail.com'
+    
+    # email = 'admin@gmail.com'
     # import uuid
-    # from userauth.models import User
+    from userauth.models import User
+    user = User.objects.get(email = email)
 
     # objs = []
     # for user in User.objects.filter(s3_storage_id__isnull=True):
@@ -26,12 +55,41 @@ def testing_view(request):
     # User.objects.bulk_update(objs, ['s3_storage_id'])
     
     # user = User.objects.get(email = 'krishna123.codigomantra@gmail.com')
-    # time_capsoul =TimeCapSoul.objects.filter(user = user, status = 'sealed').first()
-    # recipients  = RecipientsDetail.objects.filter(time_capsoul = time_capsoul)
-    # all_recipients = recipients[0].recipients.all()
-    # all_recipients = recipients[0].recipients.all()
-    # names = list(all_recipients.values_list('name', flat=True))
-    # emails = list(all_recipients.values_list('email', flat=True))
+    time_capsoul =TimeCapSoul.objects.filter(user = user, status = 'sealed').first()
+    if time_capsoul:
+        time_cap_owner = time_capsoul.user.first_name if time_capsoul.user.first_name else time_capsoul.user.email
+        
+        recipients  = RecipientsDetail.objects.filter(time_capsoul = time_capsoul).first()
+        if recipients:
+            all_recipients = recipients.recipients.all()
+            tagged_recients = (all_recipients.values_list('name', 'email'))
+            
+            # for person in tagged_recients:
+            #     print(f'\nname: {person[0]} email: {person[-1]} ')
+            
+            for recipient in tagged_recients:
+                person_name = recipient[0]
+                # person_email = recipient[-1]
+                person_email = email
+                
+
+                try:
+                    send_html_email(
+                        subject="You’ve received a Time Capsoul sealed with love.",
+                        to_email=person_email,
+                        template_name="userauth/time_capsoul_tagged.html",
+                        context={
+                            "user": person_name,
+                            'sender_name': time_cap_owner,
+                            'unlock_date': time_capsoul.details.unlock_date
+                        },
+                    )
+                    print(f'\n Yes email sent here name: {person_name} email: {person_email} ')
+
+                except Exception as e:
+                    print('Exception ')
+                    pass
+                  
 
     
     

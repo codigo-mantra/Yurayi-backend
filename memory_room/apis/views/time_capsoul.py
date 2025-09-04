@@ -39,12 +39,12 @@ from memory_room.apis.serializers.time_capsoul import (
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature
 
 
-class TimeCapSoulCoverView(generics.ListAPIView):
+class TimeCapSoulCoverView(SecuredView):
     """
     API endpoint to list all assets of type 'Time CapSoul Cover'.
     Only authenticated users can access this.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    # permission_classes = [permissions.IsAuthenticated]
     serializer_class = AssetSerializer
 
     def get_queryset(self):

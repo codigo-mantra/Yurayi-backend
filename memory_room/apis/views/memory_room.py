@@ -43,12 +43,12 @@ from memory_room.utils import determine_download_chunk_size
 
 from memory_room.crypto_utils import generate_signed_path
 
-class MemoryRoomCoverView(generics.ListAPIView):
+class MemoryRoomCoverView(SecuredView):
     """
     API endpoint to list all assets of type 'Memory Room Cover'.
     Only authenticated users can access this.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    # permission_classes = [permissions.IsAuthenticated]
     serializer_class = AssetSerializer
 
     def get_queryset(self):
@@ -58,11 +58,11 @@ class MemoryRoomCoverView(generics.ListAPIView):
         return Assets.objects.filter(asset_types='Memory Room Cover').order_by('-created_at')
 
 
-class UserMemoryRoomListView(generics.ListAPIView):
+class UserMemoryRoomListView(SecuredView):
     """
     API endpoint to list all non-deleted memory rooms of the current user.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    # permission_classes = [permissions.IsAuthenticated]
     serializer_class = MemoryRoomSerializer
 
     def get_queryset(self):
@@ -72,11 +72,11 @@ class UserMemoryRoomListView(generics.ListAPIView):
         return MemoryRoom.objects.filter(user=self.request.user, is_deleted=False).order_by('-created_at')
 
 
-class MemoryRoomTemplateDefaultViewSet(generics.ListAPIView):
+class MemoryRoomTemplateDefaultViewSet(SecuredView):
     """
     API endpoint to list all default memory room templates.
     """
-    permission_classes = [permissions.IsAuthenticated]
+    # permission_classes = [permissions.IsAuthenticated]
     serializer_class = MemoryRoomTemplateDefaultSerializer
 
     def get_queryset(self):

@@ -831,16 +831,21 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                 capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =instance.time_capsoul).first()
                 if capsoul_recipients:
                     all_recipients = capsoul_recipients.recipients.all()
-                    for recipient in all_recipients:
+                    tagged_recients = (all_recipients.values_list('name', 'email'))
+                    
+                    for recipient in tagged_recients:
+                        person_name = recipient[0]
+                        person_email = recipient[-1]
+
                         try:
                             send_html_email(
                                 subject="You’ve received a Time Capsoul sealed with love.",
-                                to_email=recipient.email,
+                                to_email=person_email,
                                 template_name="userauth/time_capsoul_tagged.html",
                                 context={
-                                    "user": recipient.name,
+                                    "user": person_name,
                                     'sender_name': time_cap_owner,
-                                    'unlock_date': str(instance.unlock_date)
+                                    'unlock_date': instance.unlock_date
                                 },
                             )
                         except Exception as e:
