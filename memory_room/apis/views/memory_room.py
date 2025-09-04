@@ -48,28 +48,28 @@ class MemoryRoomCoverView(SecuredView):
     API endpoint to list all assets of type 'Memory Room Cover'.
     Only authenticated users can access this.
     """
-    # permission_classes = [permissions.IsAuthenticated]
-    serializer_class = AssetSerializer
 
-    def get_queryset(self):
+    def get(self):
         """
         Returns all memory room cover assets ordered by creation date.
         """
-        return Assets.objects.filter(asset_types='Memory Room Cover').order_by('-created_at')
+        assets = Assets.objects.filter(asset_types='Memory Room Cover').order_by('-created_at')
+        serializer = AssetSerializer(assets, many=True)
+        return Response(serializer.data)
 
 
 class UserMemoryRoomListView(SecuredView):
     """
     API endpoint to list all non-deleted memory rooms of the current user.
     """
-    # permission_classes = [permissions.IsAuthenticated]
-    serializer_class = MemoryRoomSerializer
 
-    def get_queryset(self):
+    def get(self):
         """
         Returns all memory rooms for the current user that are not deleted.
         """
-        return MemoryRoom.objects.filter(user=self.request.user, is_deleted=False).order_by('-created_at')
+        rooms = MemoryRoom.objects.filter(user=self.request.user, is_deleted=False).order_by('-created_at')
+        serializer = MemoryRoomSerializer(rooms, many=True)
+        return Response(serializer.data)
 
 
 class MemoryRoomTemplateDefaultViewSet(SecuredView):
@@ -79,11 +79,13 @@ class MemoryRoomTemplateDefaultViewSet(SecuredView):
     # permission_classes = [permissions.IsAuthenticated]
     serializer_class = MemoryRoomTemplateDefaultSerializer
 
-    def get_queryset(self):
+    def get(self):
         """
         Returns all non-deleted default memory room templates ordered by creation.
         """
-        return MemoryRoomTemplateDefault.objects.filter(is_deleted=False).order_by('-created_at')
+        rooms = MemoryRoomTemplateDefault.objects.filter(is_deleted=False).order_by('-created_at')
+        serializer = MemoryRoomTemplateDefaultSerializer(rooms, many=True)
+        return Response(serializer.data)
 
 
 class CreateMemoryRoomView(SecuredView):

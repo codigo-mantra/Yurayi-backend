@@ -44,14 +44,16 @@ class TimeCapSoulCoverView(SecuredView):
     API endpoint to list all assets of type 'Time CapSoul Cover'.
     Only authenticated users can access this.
     """
-    # permission_classes = [permissions.IsAuthenticated]
-    serializer_class = AssetSerializer
 
-    def get_queryset(self):
+    def get(self):
         """
         Returns all Time CapSoul Cover assets ordered by creation date.
         """
-        return Assets.objects.filter(asset_types='Time CapSoul Cover').order_by('-created_at')
+        assets = Assets.objects.filter(asset_types='Time CapSoul Cover').order_by('-created_at')
+        serializer = AssetSerializer(assets, many=True)
+        return Response(serializer.data)
+
+    
 
 
 class TimeCapSoulDefaultTemplateAPI(SecuredView):
