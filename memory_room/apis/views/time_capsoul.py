@@ -713,7 +713,7 @@ class TimeCapsoulFilterView(SecuredView):
 
 SECRET = settings.SECRET_KEY.encode()
 
-class ServeTimeCapSoulMedia(NewSecuredView):
+class ServeTimeCapSoulMedia(SecuredView):
     """
     Securely serve decrypted media from S3 via Django.
     """
@@ -772,7 +772,7 @@ class ServeTimeCapSoulMedia(NewSecuredView):
 
 
 
-class TimeCapSoulMediaFileDownloadView(NewSecuredView):
+class TimeCapSoulMediaFileDownloadView(SecuredView):
     def get(self, request, timecapsoul_id, media_file_id):
         """
         Download a media file from a TimeCapSoul securely.
@@ -806,7 +806,6 @@ class TimeCapSoulMediaFileDownloadView(NewSecuredView):
             file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
         except Exception as e:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
-                    
         try:
             file_size = len(file_bytes)
             chunk_size = determine_download_chunk_size(file_size)

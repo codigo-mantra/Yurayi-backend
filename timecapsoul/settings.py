@@ -346,8 +346,9 @@ ACCESS_COOKIE_SECURE = True          # True in production (HTTPS), False for loc
 ACCESS_COOKIE_HTTPONLY = True        # Prevent JS access (XSS protection)
 ACCESS_COOKIE_SAMESITE = "None"      # "Strict" | "Lax" | "None"
 ACCESS_COOKIE_PATH = "/"
-ACCESS_TOKEN_LIFETIME = 60 * 15      # 15 minutes (example)
 
+# ACCESS_TOKEN_LIFETIME = 60 * 15      # 15 minutes (example)
+ACCESS_TOKEN_LIFETIME = 60 * 60 * 24 * 7  # 7 days
 # Refresh token cookie
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_SECURE = True

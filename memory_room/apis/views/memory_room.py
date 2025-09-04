@@ -388,7 +388,7 @@ class UpdateMediaFileDescriptionView(SecuredView):
             return Response({'message': 'Description updated successfully.', 'data': MemoryRoomMediaFileReadOnlySerializer(updated_data).data})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class MediaFileDownloadView(NewSecuredView):
+class MediaFileDownloadView(SecuredView):
     def get(self, request, memory_room_id, media_file_id):
         """
         Securely stream a media file from S3 using optimized chunk size based on file size.
@@ -536,7 +536,7 @@ from django.views import View
 SECRET = settings.SECRET_KEY.encode()
 
 
-class ServeMedia(NewSecuredView):
+class ServeMedia(SecuredView):
     """
     Securely serve decrypted media from S3 via Django.
     """
