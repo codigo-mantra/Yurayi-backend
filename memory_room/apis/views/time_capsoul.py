@@ -44,8 +44,7 @@ class TimeCapSoulCoverView(SecuredView):
     API endpoint to list all assets of type 'Time CapSoul Cover'.
     Only authenticated users can access this.
     """
-
-    def get(self):
+    def get(self,request):
         """
         Returns all Time CapSoul Cover assets ordered by creation date.
         """
@@ -53,18 +52,11 @@ class TimeCapSoulCoverView(SecuredView):
         serializer = AssetSerializer(assets, many=True)
         return Response(serializer.data)
 
-    
-
-
 class TimeCapSoulDefaultTemplateAPI(SecuredView):
-
-    
-
     def get(self, request, format=None):
         default_templates = TimeCapSoulTemplateDefault.objects.filter(is_deleted = False)
         serializer = TimeCapSoulTemplateDefaultReadOnlySerializer(default_templates, many=True)
         return Response(serializer.data)
-        
 
 class CreateTimeCapSoulView(SecuredView):
     """
@@ -76,7 +68,6 @@ class CreateTimeCapSoulView(SecuredView):
         Utility method to get a time capsoul owned by the user.
         """
         return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
-
 
     def post(self, request, format=None):
         """
@@ -123,10 +114,8 @@ class CreateTimeCapSoulView(SecuredView):
             'replica_capsoul': replica_serializer.data
         }
         return Response(response)
-
         
 class TimeCapSoulUpdationView(SecuredView):
-
     def patch(self, request, time_capsoul_id):
         user = self.get_current_user(request)
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
@@ -145,8 +134,6 @@ class TimeCapSoulUpdationView(SecuredView):
         else:
             time_capsoul_detail.delete()
             return Response({'message': "Time capsoul deleted successfully"})
-
-
 
 class TimeCapSoulMediaFilesView(SecuredView):
     """
@@ -734,45 +721,43 @@ class ServeTimeCapSoulMedia(SecuredView):
             try:
                 media_file = TimeCapSoulMediaFile.objects.get(id=media_file_id)
             except Exception as e:
-                return Response(status=status.HTTP_401_UNAUTHORIZED)
+                return Response(status=status.HTTP_404_NOT_FOUND)
             else:
                 time_capsoul = media_file.time_capsoul
                 
             capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul=time_capsoul).first()
             if not capsoul_recipients:
-                return Response(status=status.HTTP_401_UNAUTHORIZED)
+                return Response(status=status.HTTP_404_NOT_FOUND)
 
             recipients_data = list(capsoul_recipients.recipients.values_list("email", flat=True))
             if user.email not in recipients_data:
-                return Response(status=status.HTTP_401_UNAUTHORIZED)
+                return Response(status=status.HTTP_404_NOT_FOUND)
         except Exception:
-            return Response(status=status.HTTP_401_UNAUTHORIZED)
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
         
 
         if not exp or not sig:
-            return Response(status=status.HTTP_401_UNAUTHORIZED)
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
         if int(exp) < int(time.time()):
-            return Response(status=status.HTTP_401_UNAUTHORIZED)
+            return Response(status=status.HTTP_404_NOT_FOUND)
        
         #  signature-verification
         if not verify_signature(media_file.s3_key, exp, sig):
-            return Response(status=status.HTTP_401_UNAUTHORIZED)
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
         try:
             file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
         except Exception as e:
             file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
         except Exception as e:
-            return Response(status=status.HTTP_401_UNAUTHORIZED)
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
         response = HttpResponse(file_bytes, content_type=content_type)
         # response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".enc", "")}"'
         response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1]}"'
         return response
-
-
 
 class TimeCapSoulMediaFileDownloadView(SecuredView):
     def get(self, request, timecapsoul_id, media_file_id):
@@ -788,18 +773,18 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
             try:
                 media_file =  TimeCapSoulMediaFile.objects.get(id = media_file_id)
             except Exception as e:
-                return Response(status=status.HTTP_401_UNAUTHORIZED)
+                return Response(status=status.HTTP_404_NOT_FOUND)
             else:
                 time_capsoul = media_file.time_capsoul
                 
                 if time_capsoul:
                     capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul=time_capsoul).first()
                     if not capsoul_recipients:
-                        return Response(status=status.HTTP_401_UNAUTHORIZED)
+                        return Response(status=status.HTTP_404_NOT_FOUND)
 
                     recipients_data = list(capsoul_recipients.recipients.values_list("email", flat=True))
                     if user.email not in recipients_data:
-                        return Response(status=status.HTTP_401_UNAUTHORIZED)
+                        return Response(status=status.HTTP_404_NOT_FOUND)
                     
         file_name = media_file.s3_key.split('/')[-1]
         try:
@@ -807,7 +792,7 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
         except Exception as e:
             file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
         except Exception as e:
-            return Response(status=status.HTTP_401_UNAUTHORIZED)
+            return Response(status=status.HTTP_404_NOT_FOUND)
         try:
             file_size = len(file_bytes)
             chunk_size = determine_download_chunk_size(file_size)
@@ -838,68 +823,4 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
             return response
 
         except ClientError as e:
-            return Response(status=status.HTTP_401_UNAUTHORIZED)
-
-
-            
-            
-       
-                
-                
-            
-            
-            
-        
-        # timecapsoul = get_object_or_404(TimeCapSoul, id=timecapsoul_id, user=user)
-        # media_file = get_object_or_404(
-        #     TimeCapSoulMediaFile,
-        #     id=media_file_id,
-        #     user=user,
-        #     time_capsoul=timecapsoul
-        # )
-        # file_name = media_file.title
-        # file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
-        
-        # s3 = boto3.client(
-        #     's3',
-        #     aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
-        #     aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
-        #     region_name=settings.AWS_S3_REGION_NAME
-        # )
-
-        # try:
-            # s3_response = s3.get_object(Bucket=settings.AWS_STORAGE_BUCKET_NAME, Key=s3_key)
-            # file_stream = s3_response['Body']
-            # file_size = s3_response['ContentLength']
-        #     file_size = len(file_bytes)
-        #     chunk_size = determine_download_chunk_size(file_size)
-        #     file_stream = io.BytesIO(file_bytes)
-
-        #     mime_type = (
-        #         content_type
-        #         or mimetypes.guess_type(file_name)[0]
-        #         or 'application/octet-stream'
-        #     )
-
-        #     def file_iterator():
-        #         while True:
-        #             chunk = file_stream.read(chunk_size)
-        #             if not chunk:
-        #                 break
-        #             yield chunk
-
-        #     response = StreamingHttpResponse(
-        #         streaming_content=file_iterator(),
-        #         content_type=mime_type
-        #     )
-        #     response['Content-Disposition'] = f'attachment; filename="{file_name}"'
-        #     response['Content-Length'] = str(file_size)
-        #     response['Accept-Ranges'] = 'bytes'
-        #     response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        #     response['Access-Control-Expose-Headers'] = 'Content-Length, Content-Disposition'
-
-        #     return response
-
-        # except ClientError as e:
-        #     raise Http404(f"Could not retrieve file")
-
+            return Response(status=status.HTTP_404_NOT_FOUND)

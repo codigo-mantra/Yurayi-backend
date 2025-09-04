@@ -48,8 +48,7 @@ class MemoryRoomCoverView(SecuredView):
     API endpoint to list all assets of type 'Memory Room Cover'.
     Only authenticated users can access this.
     """
-
-    def get(self):
+    def get(self, request):
         """
         Returns all memory room cover assets ordered by creation date.
         """
@@ -57,36 +56,30 @@ class MemoryRoomCoverView(SecuredView):
         serializer = AssetSerializer(assets, many=True)
         return Response(serializer.data)
 
-
 class UserMemoryRoomListView(SecuredView):
     """
     API endpoint to list all non-deleted memory rooms of the current user.
     """
-
-    def get(self):
+    def get(self,request):
         """
         Returns all memory rooms for the current user that are not deleted.
         """
-        rooms = MemoryRoom.objects.filter(user=self.request.user, is_deleted=False).order_by('-created_at')
+        user  = self.get_current_user(request)
+        rooms = MemoryRoom.objects.filter(user=user, is_deleted=False).order_by('-created_at')
         serializer = MemoryRoomSerializer(rooms, many=True)
         return Response(serializer.data)
-
 
 class MemoryRoomTemplateDefaultViewSet(SecuredView):
     """
     API endpoint to list all default memory room templates.
     """
-    # permission_classes = [permissions.IsAuthenticated]
-    serializer_class = MemoryRoomTemplateDefaultSerializer
-
-    def get(self):
+    def get(self, request):
         """
         Returns all non-deleted default memory room templates ordered by creation.
         """
         rooms = MemoryRoomTemplateDefault.objects.filter(is_deleted=False).order_by('-created_at')
         serializer = MemoryRoomTemplateDefaultSerializer(rooms, many=True)
         return Response(serializer.data)
-
 
 class CreateMemoryRoomView(SecuredView):
     """
@@ -294,86 +287,6 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         media_file.delete()
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
-
-
-    # def post(self, request, memory_room_id):
-    #     """
-    #     Upload multiple media files to a memory room with streaming progress updates.
-    #     """
-    #     user = self.get_current_user(request)
-    #     memory_room = self.get_memory_room(user, memory_room_id)
-
-    #     files = request.FILES.getlist('file')
-    #     created_objects = []
-    #     results = []
-
-    #     if len(files) == 0: 
-    #         raise ValidationError({'file': "Media files is required"})
-
-    #     def file_upload_stream():
-    #         for uploaded_file in files:
-    #             yield f"data: Starting upload of {uploaded_file.name}\n\n"
-    #             file_size = uploaded_file.size
-    #             chunk_size = determine_download_chunk_size(file_size)
-    #             uploaded_so_far = 0
-    #             percentage = 0
-
-    #             try:
-    #                 # Read file chunks and send progress updates
-    #                 for chunk in uploaded_file.chunks(chunk_size):
-    #                     uploaded_so_far += len(chunk)
-    #                     new_percentage = int((uploaded_so_far / file_size) * 100)
-    #                     if new_percentage > percentage:
-    #                         percentage = new_percentage
-    #                         yield f"data: {uploaded_file.name} -> {percentage}\n\n"
-
-    #                 # Ensure file pointer is reset before serializer save
-    #                 uploaded_file.seek(0)
-
-    #                 serializer = MemoryRoomMediaFileCreationSerializer(
-    #                     data={'file': uploaded_file},
-    #                     context={'user': user, 'memory_room': memory_room}
-    #                 )
-
-    #                 if serializer.is_valid():
-    #                     media_file = serializer.save()
-    #                     created_objects.append(media_file)
-    #                     results.append({
-    #                         "file": uploaded_file.name,
-    #                         "status": "success",
-    #                         "progress": 100,
-    #                         "data": MemoryRoomMediaFileSerializer(media_file).data
-    #                     })
-    #                     yield f"data: {uploaded_file.name} -> 100\n\n"
-    #                     yield f"data: {uploaded_file.name} upload completed successfully\n\n"
-    #                 else:
-    #                     results.append({
-    #                         "file": uploaded_file.name,
-    #                         "status": "failed",
-    #                         "progress": percentage,
-    #                         "errors": serializer.errors
-    #                     })
-    #                     yield f"data: {uploaded_file.name} upload failed: {json.dumps(serializer.errors)}\n\n"
-
-    #             except Exception as e:
-    #                 results.append({
-    #                     "file": uploaded_file.name,
-    #                     "status": "failed",
-    #                     "progress": percentage,
-    #                     "error": str(e)
-    #                 })
-    #                 yield f"data: {uploaded_file.name} upload failed: {str(e)}\n\n"
-
-    #         # print(f'[Final Results] {results}')
-    #         yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
-
-    #     return StreamingHttpResponse(
-    #         file_upload_stream(),
-    #         content_type='text/event-stream',
-    #         status=status.HTTP_200_OK
-    #     )
-    
-
 class UpdateMediaFileDescriptionView(SecuredView):
     def patch(self, request, memory_room_id, media_file_id):
         try:
@@ -437,8 +350,8 @@ class MediaFileDownloadView(SecuredView):
 
             return response
 
-        except ClientError as e:
-            raise Http404(f"Could not retrieve file")
+        except Exception as e:
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
 class MemoryRoomMediaFileFilterView(SecuredView):
 
@@ -546,33 +459,39 @@ class ServeMedia(SecuredView):
     def get(self, request, s3_key):
         user  = self.get_current_user(request)
         if user is None:
-            raise serializers.ValidationError({'token': 'User access-token invalid or expired'})
-        exp = request.GET.get("exp")
-        sig = request.GET.get("sig")
-        s3_storage_id = user.s3_storage_id
-        s3_key = f'{s3_storage_id}/{s3_key}'
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
+        
+        try:
+            exp = request.GET.get("exp")
+            sig = request.GET.get("sig")
+            s3_storage_id = user.s3_storage_id
+            s3_key = f'{s3_storage_id}/{s3_key}'
 
-        if not exp or not sig:
-            return Http404()
+            if not exp or not sig:
+                return Response(status=status.HTTP_404_NOT_FOUND)
 
-        if int(exp) < int(time.time()):
-            return Http404()
+            if int(exp) < int(time.time()):
+                return Response(status=status.HTTP_404_NOT_FOUND)
 
-        expected_sig = base64.urlsafe_b64encode(
-            hmac.new(SECRET, f"{s3_key}:{exp}".encode(), hashlib.sha256).digest()
-        ).decode().rstrip("=")
+            expected_sig = base64.urlsafe_b64encode(
+                hmac.new(SECRET, f"{s3_key}:{exp}".encode(), hashlib.sha256).digest()
+            ).decode().rstrip("=")
 
-        if not hmac.compare_digest(sig, expected_sig):
-            return Http404()
+            if not hmac.compare_digest(sig, expected_sig):
+                return Response(status=status.HTTP_404_NOT_FOUND)
 
-        # Decrypt actual file bytes
-        file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+            # Decrypt actual file bytes
+            file_bytes,content_type = decrypt_and_get_image(str(s3_key))
 
 
-        #  Serve decrypt file via Django
-        response = HttpResponse(file_bytes, content_type=content_type)
-        response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
-        return response
+            #  Serve decrypt file via Django
+            response = HttpResponse(file_bytes, content_type=content_type)
+            response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
+            return response
+        except Exception as e:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+            
+            
 
 
 class RefreshMediaURL(SecuredView):
