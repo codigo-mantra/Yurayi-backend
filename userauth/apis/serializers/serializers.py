@@ -240,6 +240,8 @@ def validate_username(username):
 class RegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     confirm_password = serializers.CharField(write_only=True, required=True)
+    device_name = serializers.CharField(required=False, allow_blank=True)
+    
 
     class Meta:
         model = User

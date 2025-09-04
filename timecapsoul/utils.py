@@ -116,48 +116,38 @@ def send_html_email(subject, to_email, template_name, context=None, inline_image
     :param context: Context dictionary for the template
     :param inline_images: Optional dict for CID images: {'cid_name': '/absolute/path/to/image.png'}
     """
-    
-    from_email = settings.DEFAULT_FROM_EMAIL
-    if email_list is None:
-        if isinstance(to_email, str):
-            to_email = [to_email]
-    else:
-        to_email = email_list
-        
-    if context is None:
-        context = {}
+    try:
+        from_email = settings.DEFAULT_FROM_EMAIL
+        if email_list is None:
+            if isinstance(to_email, str):
+                to_email = [to_email]
+        else:
+            to_email = email_list
+            
+        if context is None:
+            context = {}
 
-    # inline_images={
-        # 'logo': os.path.join(settings.BASE_DIR, 'static/images/logo.png'),
-        # 'email_temp': os.path.join(settings.BASE_DIR, 'static/images/email-temp.png'),
-        # 'temp_bg': os.path.join(settings.BASE_DIR, 'static/images/temp-bg.png'),
-        # 'rectangle': os.path.join(settings.BASE_DIR, 'static/images/Rectangle_221.png'),
-        # social icons images
-        # 'youtube': os.path.join(settings.BASE_DIR, 'static/images/svgs_images/Frame 77.png'),
-        # 'insta': os.path.join(settings.BASE_DIR, 'static/images/svgs_images/Frame 78.png'),
-        # 'linkedin': os.path.join(settings.BASE_DIR, 'static/images/svgs_images/Frame 79.png'),
-        # 'facebook': os.path.join(settings.BASE_DIR, 'static/images/svgs_images/Frame 80.png'),
-        # }
+        html_content = render_to_string(template_name, context)
 
-    html_content = render_to_string(template_name, context)
+        email = EmailMultiAlternatives(subject, "", from_email, to_email)
+        email.attach_alternative(html_content, "text/html")
 
-    email = EmailMultiAlternatives(subject, "", from_email, to_email)
-    email.attach_alternative(html_content, "text/html")
+        # Attach inline CID images if provided
+        if inline_images:
+            for cid, image_path in inline_images.items():
+                if os.path.exists(image_path):
+                    with open(image_path, 'rb') as img:
+                        img_data = img.read()
+                        content_type, encoding = mimetypes.guess_type(image_path)
+                        maintype, subtype = content_type.split('/') if content_type else ('image', 'png')
+                        mime_image = MIMEImage(img_data, _subtype=subtype)
+                        mime_image.add_header('Content-ID', f'<{cid}>')
+                        mime_image.add_header('Content-Disposition', 'inline', filename=os.path.basename(image_path))
+                        email.attach(mime_image)
 
-    # Attach inline CID images if provided
-    if inline_images:
-        for cid, image_path in inline_images.items():
-            if os.path.exists(image_path):
-                with open(image_path, 'rb') as img:
-                    img_data = img.read()
-                    content_type, encoding = mimetypes.guess_type(image_path)
-                    maintype, subtype = content_type.split('/') if content_type else ('image', 'png')
-                    mime_image = MIMEImage(img_data, _subtype=subtype)
-                    mime_image.add_header('Content-ID', f'<{cid}>')
-                    mime_image.add_header('Content-Disposition', 'inline', filename=os.path.basename(image_path))
-                    email.attach(mime_image)
-
-    email.send()
+        email.send()
+    except Exception as e:
+        pass
 
 class MediaRootS3Boto3Storage(S3Boto3Storage):
     location = 'media'  

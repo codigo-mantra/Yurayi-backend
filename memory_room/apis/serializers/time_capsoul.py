@@ -821,6 +821,15 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
         # Locking the TimeCapsoul for the first and only time
         time_capsoul = instance.time_capsoul
         if time_capsoul.status == 'created':
+            capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =instance.time_capsoul).first()
+            if not capsoul_recipients:
+                raise serializers.ValidationError({'recipients': 'No recipients added'})
+                
+            recipients = capsoul_recipients.recipients.all()
+            if recipients.count() < 1:
+                raise serializers.ValidationError({'recipients': 'No recipients added'})
+            
+            
             instance.unlock_date = validated_data['unlock_date']
             time_capsoul.status = 'sealed'
             instance.is_locked = True
@@ -828,10 +837,8 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             # send email here tagged 
             time_cap_owner = instance.time_capsoul.user.first_name if instance.time_capsoul.user.first_name else instance.time_capsoul.user.email
             try:
-                capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =instance.time_capsoul).first()
                 if capsoul_recipients:
-                    all_recipients = capsoul_recipients.recipients.all()
-                    tagged_recients = (all_recipients.values_list('name', 'email'))
+                    tagged_recients = (recipients.values_list('name', 'email'))
                     
                     for recipient in tagged_recients:
                         person_name = recipient[0]
@@ -850,7 +857,6 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                             )
                         except Exception as e:
                             print('Exception ')
-                            pass
                         else:
                             # print('yes')
                             pass

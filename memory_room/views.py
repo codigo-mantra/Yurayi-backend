@@ -44,8 +44,8 @@ def testing_view(request):
     
     # email = 'admin@gmail.com'
     # import uuid
-    from userauth.models import User
-    user = User.objects.get(email = email)
+    # from userauth.models import User
+    # user = User.objects.get(email = email)
 
     # objs = []
     # for user in User.objects.filter(s3_storage_id__isnull=True):
@@ -55,40 +55,41 @@ def testing_view(request):
     # User.objects.bulk_update(objs, ['s3_storage_id'])
     
     # user = User.objects.get(email = 'krishna123.codigomantra@gmail.com')
-    time_capsoul =TimeCapSoul.objects.filter(user = user, status = 'sealed').first()
-    if time_capsoul:
-        time_cap_owner = time_capsoul.user.first_name if time_capsoul.user.first_name else time_capsoul.user.email
+    # time_capsoul =TimeCapSoul.objects.filter(user = user, status = 'sealed').first()
+    # if time_capsoul:
+    #     time_cap_owner = time_capsoul.user.first_name if time_capsoul.user.first_name else time_capsoul.user.email
         
-        recipients  = RecipientsDetail.objects.filter(time_capsoul = time_capsoul).first()
-        if recipients:
-            all_recipients = recipients.recipients.all()
-            tagged_recients = (all_recipients.values_list('name', 'email'))
+    #     recipients  = RecipientsDetail.objects.filter(time_capsoul = time_capsoul).first()
+    #     if recipients:
+    #         all_recipients = recipients.recipients.all()
+            
+    #         tagged_recients = (all_recipients.values_list('name', 'email'))
             
             # for person in tagged_recients:
             #     print(f'\nname: {person[0]} email: {person[-1]} ')
             
-            for recipient in tagged_recients:
-                person_name = recipient[0]
+            # for recipient in tagged_recients:
+                # person_name = recipient[0]
                 # person_email = recipient[-1]
-                person_email = email
+                # person_email = 'krishnayadav.codigomantra@gmail.com'
                 
 
-                try:
-                    send_html_email(
-                        subject="You’ve received a Time Capsoul sealed with love.",
-                        to_email=person_email,
-                        template_name="userauth/time_capsoul_tagged.html",
-                        context={
-                            "user": person_name,
-                            'sender_name': time_cap_owner,
-                            'unlock_date': time_capsoul.details.unlock_date
-                        },
-                    )
-                    print(f'\n Yes email sent here name: {person_name} email: {person_email} ')
+                # try:
+                    # send_html_email(
+                    #     subject="You’ve received a Time Capsoul sealed with love.",
+                    #     to_email=person_email,
+                    #     template_name="userauth/time_capsoul_tagged.html",
+                    #     context={
+                    #         "user": person_name,
+                    #         'sender_name': time_cap_owner,
+                    #         'unlock_date': time_capsoul.details.unlock_date
+                    #     },
+                    # )
+                #     print(f'\n Yes email sent here name: {person_name} email: {person_email} ')
 
-                except Exception as e:
-                    print('Exception ')
-                    pass
+                # except Exception as e:
+                #     print('Exception ')
+                #     pass
                   
 
     

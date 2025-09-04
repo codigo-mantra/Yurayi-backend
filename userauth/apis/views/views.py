@@ -78,53 +78,6 @@ class ContactUsAPIView(APIView):
             return Response({"message": "Contact request submitted successfully."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-
-# class GoogleAuthView(APIView):
-#     permission_classes = [AllowAny]
-#     serializer_class = GoogleIDTokenSerializer
-
-#     def post(self, request, *args, **kwargs):
-#         serializer = self.serializer_class(
-#             data=request.data,
-#             context={'request': request, 'view': self}
-#         )
-#         serializer.is_valid(raise_exception=True)
-
-#         sociallogin = serializer.save()
-#         user = sociallogin.user
-
-#         if not user.is_active:
-#             raise serializers.ValidationError("This account is inactive.")
-
-#         try:
-#             perform_login(request, user, email_verification='optional')
-#             is_new_user = getattr(serializer, 'is_new_user', False)
-#         except ImmediateHttpResponse as e:
-#             return e.response
-
-#         if is_new_user:
-#             send_html_email(
-#                 subject='Welcome to Yurayi',
-#                 to_email=user.email,
-#                 template_name='userauth/registeration_confirmation.html',
-#                 context={'email': user.email},
-#             )
-
-#         refresh = RefreshToken.for_user(user)
-
-#         return Response({
-#             'access': str(refresh.access_token),
-#             'refresh': str(refresh),
-#             'user': {
-#                 'id': user.id,
-#                 'email': user.email,
-#                 'username': user.username,
-#                 'first_name': user.first_name,
-#                 'last_name': user.last_name,
-#             },
-#             'is_new_user': is_new_user
-#         })
-
 class GoogleAuthView(APIView):
     permission_classes = [AllowAny]
     serializer_class = GoogleAccessTokenSerializer
@@ -156,20 +109,69 @@ class GoogleAuthView(APIView):
                 context={'email': user.email},
             )
 
-        refresh = RefreshToken.for_user(user)
+        # refresh = RefreshToken.for_user(user)
 
-        return Response({
-            'access': str(refresh.access_token),
-            'refresh': str(refresh),
-            'user': {
-                'id': user.id,
-                'email': user.email,
-                'username': user.username,
-                'first_name': user.first_name,
-                'last_name': user.last_name,
+        # return Response({
+        #     'access': str(refresh.access_token),
+        #     'refresh': str(refresh),
+        #     'user': {
+        #         'id': user.id,
+        #         'email': user.email,
+        #         'username': user.username,
+        #         'first_name': user.first_name,
+        #         'last_name': user.last_name,
+        #     },
+        #     'is_new_user': is_new_user
+        # })
+        
+        # Track device/session
+        device_name = ''
+        ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
+        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
+        session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
+
+        access = create_access_jwt_for_user(user, session_id=session.id)
+        refresh_value = _gen_refresh_value()
+        from django.utils import timezone 
+        expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
+        RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+
+        resp = Response({
+            "access": access,
+            "user": {
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
             },
             'is_new_user': is_new_user
+            
         })
+
+        resp.set_cookie(
+            settings.REFRESH_COOKIE_NAME,
+            refresh_value,
+            httponly=settings.REFRESH_COOKIE_HTTPONLY,
+            secure=settings.REFRESH_COOKIE_SECURE,
+            samesite=settings.REFRESH_COOKIE_SAMESITE,
+            max_age=REFRESH_TTL_DAYS * 24 * 3600,
+            domain=settings.COOKIE_DOMAIN,
+            path=settings.REFRESH_COOKIE_PATH,
+        )
+
+        #  Set access cookie
+        resp.set_cookie(
+            settings.ACCESS_COOKIE_NAME,
+            access,
+            httponly=settings.ACCESS_COOKIE_HTTPONLY,
+            secure=settings.ACCESS_COOKIE_SECURE,
+            samesite=settings.ACCESS_COOKIE_SAMESITE,
+            max_age=settings.ACCESS_TOKEN_LIFETIME,
+            domain=settings.COOKIE_DOMAIN,
+            path=settings.ACCESS_COOKIE_PATH,
+        )
+
+        return resp
 
     
 class GenerateJWTTokenView(APIView):
@@ -183,32 +185,80 @@ class GenerateJWTTokenView(APIView):
 class RegistrationView(APIView):
     def post(self, request):
         serializer = RegistrationSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        device_name = serializer.validated_data.get('device_name')
+        user = serializer.save()
         
-        if serializer.is_valid():
-            user = serializer.save()
-            send_html_email(
-                subject='Welcome to Yurayi',
-                to_email=user.email,
-                template_name='userauth/registeration_confirmation.html',
-                context={'email': user.email},
-            )
-
-            refresh = RefreshToken.for_user(user)
-            profile = UserProfile.objects.get(user = user)
-
-            return Response({
-                "message": "Registration successful.",
-                "refresh": str(refresh),
-                "access": str(refresh.access_token),
-                "user": {
-                    "email": user.email,
-                    'username': user.username,
-                    'profile_image': profile.profile_image.s3_url if profile.profile_image else None,
-                    'created_at': user.created_at,
-                }
-            }, status=status.HTTP_201_CREATED)
+        send_html_email(
+            subject='Welcome to Yurayi',
+            to_email=user.email,
+            template_name='userauth/registeration_confirmation.html',
+            context={'email': user.email},
+        )
         
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        # # refresh = RefreshToken.for_user(user)
+        # profile = UserProfile.objects.get(user = user)
+            
+        # Track device/session
+        ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
+        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
+        session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
+
+        access = create_access_jwt_for_user(user, session_id=session.id)
+        refresh_value = _gen_refresh_value()
+        from django.utils import timezone 
+        expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
+        RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+
+        resp = Response({
+            "access": access,
+            "user": {
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            },
+        })
+
+        resp.set_cookie(
+            settings.REFRESH_COOKIE_NAME,
+            refresh_value,
+            httponly=settings.REFRESH_COOKIE_HTTPONLY,
+            secure=settings.REFRESH_COOKIE_SECURE,
+            samesite=settings.REFRESH_COOKIE_SAMESITE,
+            max_age=REFRESH_TTL_DAYS * 24 * 3600,
+            domain=settings.COOKIE_DOMAIN,
+            path=settings.REFRESH_COOKIE_PATH,
+        )
+
+        #  Set access cookie
+        resp.set_cookie(
+            settings.ACCESS_COOKIE_NAME,
+            access,
+            httponly=settings.ACCESS_COOKIE_HTTPONLY,
+            secure=settings.ACCESS_COOKIE_SECURE,
+            samesite=settings.ACCESS_COOKIE_SAMESITE,
+            max_age=settings.ACCESS_TOKEN_LIFETIME,
+            domain=settings.COOKIE_DOMAIN,
+            path=settings.ACCESS_COOKIE_PATH,
+        )
+
+        return resp
+
+        #     return Response({
+        #         "message": "Registration successful.",
+        #         "refresh": str(refresh),
+        #         "access": str(refresh.access_token),
+        #         "user": {
+        #             "email": user.email,
+        #             'username': user.username,
+        #             'profile_image': profile.profile_image.s3_url if profile.profile_image else None,
+        #             'created_at': user.created_at,
+        #         }
+        #     }, status=status.HTTP_201_CREATED)
+        
+        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 def _gen_refresh_value():
     return secrets.token_urlsafe(48)
@@ -323,7 +373,7 @@ class LoginView(APIView):
         if not user.is_active:
             return Response({'error': 'Account inactive. Contact support to reactivate.'}, status=403)
         
-         # Track device/session
+        # Track device/session
         ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
         ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
         session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
