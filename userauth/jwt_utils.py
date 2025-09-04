@@ -2,13 +2,18 @@ import uuid
 import jwt
 from datetime import datetime, timedelta, timezone
 from django.conf import settings
+from rest_framework_simplejwt.settings import api_settings
+
+
 
 def _now():
     return datetime.now(timezone.utc)
 
+
 def create_access_jwt_for_user(user, session_id):
     now = _now()
-    exp = now + timedelta(minutes=settings.ACCESS_TOKEN_TTL_MINUTES)
+    # exp = now + timedelta(minutes=settings.ACCESS_TOKEN_TTL_MINUTES)
+    exp = now + api_settings.ACCESS_TOKEN_LIFETIME
     payload = {
         "iss": settings.JWT_ISSUER,
         "sub": str(user.id),

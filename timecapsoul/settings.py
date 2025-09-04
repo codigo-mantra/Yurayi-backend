@@ -259,11 +259,11 @@ SOCIALACCOUNT_ADAPTER = "userauth.apis.helpers.google_adapter.CustomSocialAccoun
 
 REST_USE_JWT = True
 
-SIMPLE_JWT = {
-    'AUTH_HEADER_TYPES': ('JWT', 'Bearer'),
-    'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-}
+# SIMPLE_JWT = {
+#     'AUTH_HEADER_TYPES': ('JWT', 'Bearer'),
+#     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
+#     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+# }
 
 DJRESTAUTH_TOKEN_MODEL = None
 
@@ -314,18 +314,23 @@ CSRF_COOKIE_SAMESITE = 'Lax'   # or 'None' for cross-origin
 CSRF_COOKIE_SECURE = False 
 
 SIMPLE_JWT = {
-    "AUTH_COOKIE": "access",   # Cookie name
-    "AUTH_COOKIE_SECURE": False,  # True in prod with HTTPS
+    "AUTH_HEADER_TYPES": ("JWT", "Bearer"),
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),   # keep session alive 7 days
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=15),
+
+    "AUTH_COOKIE": "access",          # Cookie name
+    "AUTH_COOKIE_SECURE": False,      # True in prod
     "AUTH_COOKIE_HTTP_ONLY": True,
     "AUTH_COOKIE_SAMESITE": "Lax",
 }
+
 ACCESS_TOKEN_TTL_MINUTES = 15
 REFRESH_TOKEN_TTL_DAYS = 30
 JWT_SECRET = SECRET_KEY
 JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "secure_auth"
 
-COOKIE_DOMAIN = None  # set to your domain in prod
+COOKIE_DOMAIN = None  # set to  domain in prod
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_SAMESITE = "Strict"
 REFRESH_COOKIE_SECURE = not DEBUG

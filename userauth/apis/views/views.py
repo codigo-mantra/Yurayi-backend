@@ -31,6 +31,7 @@ from dj_rest_auth.views import (
     PasswordResetConfirmView,
     PasswordChangeView,
 )
+from rest_framework_simplejwt.settings import api_settings
 from django.contrib.auth.tokens import default_token_generator
 from django.utils.encoding import force_str, force_bytes
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
@@ -154,7 +155,7 @@ class GoogleAuthView(APIView):
             httponly=settings.REFRESH_COOKIE_HTTPONLY,
             secure=settings.REFRESH_COOKIE_SECURE,
             samesite=settings.REFRESH_COOKIE_SAMESITE,
-            max_age=REFRESH_TTL_DAYS * 24 * 3600,
+            max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
             domain=settings.COOKIE_DOMAIN,
             path=settings.REFRESH_COOKIE_PATH,
         )
@@ -227,7 +228,7 @@ class RegistrationView(APIView):
             httponly=settings.REFRESH_COOKIE_HTTPONLY,
             secure=settings.REFRESH_COOKIE_SECURE,
             samesite=settings.REFRESH_COOKIE_SAMESITE,
-            max_age=REFRESH_TTL_DAYS * 24 * 3600,
+            max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
             domain=settings.COOKIE_DOMAIN,
             path=settings.REFRESH_COOKIE_PATH,
         )
@@ -400,7 +401,7 @@ class LoginView(APIView):
             httponly=settings.REFRESH_COOKIE_HTTPONLY,
             secure=settings.REFRESH_COOKIE_SECURE,
             samesite=settings.REFRESH_COOKIE_SAMESITE,
-            max_age=REFRESH_TTL_DAYS * 24 * 3600,
+            max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
             domain=settings.COOKIE_DOMAIN,
             path=settings.REFRESH_COOKIE_PATH,
         )
@@ -416,7 +417,6 @@ class LoginView(APIView):
             domain=settings.COOKIE_DOMAIN,
             path=settings.ACCESS_COOKIE_PATH,
         )
-
         return resp
 
 

@@ -42,6 +42,18 @@ def testing_view(request):
     # email = 'krishnayadav.codigomantra@gmail.com'
     email = 'krishnayadavpb07@gmail.com'
     
+    # send_html_email(
+    #     subject="You’ve received a Time Capsoul sealed with love.",
+    #     # to_email='jasvir.codigo@gmail.com',
+    #     to_email=email,
+    #     template_name="userauth/time_capsoul_tagged.html",
+    #     context={
+    #         "user": 'Jasvir Kaur',
+    #         'sender_name': 'Krishna Yadav',
+    #         'unlock_date': '04/02/2025'
+    #     },
+    # )
+    
     # email = 'admin@gmail.com'
     # import uuid
     # from userauth.models import User
