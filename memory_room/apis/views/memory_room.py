@@ -17,6 +17,10 @@ from rest_framework.pagination import PageNumberPagination
 
 from channels.layers import get_channel_layer
 from asgiref.sync import async_to_sync
+import threading
+import queue
+import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView, NewSecuredView
@@ -163,11 +167,206 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         memory_room = self.get_memory_room(user, memory_room_id)
         media_files = MemoryRoomMediaFile.objects.filter(memory_room=memory_room, user=user).order_by('-created_at')
         return Response(MemoryRoomMediaFileSerializer(media_files, many=True).data)
+        
+    # def post(self, request, memory_room_id):
+    #     """
+    #     Upload multiple media files to a memory room with streaming progress updates.
+    #     Each file has its own IV for decryption. Uses multi-threading for parallel uploads.
+    #     """
+    #     user = self.get_current_user(request)
+    #     memory_room = self.get_memory_room(user, memory_room_id)
 
+    #     files = request.FILES.getlist('file')
+    #     created_objects = []
+    #     results = []
+    #     from rest_framework import serializers
+
+    #     if len(files) == 0: 
+    #         raise serializers.ValidationError({'file': "Media files is required"})
+
+    #     # Parse IVs from frontend
+    #     try:
+    #         ivs_json = request.POST.get('ivs', '[]')
+    #         ivs = json.loads(ivs_json)
+    #     except json.JSONDecodeError:
+    #         raise serializers.ValidationError({'ivs': "Invalid IVs format"})
+
+    #     # Ensure we have an IV for each file
+    #     if len(ivs) != len(files):
+    #         raise serializers.ValidationError({'ivs': f"Number of IVs ({len(ivs)}) must match number of files ({len(files)})"})
+
+    #     # Dynamic worker calculation based on file count and sizes
+    #     total_files = len(files)
+    #     total_size = sum(f.size for f in files)
+        
+    #     # Calculate optimal number of workers
+    #     if total_files <= 2:
+    #         max_workers = 1
+    #     elif total_files <= 5:
+    #         max_workers = 2
+    #     elif total_size > 500 * 1024 * 1024:  # > 500MB total
+    #         max_workers = min(total_files, 4)  # Max 4 for large files
+    #     else:
+    #         max_workers = min(total_files, 6)  # Max 6 for smaller files
+
+    #     # Thread-safe progress tracking
+    #     progress_lock = threading.Lock()
+    #     file_progress = {i: {'progress': 0, 'message': 'Queued', 'status': 'pending'} for i in range(total_files)}
+        
+    #     def update_file_progress(file_index, progress, message, status='processing'):
+    #         with progress_lock:
+    #             file_progress[file_index] = {
+    #                 'progress': progress,
+    #                 'message': message,
+    #                 'status': status
+    #             }
+
+    #     def calculate_overall_progress():
+    #         with progress_lock:
+    #             if not file_progress:
+    #                 return 0
+    #             total_progress = sum(fp['progress'] for fp in file_progress.values())
+    #             return int(total_progress / len(file_progress))
+
+    #     def file_upload_stream():
+    #         def process_single_file(file_index, uploaded_file, file_iv):
+    #             """Process a single file upload with progress tracking"""
+    #             try:
+    #                 def progress_callback(progress, message):
+    #                     if progress == -1:  # Error case
+    #                         update_file_progress(file_index, 0, message, 'failed')
+    #                     else:
+    #                         update_file_progress(file_index, progress, message, 'processing')
+                    
+    #                 # Reset file pointer
+    #                 uploaded_file.seek(0)
+                    
+    #                 # Pass progress callback to serializer
+    #                 serializer = MemoryRoomMediaFileCreationSerializer(
+    #                     data={
+    #                         'file': uploaded_file,
+    #                         'iv': file_iv
+    #                     },
+    #                     context={
+    #                         'user': user, 
+    #                         'memory_room': memory_room,
+    #                         'progress_callback': progress_callback
+    #                     }
+    #                 )
+
+    #                 if serializer.is_valid():
+    #                     media_file = serializer.save()
+    #                     update_file_progress(file_index, 100, 'Upload completed successfully', 'success')
+                        
+    #                     return {
+    #                         'index': file_index,
+    #                         'result': {
+    #                             "file": uploaded_file.name,
+    #                             "status": "success",
+    #                             "progress": 100,
+    #                             "data": MemoryRoomMediaFileSerializer(media_file).data
+    #                         },
+    #                         'media_file': media_file
+    #                     }
+    #                 else:
+    #                     update_file_progress(file_index, 0, f"Validation failed: {serializer.errors}", 'failed')
+    #                     return {
+    #                         'index': file_index,
+    #                         'result': {
+    #                             "file": uploaded_file.name,
+    #                             "status": "failed",
+    #                             "progress": 0,
+    #                             "errors": serializer.errors
+    #                         },
+    #                         'media_file': None
+    #                     }
+
+    #             except Exception as e:
+    #                 error_msg = str(e)
+    #                 update_file_progress(file_index, 0, f"Upload failed: {error_msg}", 'failed')
+    #                 return {
+    #                     'index': file_index,
+    #                     'result': {
+    #                         "file": uploaded_file.name,
+    #                         "status": "failed",
+    #                         "progress": 0,
+    #                         "error": error_msg
+    #                     },
+    #                     'media_file': None
+    #                 }
+
+    #         # Use ThreadPoolExecutor for parallel processing
+    #         with ThreadPoolExecutor(max_workers=max_workers) as executor:
+    #             # Submit all file upload tasks
+    #             future_to_index = {
+    #                 executor.submit(process_single_file, index, files[index], ivs[index]): index
+    #                 for index in range(total_files)
+    #             }
+                
+    #             # Track which files we've sent start messages for
+    #             started_files = set()
+                
+    #             # Monitor progress while tasks complete
+    #             while len(results) < total_files:
+    #                 # Send individual file progress updates
+    #                 with progress_lock:
+    #                     for file_index, progress_data in file_progress.items():
+    #                         file_name = files[file_index].name
+                            
+    #                         # Send start message once
+    #                         if file_index not in started_files and progress_data['status'] != 'pending':
+    #                             yield f"data: Starting upload of {file_name}\n\n"
+    #                             started_files.add(file_index)
+                            
+    #                         # Send progress updates for processing files
+    #                         if progress_data['status'] == 'processing':
+    #                             yield f"data: {file_name} -> {progress_data['progress']}\n\n"
+                    
+    #                 # Check for completed tasks
+    #                 completed_futures = []
+    #                 for future in future_to_index:
+    #                     if future.done():
+    #                         completed_futures.append(future)
+                    
+    #                 for future in completed_futures:
+    #                     try:
+    #                         result_data = future.result()
+    #                         if result_data['media_file']:
+    #                             created_objects.append(result_data['media_file'])
+    #                         results.append(result_data['result'])
+                            
+    #                         # Send completion messages exactly like original
+    #                         file_name = result_data['result']['file']
+    #                         if result_data['result']['status'] == 'success':
+    #                             yield f"data: {file_name} -> 100\n\n"
+    #                             yield f"data: {file_name} upload completed successfully\n\n"
+    #                         else:
+    #                             error_msg = result_data['result'].get('error') or result_data['result'].get('errors', 'Upload failed')
+    #                             yield f"data: {file_name} upload failed: {json.dumps(error_msg) if isinstance(error_msg, dict) else error_msg}\n\n"
+                            
+    #                         # Remove from future tracking
+    #                         del future_to_index[future]
+                            
+    #                     except Exception as e:
+    #                         print(f"Task completion error: {e}")
+    #                         del future_to_index[future]
+                    
+    #                 # Small delay to prevent overwhelming the client
+    #                 time.sleep(0.1)
+            
+    #         # Send final results exactly like original
+    #         yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
+
+    #     return StreamingHttpResponse(
+    #         file_upload_stream(),
+    #         content_type='text/event-stream',
+    #         status=status.HTTP_200_OK
+    #     )
+     
     def post(self, request, memory_room_id):
         """
         Upload multiple media files to a memory room with streaming progress updates.
-        Each file has its own IV for decryption.
+        Each file has its own IV for decryption. Uses multi-threading for parallel uploads.
         """
         user = self.get_current_user(request)
         memory_room = self.get_memory_room(user, memory_room_id)
@@ -191,66 +390,156 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         if len(ivs) != len(files):
             raise serializers.ValidationError({'ivs': f"Number of IVs ({len(ivs)}) must match number of files ({len(files)})"})
 
+        # Dynamic worker calculation based on file count and sizes
+        total_files = len(files)
+        total_size = sum(f.size for f in files)
+        
+        if total_files <= 2:
+            max_workers = 1
+        elif total_files <= 5:
+            max_workers = 2
+        elif total_size > 500 * 1024 * 1024:  # > 500MB total
+            max_workers = min(total_files, 4)
+        else:
+            max_workers = min(total_files, 6)
+
+        # Thread-safe progress tracking
+        progress_lock = threading.Lock()
+        file_progress = {i: {'progress': 0, 'message': 'Queued', 'status': 'pending'} for i in range(total_files)}
+        
+        def update_file_progress(file_index, progress, message, status='processing'):
+            with progress_lock:
+                file_progress[file_index] = {
+                    'progress': progress,
+                    'message': message,
+                    'status': status
+                }
+
+        def calculate_overall_progress():
+            with progress_lock:
+                if not file_progress:
+                    return 0
+                total_progress = sum(fp['progress'] for fp in file_progress.values())
+                return int(total_progress / len(file_progress))
+
         def file_upload_stream():
-            for index, uploaded_file in enumerate(files):
-                file_iv = ivs[index]
-                yield f"data: Starting upload of {uploaded_file.name}\n\n"
-                file_size = uploaded_file.size
-                chunk_size = determine_download_chunk_size(file_size)
-                uploaded_so_far = 0
-                percentage = 0
-
+            def process_single_file(file_index, uploaded_file, file_iv):
+                """Process a single file upload with progress tracking"""
                 try:
-                    # Read file chunks and send progress updates
-                    for chunk in uploaded_file.chunks(chunk_size):
-                        uploaded_so_far += len(chunk)
-                        new_percentage = int((uploaded_so_far / file_size) * 100)
-                        if new_percentage > percentage:
-                            percentage = new_percentage
-                            yield f"data: {uploaded_file.name} -> {percentage}\n\n"
-
-                    # Ensure file pointer is reset before serializer save
+                    def progress_callback(progress, message):
+                        if progress == -1:  # Error case
+                            update_file_progress(file_index, 0, message, 'failed')
+                        else:
+                            update_file_progress(file_index, progress, message, 'processing')
+                    
                     uploaded_file.seek(0)
-
-                    # Pass both file and its corresponding IV to serializer
+                    
                     serializer = MemoryRoomMediaFileCreationSerializer(
-                        data={
-                            'file': uploaded_file,
-                            'iv': file_iv
-                        },
-                        context={'user': user, 'memory_room': memory_room}
+                        data={'file': uploaded_file, 'iv': file_iv},
+                        context={
+                            'user': user, 
+                            'memory_room': memory_room,
+                            'progress_callback': progress_callback
+                        }
                     )
 
                     if serializer.is_valid():
                         media_file = serializer.save()
-                        created_objects.append(media_file)
-                        results.append({
-                            "file": uploaded_file.name,
-                            "status": "success",
-                            "progress": 100,
-                            "data": MemoryRoomMediaFileSerializer(media_file).data
-                        })
-                        yield f"data: {uploaded_file.name} -> 100\n\n"
-                        yield f"data: {uploaded_file.name} upload completed successfully\n\n"
+                        update_file_progress(file_index, 100, 'Upload completed successfully', 'success')
+                        
+                        return {
+                            'index': file_index,
+                            'result': {
+                                "file": uploaded_file.name,
+                                "status": "success",
+                                "progress": 100,
+                                "data": MemoryRoomMediaFileSerializer(media_file).data
+                            },
+                            'media_file': media_file
+                        }
                     else:
-                        results.append({
-                            "file": uploaded_file.name,
-                            "status": "failed",
-                            "progress": percentage,
-                            "errors": serializer.errors
-                        })
-                        yield f"data: {uploaded_file.name} upload failed: {json.dumps(serializer.errors)}\n\n"
+                        update_file_progress(file_index, 0, f"Validation failed: {serializer.errors}", 'failed')
+                        return {
+                            'index': file_index,
+                            'result': {
+                                "file": uploaded_file.name,
+                                "status": "failed",
+                                "progress": 0,
+                                "errors": serializer.errors
+                            },
+                            'media_file': None
+                        }
 
                 except Exception as e:
-                    results.append({
-                        "file": uploaded_file.name,
-                        "status": "failed",
-                        "progress": percentage,
-                        "error": str(e)
-                    })
-                    yield f"data: {uploaded_file.name} upload failed: {str(e)}\n\n"
+                    error_msg = str(e)
+                    update_file_progress(file_index, 0, f"Upload failed: {error_msg}", 'failed')
+                    return {
+                        'index': file_index,
+                        'result': {
+                            "file": uploaded_file.name,
+                            "status": "failed",
+                            "progress": 0,
+                            "error": error_msg
+                        },
+                        'media_file': None
+                    }
 
-            # Send final results
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_index = {
+                    executor.submit(process_single_file, index, files[index], ivs[index]): index
+                    for index in range(total_files)
+                }
+                
+                started_files = set()
+                last_sent_progress = {i: -1 for i in range(total_files)}  # track last sent progress
+                
+                while len(results) < total_files:
+                    with progress_lock:
+                        for file_index, progress_data in file_progress.items():
+                            file_name = files[file_index].name
+
+                            # Send start message once
+                            if file_index not in started_files and progress_data['status'] != 'pending':
+                                yield f"data: Starting upload of {file_name}\n\n"
+                                started_files.add(file_index)
+
+                            # Only send progress if changed
+                            if (
+                                progress_data['status'] == 'processing' and 
+                                progress_data['progress'] != last_sent_progress[file_index]
+                            ):
+                                yield f"data: {file_name} -> {progress_data['progress']}\n\n"
+                                last_sent_progress[file_index] = progress_data['progress']
+                    
+                    # Handle completed tasks
+                    completed_futures = []
+                    for future in future_to_index:
+                        if future.done():
+                            completed_futures.append(future)
+                    
+                    for future in completed_futures:
+                        try:
+                            result_data = future.result()
+                            if result_data['media_file']:
+                                created_objects.append(result_data['media_file'])
+                            results.append(result_data['result'])
+                            
+                            file_name = result_data['result']['file']
+                            if result_data['result']['status'] == 'success':
+                                yield f"data: {file_name} -> 100\n\n"
+                                yield f"data: {file_name} upload completed successfully\n\n"
+                            else:
+                                error_msg = result_data['result'].get('error') or result_data['result'].get('errors', 'Upload failed')
+                                yield f"data: {file_name} upload failed: {json.dumps(error_msg) if isinstance(error_msg, dict) else error_msg}\n\n"
+                            
+                            del future_to_index[future]
+                        
+                        except Exception as e:
+                            print(f"Task completion error: {e}")
+                            del future_to_index[future]
+                    
+                    time.sleep(0.1)
+            
             yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
 
         return StreamingHttpResponse(

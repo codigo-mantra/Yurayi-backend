@@ -365,107 +365,234 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         fields = ('file','iv')
 
 
+    # def create(self, validated_data):
+    #     user = self.context['user']
+    #     file = validated_data.pop('file', None)
+    #     iv = validated_data.pop('iv')
+    #     time_capsoul = self.context['time_capsoul']
+    #     validated_data['user'] = user
+    #     # validated_data['time_capsoul'] = time_capsoul
+
+    #     if time_capsoul.status == 'unlocked':
+
+    #         try: # get or create time-capsoul replica here
+    #             time_capsoul_replica = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul)
+    #         except TimeCapSoul.DoesNotExist as e:
+    #             # create custom template for replica
+    #             template = time_capsoul.capsoul_template
+    #             template_replica = CustomTimeCapSoulTemplate.objects.create(
+    #                 name = template.name,
+    #                 summary = template.summary,
+    #                 cover_image = template.cover_image,
+    #                 default_template = time_capsoul.capsoul_template.default_template
+    #             )
+    #             template_replica.slug = generate_unique_slug(template_replica)
+    #             time_capsoul_replica = TimeCapSoul.objects.create(
+    #                                                         user = user,
+    #                                                         capsoul_template=template_replica,
+    #                                                         status = 'created',
+    #                                                         capsoul_replica_refrence = time_capsoul)
+    #         finally:
+    #             validated_data['time_capsoul'] = time_capsoul_replica
+    #     else:
+    #         validated_data['time_capsoul'] = time_capsoul
+
+      
+    #     if not file:
+    #         raise serializers.ValidationError({"file": "No file provided."})
+        
+    #     try:
+    #         #Decrypt using shared AES key + IV
+    #         decrypted_bytes = decrypt_frontend_file(file, iv)
+    #     except Exception as e:
+    #         raise serializers.ValidationError({'decryption_error': f'File decryption failed: {str(e)}'})
+        
+    #     file_type = get_file_category(file.name)
+    #     if file_type == 'invalid':
+    #         raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+
+
+
+    #     if file:
+    #         validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
+    #         s3_key = f"{user.s3_storage_id}/time-capsoul-files/{file.name}"
+    #         s3_key = s3_key.replace(" ", "_") # remove white spaces
+
+    #         try:
+    #             # Upload decrypted file
+    #             upload_media_obj = encrypt_and_upload_file(
+    #                 key=s3_key,
+    #                 plaintext_bytes=decrypted_bytes,
+    #                 content_type=file.content_type,
+    #                 file_category=file_type
+    #             )
+    #         except Exception as e:
+    #             print(f'[Upload Error] {e}')
+    #             raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
+
+            
+    #         validated_data['title'] = file.name
+    #         validated_data['file_type'] = file_type
+    #         validated_data['s3_key'] = s3_key
+    #         validated_data['file'] = file
+
+    #         # Set the file field 
+    #         if file_type == 'audio':
+    #             try:
+    #                 # Extract thumbnail 
+    #                 try:
+    #                     ext = os.path.splitext(file.name)[1]
+    #                     extractor = MediaThumbnailExtractor(file, ext)
+    #                     thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(decrypted_bytes = decrypted_bytes, extension=ext )
+
+    #                 except Exception as e:
+    #                     print(f'Exception while media thumbnail extraction: {e}')
+    #                 else:
+    #                     if thumbnail_data:
+    #                         from django.core.files.base import ContentFile
+    #                         from userauth.models import Assets 
+
+    #                         image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+    #                         asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
+    #                         validated_data['thumbnail'] = asset
+    #             except Exception as e:
+    #                 print(f'\n Exception while extracting thumbnail: \n{e}')
+    #     return super().create(validated_data)
+    
+    
+    
+    
     def create(self, validated_data):
+        current_date = timezone.localtime(timezone.now())
         user = self.context['user']
         file = validated_data.pop('file', None)
         iv = validated_data.pop('iv')
         time_capsoul = self.context['time_capsoul']
+        progress_callback = self.context.get('progress_callback')
+
         validated_data['user'] = user
-        # validated_data['time_capsoul'] = time_capsoul
 
         if time_capsoul.status == 'unlocked':
-
-            try: # get or create time-capsoul replica here
-                time_capsoul_replica = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul)
+            try:  # get or create time-capsoul replica here
+                time_capsoul_replica = TimeCapSoul.objects.get(capsoul_replica_refrence=time_capsoul)
             except TimeCapSoul.DoesNotExist as e:
-                # create custom template for replica
                 template = time_capsoul.capsoul_template
                 template_replica = CustomTimeCapSoulTemplate.objects.create(
-                    name = template.name,
-                    summary = template.summary,
-                    cover_image = template.cover_image,
-                    default_template = time_capsoul.capsoul_template.default_template
+                    name=template.name,
+                    summary=template.summary,
+                    cover_image=template.cover_image,
+                    default_template=time_capsoul.capsoul_template.default_template,
+                    created_at = current_date
                 )
                 template_replica.slug = generate_unique_slug(template_replica)
                 time_capsoul_replica = TimeCapSoul.objects.create(
-                                                            user = user,
-                                                            capsoul_template=template_replica,
-                                                            status = 'created',
-                                                            capsoul_replica_refrence = time_capsoul)
+                    user=user,
+                    capsoul_template=template_replica,
+                    status='created',
+                    capsoul_replica_refrence=time_capsoul,
+                    created_at = current_date
+                )
             finally:
                 validated_data['time_capsoul'] = time_capsoul_replica
         else:
             validated_data['time_capsoul'] = time_capsoul
 
-      
         if not file:
             raise serializers.ValidationError({"file": "No file provided."})
-        
+
+        # === Progress: starting decryption ===
+        if progress_callback:
+            progress_callback(5, "Starting file processing...")
+
         try:
-            #Decrypt using shared AES key + IV
+            if progress_callback:
+                progress_callback(10, "Decrypting file...")
             decrypted_bytes = decrypt_frontend_file(file, iv)
+            if progress_callback:
+                progress_callback(20, "File decrypted successfully")
         except Exception as e:
+            if progress_callback:
+                progress_callback(-1, f"Decryption failed: {str(e)}")
             raise serializers.ValidationError({'decryption_error': f'File decryption failed: {str(e)}'})
-        
+
+        if progress_callback:
+            progress_callback(25, "Validating file type...")
+
         file_type = get_file_category(file.name)
         if file_type == 'invalid':
+            if progress_callback:
+                progress_callback(-1, "Invalid file type")
             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
+        validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
+        s3_key = f"{user.s3_storage_id}/time-capsoul-files/{file.name}"
+        s3_key = s3_key.replace(" ", "_")  # remove white spaces
 
+        if progress_callback:
+            progress_callback(30, "Preparing for upload...")
 
-        if file:
-            validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
-            s3_key = f"{user.s3_storage_id}/time-capsoul-files/{file.name}"
-            s3_key = s3_key.replace(" ", "_") # remove white spaces
+        try:
+            # Create progress wrapper for upload (map upload 0-100 → overall 30-80)
+            def upload_progress_callback(upload_percentage, message):
+                if progress_callback:
+                    if upload_percentage == -1:
+                        progress_callback(-1, message)
+                    else:
+                        overall_progress = 30 + int((upload_percentage / 100) * 50)
+                        progress_callback(min(overall_progress, 80), message)
 
-            try:
-                # Upload decrypted file
-                upload_media_obj = encrypt_and_upload_file(
-                    key=s3_key,
-                    plaintext_bytes=decrypted_bytes,
-                    content_type=file.content_type,
-                    file_category=file_type
-                )
-            except Exception as e:
-                print(f'[Upload Error] {e}')
-                raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
+            upload_media_obj = encrypt_and_upload_file(
+                key=s3_key,
+                plaintext_bytes=decrypted_bytes,
+                content_type=file.content_type,
+                file_category=file_type,
+                progress_callback=upload_progress_callback
+            )
+        except Exception as e:
+            print(f'[Upload Error] {e}')
+            if progress_callback:
+                progress_callback(-1, f"Upload failed: {str(e)}")
+            raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
 
-            
-            validated_data['title'] = file.name
-            validated_data['file_type'] = file_type
-            validated_data['s3_key'] = s3_key
-            validated_data['file'] = file
+        validated_data['title'] = file.name
+        validated_data['file_type'] = file_type
+        validated_data['s3_key'] = s3_key
+        validated_data['file'] = file
 
-            # s3_url, file_type,s3_key = upload_file_to_s3_bucket(file, folder='memory_media_files')
-            # validated_data['s3_url'] = s3_url
-            
-            # validated_data['title'] =  validated_data['s3_key'].split('/')[-1]
-            
+        if progress_callback:
+            progress_callback(85, "Generating thumbnails...")
 
-
-
-            # Set the file field 
+        # === Thumbnail generation (only audio for now) ===
+        try:
             if file_type == 'audio':
                 try:
-                    # Extract thumbnail 
-                    try:
-                        ext = os.path.splitext(file.name)[1]
-                        extractor = MediaThumbnailExtractor(file, ext)
-                        thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(decrypted_bytes = decrypted_bytes, extension=ext )
-
-                    except Exception as e:
-                        print(f'Exception while media thumbnail extraction: {e}')
-                    else:
-                        if thumbnail_data:
-                            from django.core.files.base import ContentFile
-                            from userauth.models import Assets 
-
-                            image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
-                            asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
-                            validated_data['thumbnail'] = asset
+                    ext = os.path.splitext(file.name)[1]
+                    extractor = MediaThumbnailExtractor(file, ext)
+                    thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
+                        decrypted_bytes=decrypted_bytes, extension=ext
+                    )
                 except Exception as e:
-                    print(f'\n Exception while extracting thumbnail: \n{e}')
-        return super().create(validated_data)
+                    print(f'Exception while media thumbnail extraction: {e}')
+                else:
+                    if thumbnail_data:
+                        from django.core.files.base import ContentFile
+                        from userauth.models import Assets
+
+                        image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+                        asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
+                        validated_data['thumbnail'] = asset
+        except Exception as e:
+            print(f'\n Exception while extracting thumbnail: \n{e}')
+
+        if progress_callback:
+            progress_callback(95, "Finalizing...")
+
+        instance = super().create(validated_data)
+
+        if progress_callback:
+            progress_callback(100, "File processed successfully!")
+
+        return instance
 
 
 class TimecapSoulReplicaMediaFileCreation(serializers.ModelSerializer):
@@ -671,8 +798,11 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
         set_as_cover = validated_data.pop('set_as_cover', None)
         
         if time_capsoul.status == 'unlocked':
+            created_at = timezone.localtime(timezone.now())
+            
 
             try: # get or create time-capsoul replica here
+
                 time_capsoul_replica = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul)
             except TimeCapSoul.DoesNotExist as e:
                 # create custom template for replica
@@ -681,13 +811,15 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     name = template.name + '(1)',
                     summary = template.summary,
                     cover_image = template.cover_image,
-                    default_template = time_capsoul.capsoul_template.default_template
+                    default_template = time_capsoul.capsoul_template.default_template,
+                    created_at = created_at
                 )
                 template_replica.slug = generate_unique_slug(template_replica)
                 time_capsoul_replica = TimeCapSoul.objects.create(
                                                             user = user,
                                                             capsoul_template=template_replica,
                                                             status = 'created',
+                                                            created_at = created_at,
                                                             capsoul_replica_refrence = time_capsoul)
             
             # now create get or create media-file replica here
@@ -727,7 +859,8 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     description = description,
                     file_size  = media_file.file_size,
                     thumbnail = media_file.thumbnail,
-                    is_cover_image = is_cover_image
+                    is_cover_image = is_cover_image,
+                    created_at = created_at
                 )
             except Exception as e:
                 print(f'Exception while creating time-capsoul replica as: {e}')

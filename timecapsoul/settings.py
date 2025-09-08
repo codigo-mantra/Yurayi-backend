@@ -30,7 +30,9 @@ load_env()  # get credential from env file
 AWS_SECRET = get_aws_secret(env('AWS_SECRET_MANAGER_NAME')) # get credential from AWS Secret Manager 
 
 MODE = env('MODE')
-print(f'\n Project is running in : {MODE}')
+DBMODE = env('DBMODE')
+
+print(f'\n Project is running in : {MODE} DB-Mode: {DBMODE}')
 
 SECRET_KEY = 'django-insecure-xv5_(#zp+y*ixeerilyq^!$2mo$q6y139znuj+jqte4k1pa=89'
 ENCRYPTION_KEY = base64.b64decode("8ZqN0rj8s8asfV0nZTzPpS4wpAe6o7pFfV9s5F0qf+Q=")
@@ -102,43 +104,49 @@ TEMPLATES = [
 # WSGI_APPLICATION = 'timecapsoul.wsgi.application'
 ASGI_APPLICATION = "timecapsoul.asgi.application"
 
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.sqlite3',
-#         'NAME': BASE_DIR / 'db.sqlite3',
-#     }
-# }
 
-# local db config
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.mysql',
-#         'NAME': 'timecapsoulDBTEST',
-#         'USER': 'root',
-#         'PASSWORD': 'Test@1234',
-#         'HOST': 'localhost',
-#         'PORT': 3306,
-#         'OPTIONS': {
-#             "init_command": "SET foreign_key_checks = 0;",
-#             'charset': 'utf8mb4',
-#         },
-#     }
-# }
 
-# production db config
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': AWS_SECRET['DB_NAME'],
-        'USER': AWS_SECRET['DB_USER'],
-        'PASSWORD': AWS_SECRET['DB_PASSWORD'],
-        'HOST': AWS_SECRET['DB_HOST'],
-        'PORT': '3306',
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
+
+
+if DBMODE == 'PROD':
+    # production db config
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': AWS_SECRET['DB_NAME'],
+            'USER': AWS_SECRET['DB_USER'],
+            'PASSWORD': AWS_SECRET['DB_PASSWORD'],
+            'HOST': AWS_SECRET['DB_HOST'],
+            'PORT': '3306',
+            'OPTIONS': {
+                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            },
+        }
     }
-}
+else:
+    # local db config
+    # DATABASES = {
+    #     'default': {
+    #         'ENGINE': 'django.db.backends.mysql',
+    #         'NAME': 'timecapsoulDBTEST',
+    #         'USER': 'root',
+    #         'PASSWORD': 'Test@1234',
+    #         'HOST': 'localhost',
+    #         'PORT': 3306,
+    #         'OPTIONS': {
+    #             "init_command": "SET foreign_key_checks = 0;",
+    #             'charset': 'utf8mb4',
+    #         },
+    #     }
+    # }
+    
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
+    
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -160,7 +168,7 @@ AUTH_PASSWORD_VALIDATORS = [
 
 
 LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+TIME_ZONE = "Asia/Kolkata"
 USE_I18N = True
 USE_TZ = True
 
