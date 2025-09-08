@@ -245,7 +245,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'confirm_password']
+        fields = ['email', 'password', 'confirm_password','device_name']
 
     def generate_unique_username(self, first_name, last_name):
         base_username = f"{first_name.lower()}.{last_name.lower()}" if first_name and last_name else "user"
