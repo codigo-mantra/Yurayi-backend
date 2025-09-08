@@ -20,6 +20,7 @@ from asgiref.sync import async_to_sync
 import threading
 import queue
 import time
+from django.core.cache import cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from userauth.models import Assets
@@ -113,7 +114,9 @@ class CreateMemoryRoomView(SecuredView):
         user = self.get_current_user(request)
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
         room_name = memory_room.room_template.name
-        memory_room.delete()
+        room_name.is_deleted
+        room_name.save()
+        # memory_room.delete()
         return Response(
             {'message': f'Memory deleted successfully named as : {room_name}'},
             status=status.HTTP_204_NO_CONTENT
@@ -573,7 +576,9 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
             user=user,
             memory_room=memory_room
         )
-        media_file.delete()
+        # media_file.delete()
+        media_file.is_deleted
+        media_file.save()
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
 class UpdateMediaFileDescriptionView(SecuredView):
@@ -607,7 +612,20 @@ class MediaFileDownloadView(SecuredView):
         )
 
         file_name = media_file.title
-        file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
+        
+        # caching here
+        cache_key = (media_file.s3_key)
+        file_bytes = cache.get(cache_key)
+        content_type = cache.get(f'{cache_key}_type')
+        
+        if not file_bytes:
+            file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
+            
+            # store in cache
+            cache.set(cache_key, file_bytes, timeout=120)  
+            cache.set(f'{cache_key}_type', content_type, timeout=120)  
+
+
 
         try:
             file_size = len(file_bytes)
@@ -667,6 +685,7 @@ class MemoryRoomMediaFileFilterView(SecuredView):
                 # 'title__icontains': query_params.get('description'),
                 'user': user,
                 'created_at__date': query_params.get('date'),
+                'is_deleted': False
             }.items() if value is not None
         }
 
@@ -768,9 +787,22 @@ class ServeMedia(SecuredView):
 
             if not hmac.compare_digest(sig, expected_sig):
                 return Response(status=status.HTTP_404_NOT_FOUND)
+            
+            # caching here
+            cache_key = (s3_key)
+            file_bytes = cache.get(cache_key)
+            content_type = cache.get(f'{cache_key}_type')
+            
+            if not file_bytes:
+                file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+                
+                # store in cache
+                cache.set(cache_key, file_bytes, timeout=60*5)  
+                cache.set(f'{cache_key}_type', content_type, timeout=60*5)  
 
-            # Decrypt actual file bytes
-            file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+
+            # # Decrypt actual file bytes
+            # file_bytes,content_type = decrypt_and_get_image(str(s3_key))
 
 
             #  Serve decrypt file via Django

@@ -12,6 +12,7 @@ from rest_framework.exceptions import ValidationError
 from rest_framework import serializers
 import json,io
 import hmac
+from django.core.cache import cache
 import hashlib
 import base64
 import threading
@@ -182,11 +183,11 @@ class TimeCapSoulMediaFilesView(SecuredView):
             if user.email not in recipients:
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-            media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul)
+            media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
 
         else:
             # If owner, also include replica parent files (excluding already linked ones)
-            media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul)
+            media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
 
             if time_capsoul.capsoul_replica_refrence:
                 parent_files = TimeCapSoulMediaFile.objects.filter(
@@ -932,13 +933,26 @@ class ServeTimeCapSoulMedia(SecuredView):
         #  signature-verification
         if not verify_signature(media_file.s3_key, exp, sig):
             return Response(status=status.HTTP_404_NOT_FOUND)
+        
+        cache_key = (media_file.s3_key)
+        file_bytes = cache.get(cache_key)
+        content_type = cache.get(f'{cache_key}_type')
+        if not file_bytes:
+            try:
+                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
+            except Exception as e:
+                file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
+            except Exception as e:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            else:
+                # caching here
+                if not file_bytes:
+                    file_bytes,content_type = decrypt_and_get_image(str(s3_key))
+                    
+                    # store in cache
+                    cache.set(cache_key, file_bytes, timeout=60*5)  
+                    cache.set(f'{cache_key}_type', content_type, timeout=60*5)  
 
-        try:
-            file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
-        except Exception as e:
-            file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
-        except Exception as e:
-            return Response(status=status.HTTP_404_NOT_FOUND)
 
         response = HttpResponse(file_bytes, content_type=content_type)
         # response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".enc", "")}"'
