@@ -2,6 +2,7 @@ import os
 from django.utils import timezone
 from userauth.models import Assets
 from django.conf import settings
+import base64, hmac, hashlib
 from datetime import datetime, timedelta
 from django.shortcuts import get_object_or_404
 
@@ -97,28 +98,6 @@ class CustomTimeCapSoulTemplateSerializer(serializers.ModelSerializer):
         model = CustomTimeCapSoulTemplate
         fields = ['id', 'name', 'slug', 'summary', 'cover_image']
 
-
-class TimeCapSoulReplicaReadOnlySerializer(serializers.ModelSerializer):
-    cover_image = AssetSerializer()
-    total_files = serializers.SerializerMethodField()
-
-    class Meta:
-        model = TimeCapSoulReplica
-        fields = [
-            'id',
-            'name',
-            'slug',
-            'total_files',
-            'summary',
-            'status',
-            'cover_image',
-            'created_at',
-            'updated_at',
-        ]
-        read_only_fields = fields
-    def get_total_files(self, obj):
-        files = TimeCapSoulMediaFileReplica.objects.filter(time_capsoul = obj)
-        return files.count()
 
 
 # class TimeCapSoulSerializer(serializers.ModelSerializer):
@@ -236,12 +215,6 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         except AttributeError:
             return 0
 
-    # def get_time_capsoul_replica(self, obj):
-    #     try:
-    #         replica = TimeCapSoul.objects.get(capsoul_replica_refrence=obj)
-    #         return TimeCapSoulSerializer(replica).data
-    #     except TimeCapSoul.DoesNotExist:
-    #         return {}
 
     def get_status(self, obj):
         # update status time-capsoul 
@@ -595,157 +568,6 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         return instance
 
 
-class TimecapSoulReplicaMediaFileCreation(serializers.ModelSerializer):
-    """
-    Handles creation of TimeCapSoulMediaFile, including upload to S3.
-    """
-    iv = serializers.CharField(write_only=True, required=True)
-
-
-    class Meta:
-        model = TimeCapSoulMediaFileReplica
-        fields = ('file','iv')
-
-
-    def create(self, validated_data):
-        user = self.context['user']
-        iv  = validated_data.pop('iv')
-        file = validated_data.pop('file', None)
-        time_capsoul = self.context['time_capsoul']
-
-        try:
-            time_cap_soul_replica = TimeCapSoulReplica.objects.get(parent_time_capsoul = time_capsoul)
-        except TimeCapSoulReplica.DoesNotExist:
-            time_capsoul_replica = TimeCapSoulReplica.objects.create(
-                user = user,
-                name =time_capsoul.capsoul_template.name,
-                slug = time_capsoul.capsoul_template.slug,
-                summary = time_capsoul.capsoul_template.summary,
-                status = time_capsoul.status,
-                cover_image = time_capsoul.capsoul_template.cover_image,
-                parent_time_capsoul = time_capsoul
-                )
-        finally:
-            validated_data['parent_time_capsoul'] = time_cap_soul_replica
-
-
-
-        # validated_data['user'] = user
-        # validated_data['time_capsoul'] = time_capsoul
-      
-        if not file:
-            raise serializers.ValidationError({"file": "No file provided."})
-        
-        try:
-            #Decrypt using shared AES key + IV
-            decrypted_bytes = decrypt_frontend_file(file, iv)
-        except Exception as e:
-            raise serializers.ValidationError({'decryption_error': f'File decryption failed: {str(e)}'})
-        
-        file_type = get_file_category(file.name)
-        if file_type == 'invalid':
-            raise serializers.ValidationError({'file_type': 'File type is invalid.'})
-
-
-
-        if file:
-            validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
-            s3_key = f"{user.s3_storage_id}/time-capsoul-files/{file.name}"
-            s3_key = s3_key.replace(" ", "_") # remove white spaces
-
-            try:
-                # Upload decrypted file
-                upload_media_obj = encrypt_and_upload_file(
-                    key=s3_key,
-                    plaintext_bytes=decrypted_bytes,
-                    content_type=file.content_type,
-                    file_category=file_type
-                )
-            except Exception as e:
-                print(f'[Upload Error] {e}')
-                raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
-
-            
-            validated_data['title'] = file.name
-            validated_data['file_type'] = file_type
-            validated_data['s3_key'] = s3_key
-            validated_data['file'] = file
-
-            # s3_url, file_type,s3_key = upload_file_to_s3_bucket(file, folder='memory_media_files')
-            # validated_data['s3_url'] = s3_url
-            
-            # validated_data['title'] =  validated_data['s3_key'].split('/')[-1]
-            
-
-
-
-            # Set the file field 
-            if file_type == 'audio':
-                try:
-                    # Extract thumbnail 
-                    try:
-                        ext = os.path.splitext(file.name)[1]
-                        extractor = MediaThumbnailExtractor(file, ext)
-                        thumbnail_data = extractor.extract()
-                    except Exception as e:
-                        print(f'Exception while media thumbnail extraction: {e}')
-                    else:
-                        if thumbnail_data:
-                            from django.core.files.base import ContentFile
-                            from userauth.models import Assets 
-
-                            image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
-                            asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
-                            validated_data['thumbnail'] = asset
-
-
-                        # validated_data['cover_image'] = asset
-                        # print(f'S3 url: ',asset.s3_url)
-                        # validated_data['thumbnail_url'] = asset.s3_url
-                        # print(f'thubmnail: {validated_data['thumbnail_url']}')
-                        # validated_data['thumbnail_key'] = asset.s3_key
-                except Exception as e:
-                    print(f'\n Exception while extracting thumbnail: \n{e}')
-            
-                
-        return super().create(validated_data)
-
-
-class ChildMediaFileReplicaSerializer(serializers.ModelSerializer):
-    thumbnail = AssetSerializer()
-    refrence_replica = serializers.SerializerMethodField()
-    class Meta:
-        model = TimeCapSoulMediaFileReplica
-        fields = ('id', 'file_type', 's3_url', 'title', 'description', 'thumbnail', 'file_size', 'refrence_replica')
-    
-
-class TimeCapSoulMediaFileReplicaSerializer(serializers.ModelSerializer):
-    thumbnail = AssetSerializer()
-    s3_url = serializers.SerializerMethodField()
-    refrence_replica = serializers.SerializerMethodField()
-    class Meta:
-        model = TimeCapSoulMediaFileReplica
-        fields = ('id', 'create_at', 'updated_at', 'file_type', 's3_url', 'title', 'description', 'thumbnail', 'file_size', 'refrence_replica')
-    
-    def get_refrence_replica(self, obj):
-        if obj.refrence_replica:
-            serializer = TimeCapSoulMediaFileReplicaSerializer(obj)
-            return serializer.data
-    
-    def get_s3_url(self, obj):
-        import time, base64, hmac, hashlib
-
-        exp = int(time.time()) + 60*5  # 5 minutes expiry
-        raw = f"{obj.s3_key}:{exp}"
-        sig = base64.urlsafe_b64encode(
-            hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
-        ).decode().rstrip("=")
-        return f"/api/v0/time-capsoul/api/media/serve/replica-files/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
-        # return f"/api/v0/time-capsoul/api/media/serve/replica-files/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
-
-import base64, hmac, hashlib
-from django.conf import settings
-
 
 def generate_signature(s3_key: str, exp: int) -> str:
     """
@@ -767,7 +589,6 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
 
     def get_s3_url(self, obj):
         import time, base64, hmac, hashlib
-        from django.conf import settings
 
         exp = int(time.time()) + 60 * 5  
         s3_key = obj.s3_key 

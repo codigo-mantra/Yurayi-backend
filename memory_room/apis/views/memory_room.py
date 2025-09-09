@@ -800,13 +800,9 @@ class ServeMedia(SecuredView):
                 cache.set(cache_key, file_bytes, timeout=60*5)  
                 cache.set(f'{cache_key}_type', content_type, timeout=60*5)  
 
-
-            # # Decrypt actual file bytes
-            # file_bytes,content_type = decrypt_and_get_image(str(s3_key))
-
-
-            #  Serve decrypt file via Django
             response = HttpResponse(file_bytes, content_type=content_type)
+            frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # # Build CSP header
+            response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
             response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
             return response
         except Exception as e:

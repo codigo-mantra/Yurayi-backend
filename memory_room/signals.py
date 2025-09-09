@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import User, UserMapper
-from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica,TimeCapSoulReplica, RecipientsDetail, MemoryRoomMediaFile
+from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica, RecipientsDetail, MemoryRoomMediaFile
 
 @receiver(post_save, sender=User)
 def create_user_mapper(sender, instance, created, **kwargs):
@@ -83,8 +83,3 @@ def delete_all_related_timecapsoul_data(sender, instance, **kwargs):
     except TimeCapSoulDetail.DoesNotExist:
         pass
 
-    # Delete associated TimeCapSoulReplica
-    try:
-        instance.time_capsoul_replica.delete()
-    except TimeCapSoulReplica.DoesNotExist:
-        pass

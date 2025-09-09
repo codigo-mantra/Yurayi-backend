@@ -32,7 +32,8 @@ staticfiles/
 env/
 venv/
 ENV/
-
+*.txt
+*.sqlite3
 # IDE
 .idea/
 .vscode/
