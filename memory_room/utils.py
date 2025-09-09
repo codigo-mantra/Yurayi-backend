@@ -169,30 +169,6 @@ def determine_download_chunk_size(file_size):
 import threading
 import sys
 
-class ProgressPercentage:
-    def __init__(self, filename, filesize, callback=None):
-        self._filename = filename
-        self._filesize = filesize
-        self._seen_so_far = 0
-        self._lock = threading.Lock()
-        self._callback = callback  # Optional callback to send progress updates
-
-    def __call__(self, bytes_amount):
-        # Thread-safe progress update
-        with self._lock:
-            self._seen_so_far += bytes_amount
-            percentage = (self._seen_so_far / self._filesize) * 100
-
-            # If no callback, just print to stdout
-            if self._callback:
-                self._callback(self._filename, round(percentage, 2))
-            else:
-                sys.stdout.write(
-                    f"\r{self._filename}  {self._seen_so_far} / {self._filesize}  ({percentage:.2f}%)"
-                )
-                sys.stdout.flush()
-
-
 class S3FileHandler:
     def __init__(self):
         self.s3 = boto3.client(
@@ -326,37 +302,3 @@ class S3FileHandler:
             print(f'File deleted successfully from s3 s3: {s3_key} status: {is_deleted}')
         finally:
             return is_deleted
-
-
-
-import jwt
-from cryptography.fernet import Fernet
-from django.conf import settings
-
-
-class JWTEncryptionManager:
-    def __init__(self, jwt_secret=None, fernet_key='vYkhUkBpskFnpYZphr05aIBgubkFfPmk_vm16J-XjV4='):
-        # Load from Django settings or pass directly
-        self.jwt_secret = jwt_secret or settings.SECRET_KEY
-        self.fernet_key = fernet_key or getattr(settings, "FERNET_KEY", None)
-
-        if not self.fernet_key:
-            raise ValueError("FERNET_KEY must be defined in Django settings.")
-
-        self.fernet = Fernet(self.fernet_key)
-
-    def create_token(self, payload: dict, algorithm: str = "HS256") -> str:
-        """
-        Create a signed JWT and then encrypt it.
-        """
-        token = jwt.encode(payload, self.jwt_secret, algorithm=algorithm)
-        encrypted = self.fernet.encrypt(token.encode())
-        return encrypted.decode()
-
-    def decode_token(self, encrypted_token: str, algorithm: str = "HS256") -> dict:
-        """
-        Decrypt token and then verify + decode JWT.
-        """
-        decrypted = self.fernet.decrypt(encrypted_token.encode()).decode()
-        payload = jwt.decode(decrypted, self.jwt_secret, algorithms=[algorithm])
-        return payload

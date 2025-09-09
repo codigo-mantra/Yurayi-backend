@@ -57,9 +57,13 @@ class MemoryRoomCoverView(SecuredView):
         """
         Returns all memory room cover assets ordered by creation date.
         """
-        assets = Assets.objects.filter(asset_types='Memory Room Cover').order_by('-created_at')
-        serializer = AssetSerializer(assets, many=True)
-        return Response(serializer.data)
+        cache_key = 'memory_room_covers'
+        data  = cache.get(cache_key)
+        if not data:
+            assets = Assets.objects.filter(asset_types='Memory Room Cover').order_by('-created_at')
+            data = AssetSerializer(assets, many=True).data
+            cache.set(cache_key, data, timeout=60*10) # 10 minutes cached  
+        return Response(data)
 
 class UserMemoryRoomListView(SecuredView):
     """
@@ -82,9 +86,15 @@ class MemoryRoomTemplateDefaultViewSet(SecuredView):
         """
         Returns all non-deleted default memory room templates ordered by creation.
         """
-        rooms = MemoryRoomTemplateDefault.objects.filter(is_deleted=False).order_by('-created_at')
-        serializer = MemoryRoomTemplateDefaultSerializer(rooms, many=True)
-        return Response(serializer.data)
+        cache_key = 'memory_room_default_temlates'
+        data  = cache.get(cache_key)
+        if not data:
+            rooms = MemoryRoomTemplateDefault.objects.filter(is_deleted=False).order_by('-created_at')
+            data = MemoryRoomTemplateDefaultSerializer(rooms, many=True).data
+            # store in cache
+            cache.set(cache_key, data, timeout=60*10) # 10 minutes cached  
+            
+        return Response(data)
 
 class CreateMemoryRoomView(SecuredView):
     """

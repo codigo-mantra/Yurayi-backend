@@ -46,12 +46,8 @@ from userauth.apis.serializers.serializers import  (
     )
 
 from userauth.serializers import LoginSerializer
-
-from memory_room.utils import JWTEncryptionManager
-
 from allauth.account.utils import perform_login
 
-jwt_manager = JWTEncryptionManager()
 
 REFRESH_TTL_DAYS = settings.REFRESH_TOKEN_TTL_DAYS
 

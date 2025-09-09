@@ -9,12 +9,11 @@ from memory_room.models import (
     MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file
 MODE = settings.MODE
 from django.core.files.base import ContentFile
 
-s3_bucket_handler = S3FileHandler()
 
 # AWS_KMS_REGION = settings.AWS_KMS_REGION
 # AWS_KMS_KEY_ID = settings.AWS_KMS_KEY_ID

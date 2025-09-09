@@ -52,15 +52,25 @@ class TimeCapSoulCoverView(SecuredView):
         """
         Returns all Time CapSoul Cover assets ordered by creation date.
         """
-        assets = Assets.objects.filter(asset_types='Time CapSoul Cover').order_by('-created_at')
-        serializer = AssetSerializer(assets, many=True)
-        return Response(serializer.data)
+        cache_key = 'time_capsoul_covers'
+        data  = cache.get(cache_key)
+        if not data:
+            assets = Assets.objects.filter(asset_types='Time CapSoul Cover').order_by('-created_at')
+            data = AssetSerializer(assets, many=True).data
+            cache.set(cache_key, data, timeout=60*10) # 10 minutes cached  
+            
+        return Response(data)
 
 class TimeCapSoulDefaultTemplateAPI(SecuredView):
     def get(self, request, format=None):
-        default_templates = TimeCapSoulTemplateDefault.objects.filter(is_deleted = False)
-        serializer = TimeCapSoulTemplateDefaultReadOnlySerializer(default_templates, many=True)
-        return Response(serializer.data)
+        cache_key = 'time_capsoul_templates'
+        data  = cache.get(cache_key)
+        if not data:
+            default_templates = TimeCapSoulTemplateDefault.objects.filter(is_deleted = False)
+            data = TimeCapSoulTemplateDefaultReadOnlySerializer(default_templates, many=True).data
+            cache.set(cache_key, data, timeout=60*10) # 10 minutes cached  
+            
+        return Response(data)
 
 class CreateTimeCapSoulView(SecuredView):
     """

@@ -2,7 +2,7 @@ from django.db import models
 from django.utils import timezone
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from .managers import UserManager
-from memory_room.utils import upload_file_to_s3_bucket,S3FileHandler
+from memory_room.utils import upload_file_to_s3_bucket
 
 
 class BaseModel(models.Model):

@@ -24,73 +24,6 @@ kms = boto3.client(
     aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
 )
 
-# def encrypt_and_upload_image(*, bucket, key, plaintext_bytes, kms_key_id, content_type="image/jpeg"):
-#     # 1) Create a fresh data key from KMS (plaintext+encrypted)
-#     resp = kms.generate_data_key(KeyId=kms_key_id, KeySpec="AES_256")
-#     data_key_plain = resp["Plaintext"]          # bytes 
-#     data_key_encrypted = resp["CiphertextBlob"] # bytes
-
-#     # 2) Encrypt image with AES-GCM using the plaintext data key
-#     aesgcm = AESGCM(data_key_plain)
-#     nonce = os.urandom(12)  # GCM nonce
-#     ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, associated_data=None)
-
-#     # 3) Upload ciphertext to S3, store EDK + nonce in metadata (base64)
-#     obj = s3.put_object(
-#         Bucket=bucket,
-#         Key=key,
-#         Body=ciphertext,
-#         ContentType="application/octet-stream",  # ciphertext isn't an image
-#         Metadata={
-#             "edk": base64.b64encode(data_key_encrypted).decode(),
-#             "nonce": base64.b64encode(nonce).decode(),
-#             "orig-content-type": content_type,
-#         }
-#     )
-#     print(f"✅ File uploaded successfully!")
-#     print(f"S3 Key: {key}")
-#     return obj
-
-
-
-# def encrypt_and_upload_file(*, key, plaintext_bytes,  content_type="application/octet-stream", file_category=None):
-#     """
-#     Encrypts and uploads file to S3 using KMS data key.
-#     """
-#     try:
-
-#         # 1) Generate KMS data key (plaintext + encrypted)
-#         resp = kms.generate_data_key(KeyId='843da3bb-9a57-4d9f-a8ab-879a6109f460', KeySpec="AES_256")
-#         data_key_plain = resp["Plaintext"]          # bytes 
-#         data_key_encrypted = resp["CiphertextBlob"] # bytes
-
-#         # 2) Encrypt file using AES-GCM
-#         aesgcm = AESGCM(data_key_plain)
-#         nonce = os.urandom(12)  # 12-byte nonce for GCM
-#         ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, associated_data=None)
-
-#         # 3) Upload encrypted file to S3
-#         obj = s3.put_object(
-#             Bucket='yurayi-media',
-#             Key=key,
-#             Body=ciphertext,
-#             ContentType="application/octet-stream",  # ciphertext is binary
-#             Metadata={
-#                 "edk": base64.b64encode(data_key_encrypted).decode(),
-#                 "nonce": base64.b64encode(nonce).decode(),
-#                 "orig-content-type": content_type,
-#                 "file-category": file_category
-#             }
-#         )
-
-#         print(f"✅ File uploaded successfully! S3 Key: {key}")
-#         return obj
-#     except Exception as e:
-#         print(f'exception as ',e)
-
-
-
-
 def encrypt_and_upload_file(*, key, plaintext_bytes, content_type="application/octet-stream", 
                           file_category=None, progress_callback=None):
     """
@@ -157,42 +90,6 @@ def encrypt_and_upload_file(*, key, plaintext_bytes, content_type="application/o
         raise e
 
 
-# def _single_upload_with_progress(s3_client, ciphertext, key, content_type, 
-#                                data_key_encrypted, nonce, file_category, 
-#                                progress_callback, processed_bytes, total_size):
-#     """Handle single part upload with progress tracking"""
-    
-#     class ProgressTracker:
-#         def __init__(self, callback, processed_bytes, total_size):
-#             self.callback = callback
-#             self.processed_bytes = processed_bytes
-#             self.total_size = total_size
-#             self.uploaded = 0
-            
-#         def __call__(self, bytes_transferred):
-#             self.uploaded = bytes_transferred
-#             current_progress = self.processed_bytes + (bytes_transferred * 0.7)  # 70% for upload
-#             percentage = int((current_progress / self.total_size) * 100)
-#             if self.callback:
-#                 self.callback(min(percentage, 99), "Uploading to S3...")
-
-#     progress_tracker = ProgressTracker(progress_callback, processed_bytes, total_size)
-    
-#     obj = s3_client.put_object(
-#         Bucket='yurayi-media',
-#         Key=key,
-#         Body=ciphertext,
-#         ContentType="application/octet-stream",
-#         Metadata={
-#             "edk": base64.b64encode(data_key_encrypted).decode(),
-#             "nonce": base64.b64encode(nonce).decode(),
-#             "orig-content-type": content_type,
-#             "file-category": file_category
-#         },
-#         Callback=progress_tracker
-#     )
-    
-#     return obj
 
 import io
 import base64
@@ -312,33 +209,6 @@ def _multipart_upload_with_progress(s3_client, ciphertext, key, content_type,
             UploadId=upload_id
         )
         raise e
-
-
-
-# def decrypt_and_get_image(bucket: str, key: str) -> bytes:
-#     """
-#     Download, decrypt and return image bytes from S3.
-#     """
-#     obj = s3.get_object(Bucket=bucket, Key=key)
-#     ciphertext = obj["Body"].read()
-
-#     # Metadata contains encrypted data key + nonce
-#     metadata = obj["Metadata"]
-#     encrypted_data_key_b64 = metadata["edk"]
-#     nonce_b64 = metadata["nonce"]
-
-#     encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
-#     nonce = base64.b64decode(nonce_b64)
-
-#     # 1) Decrypt the data key with KMS
-#     resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
-#     data_key = resp["Plaintext"]
-
-#     # 2) Decrypt ciphertext with AESGCM
-#     aesgcm = AESGCM(data_key)
-#     plaintext = aesgcm.decrypt(nonce, ciphertext, None)
-
-#     return plaintext
 
 
 def decrypt_and_get_image(key: str):

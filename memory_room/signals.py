@@ -1,7 +1,10 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import User, UserMapper
-from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica, RecipientsDetail, MemoryRoomMediaFile
+from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica, RecipientsDetail, MemoryRoomMediaFile, MemoryRoomTemplateDefault
+
+from django.core.cache import cache
+
 
 @receiver(post_save, sender=User)
 def create_user_mapper(sender, instance, created, **kwargs):
@@ -83,3 +86,16 @@ def delete_all_related_timecapsoul_data(sender, instance, **kwargs):
     except TimeCapSoulDetail.DoesNotExist:
         pass
 
+
+@receiver([post_save, post_delete], sender=MemoryRoomTemplateDefault)
+def delete_cached_templated_data(sender, instance, **kwargs):
+    # Clear cached data 
+    cache_key = f"memory_room_default_temlates"
+    cache.delete(cache_key)
+
+
+@receiver([post_save, post_delete], sender=MemoryRoomTemplateDefault)
+def delete_capsoul_template_cached_data(sender, instance, **kwargs):
+    # Clear cached data 
+    cache_key = f"time_capsoul_templates"
+    cache.delete(cache_key)
