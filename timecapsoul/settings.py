@@ -40,7 +40,7 @@ ENCRYPTION_KEY = base64.b64decode("8ZqN0rj8s8asfV0nZTzPpS4wpAe6o7pFfV9s5F0qf+Q="
 
 DEBUG = False
 
-ALLOWED_HOSTS = ["*"] 
+ALLOWED_HOSTS = [""] 
 
 # Application definition
 INSTALLED_APPS = [
@@ -317,9 +317,9 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
 ]
 SESSION_COOKIE_SAMESITE = 'Lax'  # or 'None' for cross-origin
-SESSION_COOKIE_SECURE = False  # Set to True in production with HTTPS
+SESSION_COOKIE_SECURE = True  # Set to True in production with HTTPS
 CSRF_COOKIE_SAMESITE = 'Lax'   # or 'None' for cross-origin
-CSRF_COOKIE_SECURE = False 
+CSRF_COOKIE_SECURE = True 
 
 SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("JWT", "Bearer"),
@@ -357,7 +357,7 @@ CACHES = {
 ACCESS_COOKIE_NAME = "access_token"
 ACCESS_COOKIE_SECURE = True          # True in production (HTTPS), False for local dev
 ACCESS_COOKIE_HTTPONLY = True        # Prevent JS access (XSS protection)
-ACCESS_COOKIE_SAMESITE = "None"      # "Strict" | "Lax" | "None"
+ACCESS_COOKIE_SAMESITE = "Strict"      # "Strict" | "Lax" | "None"
 ACCESS_COOKIE_PATH = "/"
 
 # ACCESS_TOKEN_LIFETIME = 60 * 15      # 15 minutes (example)
@@ -367,7 +367,7 @@ REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_SECURE = True
 REFRESH_COOKIE_HTTPONLY = True
 REFRESH_COOKIE_SAMESITE = "None"
-REFRESH_COOKIE_PATH = "/auth/refresh/"
+# REFRESH_COOKIE_PATH = "/auth/refresh/"
 REFRESH_TTL_DAYS = 7
 
 
