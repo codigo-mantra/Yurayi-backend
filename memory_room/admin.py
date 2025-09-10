@@ -13,6 +13,7 @@ from .models import (
     TimeCapSoulRecipient,
     RecipientsDetail,
     UserMapper,
+    Notification
 )
 
 
@@ -21,6 +22,11 @@ from .models import (
 @admin.register(TimeCapSoulMediaFile)
 class TimeCapSoulMediaFileAdmin(admin.ModelAdmin):
     list_display = ("id", "user", "time_capsoul",)
+
+
+@admin.register(Notification)
+class NotificationAdmin(admin.ModelAdmin):
+    list_display = ("id", "user", "memory_room",'time_capsoul', 'category', 'title', 'is_read')
 
 
 

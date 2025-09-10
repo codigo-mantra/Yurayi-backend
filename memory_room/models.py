@@ -552,3 +552,44 @@ class UserMapper(BaseModel):
 
     def __str__(self):
         return f"Storage Mapper for {self.user.username}"
+
+
+# notification-category
+class NotificationCategory(models.TextChoices):
+    CAPSOUL = "capsoul", "Capsoul"
+    REMINDER = "reminder", "Reminders & Memories"
+    OCCASION = "occasion", "Special Occasions"
+    ROOM = "room", "Memory Room"
+    SECURITY = "security", "Account & Security"
+
+# notification types
+class NotificationType(models.TextChoices):
+    CAPSOUL_SEALED = "capsoul_sealed", "Capsoul Sealed" #Capsoul-types
+    CAPSOUL_INVITE_RECEIVED = "capsoul_invite_received", "Capsoul Invite Received"
+    CAPSOUL_ALMOST_UNLOCK = "capsoul_almost_unlock", "Capsoul Almost Unlock"
+    CAPSOUL_UNLOCKED = "capsoul_unlocked", "Capsoul Unlocked"
+    CAPSOUL_WAITING = "capsoul_waiting", "Capsoul Waiting"
+    CAPSOUL_REMINDER_7_DAYS = "capsoul_reminder_7_days", "Capsoul Reminder (7 Days)"
+    MEMORY_PRESERVATION_REMINDER = "memory_preservation", "Memory Preservation Reminder" # Reminders types
+    MEMORY_ONE_YEAR_AGO = "memory_one_year_ago", "Memory From One Year Ago"
+    ANNIVERSARY_REMINDER = "anniversary_reminder", "Anniversary Reminder" # Occasions types
+    BIRTHDAY_REMINDER = "birthday_reminder", "Birthday Reminder"
+    FESTIVAL_GREETING = "festival_greeting", "Festival Greeting"
+    ROOM_NO_MEDIA = "room_no_media", "Room Has No Media" # Room
+    PASSWORD_UPDATED = "password_updated", "Password Updated" # Account &Security
+    NEW_LOGIN_DETECTED = "new_login_detected", "New Login Detected"
+    PROFILE_UPDATED = "profile_updated", "Profile Updated"
+
+# notification models
+class Notification(BaseModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name="notifications")
+    memory_room = models.ForeignKey(MemoryRoom, on_delete=models.CASCADE, related_name='notifications', blank=True, null=True)
+    time_capsoul = models.ForeignKey(TimeCapSoul, on_delete=models.CASCADE, related_name='notifications',blank=True, null=True)
+    category = models.CharField(max_length=50, choices=NotificationCategory.choices)
+    category_type = models.CharField(max_length=50, choices=NotificationType.choices)
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+    is_read = models.BooleanField(default=False)
+    
+    def __str__(self):
+        return f'{self.user.email} |  {self.title} | {self.is_read} | {self.category}'

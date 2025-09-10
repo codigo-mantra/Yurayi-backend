@@ -47,7 +47,8 @@ from userauth.apis.serializers.serializers import  (
 
 from userauth.serializers import LoginSerializer
 from allauth.account.utils import perform_login
-
+from memory_room.notification_service import NotificationService
+from memory_room.notification_message import NOTIFICATIONS
 
 REFRESH_TTL_DAYS = settings.REFRESH_TOKEN_TTL_DAYS
 
@@ -370,7 +371,7 @@ class LoginView(APIView):
         if not user.is_active:
             return Response({'error': 'Account inactive. Contact support to reactivate.'}, status=403)
         
-        # Track device/session
+        # # Track device/session
         ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
         ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
         session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
@@ -625,20 +626,72 @@ class PasswordResetConfirmView(APIView):
         serializer = PasswordResetConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         user = serializer.save()  
+        
+        # create password chage notification here 
+        notif = NotificationService.create_notification_with_key(
+            notification_key='password_updated',
+            user=user,
+        )
+        # # Track device/session
+        device_name = ''
+        ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
+        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
+        session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
 
-        # Issue JWT tokens after password reset
-        refresh = RefreshToken.for_user(user)
-        return Response({
-            "detail": "Password has been reset successfully.",
-            "refresh": str(refresh),
-            "access": str(refresh.access_token),
+        access = create_access_jwt_for_user(user, session_id=session.id)
+        refresh_value = _gen_refresh_value()
+        from django.utils import timezone 
+        expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
+        RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+
+        resp = Response({
+            "access": access,
             "user": {
                 "username": user.username,
                 "email": user.email,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-            }
-        }, status=status.HTTP_200_OK)
+            },
+        })
+
+        resp.set_cookie(
+            settings.REFRESH_COOKIE_NAME,
+            refresh_value,
+            httponly=settings.REFRESH_COOKIE_HTTPONLY,
+            secure=settings.REFRESH_COOKIE_SECURE,
+            samesite=settings.REFRESH_COOKIE_SAMESITE,
+            max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
+            domain=settings.COOKIE_DOMAIN,
+            path=settings.REFRESH_COOKIE_PATH,
+        )
+
+        #  Set access cookie
+        resp.set_cookie(
+            settings.ACCESS_COOKIE_NAME,
+            access,
+            httponly=settings.ACCESS_COOKIE_HTTPONLY,
+            secure=settings.ACCESS_COOKIE_SECURE,
+            samesite=settings.ACCESS_COOKIE_SAMESITE,
+            max_age=settings.ACCESS_TOKEN_LIFETIME,
+            domain=settings.COOKIE_DOMAIN,
+            path=settings.ACCESS_COOKIE_PATH,
+        )
+        return resp
+
+       
+        # # Issue JWT tokens after password reset
+        # refresh = RefreshToken.for_user(user)
+        # return Response({
+        #     "detail": "Password has been reset successfully.",
+        #     "refresh": str(refresh),
+        #     "access": str(refresh.access_token),
+        #     "user": {
+        #         "username": user.username,
+        #         "email": user.email,
+        #         "first_name": user.first_name,
+        #         "last_name": user.last_name,
+        #     }
+        # }, status=status.HTTP_200_OK)
 
 
 class NewsletterSubscribeAPIView(APIView):
@@ -692,6 +745,8 @@ class UserProfileUpdateView(SecuredView):
 
         if serializer.is_valid():
             serializer.save()
+            # notification_message = NOTIFICATIONS['profile_updated']
+           
             return Response({
                 "message": "Profile updated successfully",
                 "data": serializer.data

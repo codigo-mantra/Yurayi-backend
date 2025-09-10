@@ -5,6 +5,7 @@ from .models import  User, UserProfile,Assets
 from django.core.cache import cache
 from timecapsoul.utils import send_html_email
 import os, uuid
+from memory_room.notification_service import NotificationService
 
 
 @receiver(post_save, sender=User)
@@ -30,3 +31,12 @@ def delete_cover_cache(sender, instance, **kwargs):
     capsoul_cover = 'time_capsoul_covers'
     cache.delete(cache_key)
     cache.delete(capsoul_cover)
+
+
+@receiver(post_save, sender=UserProfile)
+def create_profile_update_notification(sender, instance, *args, **kwargs):
+    notif = NotificationService.create_notification_with_key(
+        user=instance.user,
+        notification_key='profile_updated'
+        )
+    
