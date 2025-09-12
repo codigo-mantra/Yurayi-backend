@@ -401,6 +401,6 @@ if ENVIRONMENT_TYPE == "PROD":
         Queue("yurayi-prod-queue"),
     )
 
-# elif ENVIRONMENT_TYPE == 'DEV':
-#     CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+elif ENVIRONMENT_TYPE == 'DEV':
+    CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 

@@ -1,9 +1,11 @@
 from celery import shared_task
-
+from django.db import DatabaseError
+from django.core.exceptions import ValidationError
 
 @shared_task
 def generate_notification():
     """Fetch active users and return simple report data"""
+        
     response = False
     print('-------- Task execution started --------')
     try:
@@ -17,4 +19,3 @@ def generate_notification():
     finally:
         return response
         
-   

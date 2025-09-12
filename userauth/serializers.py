@@ -6,6 +6,7 @@ from dj_rest_auth.registration.serializers import SocialLoginSerializer
 from rest_framework import serializers
 from rest_framework_simplejwt.tokens import RefreshToken
 
+
 # Regex to check if identifier is an email
 EMAIL_REGEX = r"[^@]+@[^@]+\.[^@]+"
 

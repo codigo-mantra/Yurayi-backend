@@ -19,6 +19,7 @@ from memory_room.crypto_utils import generate_signature
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,save_and_upload_decrypted_file, encrypt_and_upload_file_no_iv
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
 
+from userauth.tasks import send_html_email_task
 from rest_framework import serializers
 from memory_room.notification_service import NotificationService
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug
@@ -776,8 +777,11 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
         # Locking the TimeCapsoul for the first and only time
         time_capsoul = instance.time_capsoul
         if time_capsoul.status == 'created':
-            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul =instance.time_capsoul)
-            if not capsoul_recipients:
+            capsoul_recipients = TimeCapSoulRecipient.objects.filter(
+                time_capsoul=instance.time_capsoul
+            )
+
+            if  capsoul_recipients.count() < 1:
                 raise serializers.ValidationError({'recipients': 'No recipients added'})
            
             instance.unlock_date = validated_data['unlock_date']
@@ -790,23 +794,24 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                 notification_key='capsoul_sealed',
                 user=time_capsoul.user,
                 time_capsoul=time_capsoul
-                )
+            )
             
             # send email here tagged 
             time_cap_owner = instance.time_capsoul.user.first_name if instance.time_capsoul.user.first_name else instance.time_capsoul.user.email
             try:
                 if capsoul_recipients:
-                    tagged_recients = (recipients.values_list('name', 'email'))
+                    tagged_recipients = capsoul_recipients.values_list("name", "email")
+
                     
-                    for recipient in tagged_recients:
+                    for recipient in tagged_recipients:
                         person_name = recipient[0]
                         person_email = recipient[-1]
                         
-                        # create notification at invited for tagger person
+                        # create notification at invited for tagged user if exists
                         try:
                             user = User.objects.get(email = person_email)
-                        except Exception as e:
-                            # skip it here
+                        except User.DoesNotExist as e:
+                            # skip if user not exists
                             pass
                         else:
                             notif = NotificationService.create_notification_with_key(
@@ -814,22 +819,22 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                                 user=user,
                                 time_capsoul=time_capsoul
                             )
-                        try:
-                            send_html_email(
-                                subject="You’ve received a Time Capsoul sealed with love.",
-                                to_email=person_email,
-                                template_name="userauth/time_capsoul_tagged.html",
-                                context={
-                                    "user": person_name,
-                                    'sender_name': time_cap_owner,
-                                    'unlock_date': instance.unlock_date
-                                },
+                        try: # sending email using celery task
+                            send_html_email_task.apply_async(
+                                kwargs={
+                                    "subject": "You’ve received a Time Capsoul sealed with love.",
+                                    "to_email": person_email,
+                                    "template_name": "userauth/time_capsoul_tagged.html",
+                                    "context": {
+                                        "user": person_name,
+                                        "sender_name": time_cap_owner,
+                                        "unlock_date": instance.unlock_date
+                                    }
+                                }
                             )
                         except Exception as e:
-                            print('Exception ')
-                        else:
-                            # print('yes')
-                            pass
+                            print(f'Exception as {e}')
+                        
             except Exception as e:
                 pass
             instance.save()

@@ -678,21 +678,6 @@ class PasswordResetConfirmView(APIView):
         )
         return resp
 
-       
-        # # Issue JWT tokens after password reset
-        # refresh = RefreshToken.for_user(user)
-        # return Response({
-        #     "detail": "Password has been reset successfully.",
-        #     "refresh": str(refresh),
-        #     "access": str(refresh.access_token),
-        #     "user": {
-        #         "username": user.username,
-        #         "email": user.email,
-        #         "first_name": user.first_name,
-        #         "last_name": user.last_name,
-        #     }
-        # }, status=status.HTTP_200_OK)
-
 
 class NewsletterSubscribeAPIView(APIView):
     def post(self, request):
@@ -745,8 +730,10 @@ class UserProfileUpdateView(SecuredView):
 
         if serializer.is_valid():
             serializer.save()
-            # notification_message = NOTIFICATIONS['profile_updated']
-           
+            notif = NotificationService.create_notification_with_key(
+                notification_key='profile_updated',
+                user=user,
+            )
             return Response({
                 "message": "Profile updated successfully",
                 "data": serializer.data

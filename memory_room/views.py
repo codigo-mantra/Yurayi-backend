@@ -4,7 +4,7 @@ from allauth.socialaccount.models import SocialAccount
 from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoul, RecipientsDetail, TimeCapSoulDetail
 from memory_room.utils import get_readable_file_size_from_bytes
 from timecapsoul.utils import send_html_email
-from memory_room.tasks.notification import generate_notification
+from userauth.tasks import send_html_email_task
 
 
 # from timecapsoul.utils import MediaThumbnailExtractor
@@ -43,38 +43,40 @@ def testing_view(request):
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
     # email = 'krishnayadav.codigomantra@gmail.com'
-    # email = 'krishnayadavpb07@gmail.com'
-    email = 'jasvir.codigo@gmail.com'
+    email = 'krishnayadavpb07@gmail.com'
+    email2 = 'jasvir.codigo@gmail.com'
 
     
-    send_html_email(
-        subject="You’ve received a Time Capsoul sealed with love.",
-        # to_email='jasvir.codigo@gmail.com',
-        to_email=email,
-        template_name="userauth/time_capsoul_tagged.html",
-        context={
-            "user": 'Jasvir Kaur',
-            'sender_name': 'Krishna Yadav',
-            'unlock_date': '04/02/2025'
-        },
-    )
+    # send_html_email_task.apply_async(
+    #     kwargs={
+    #         "subject": "You’ve received a Time Capsoul sealed with love.",
+    #         "email_list": [email, email2],
+    #         "template_name": "userauth/time_capsoul_tagged.html",
+    #         "context": {
+    #             "user": "Jasvir Kaur",
+    #             "sender_name": "Krishna Yadav",
+    #             "unlock_date": "04/02/2025"
+    #         }
+    #     }
+    # )
+
     
-    send_html_email(
-        subject="You’ve received a Time Capsoul sealed with love.",
-        # to_email='jasvir.codigo@gmail.com',
-        to_email='krishnayadavpb07@gmail.com',
-        template_name="userauth/time_capsoul_tagged.html",
-        context={
-            "user": 'Jasvir Kaur',
-            'sender_name': 'Krishna Yadav',
-            'unlock_date': '04/02/2025'
-        },
-    )
+    # send_html_email(
+    #     subject="You’ve received a Time Capsoul sealed with love.",
+    #     # to_email='jasvir.codigo@gmail.com',
+    #     to_email='krishnayadavpb07@gmail.com',
+    #     template_name="userauth/time_capsoul_tagged.html",
+    #     context={
+    #         "user": 'Jasvir Kaur',
+    #         'sender_name': 'Krishna Yadav',
+    #         'unlock_date': '04/02/2025'
+    #     },
+    # )
     
     # email = 'admin@gmail.com'
     # import uuid
     # from userauth.models import User
-    # user = User.objects.get(email = email)
+    user = User.objects.get(email = email)
     
 
     # objs = []

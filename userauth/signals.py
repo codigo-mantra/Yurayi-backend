@@ -5,6 +5,7 @@ from .models import  User, UserProfile,Assets
 from django.core.cache import cache
 from timecapsoul.utils import send_html_email
 import os, uuid
+from memory_room.models import TimeCapSoulRecipient
 from memory_room.notification_service import NotificationService
 
 
@@ -17,13 +18,15 @@ def create_user_profile(sender, instance, created, **kwargs):
             instance.s3_storage_id = uuid.uuid4()
             # instance.save(update_fields=["s3_storage_id"])
             instance.save()
-            
-            
-            
-            # notif = NotificationService.create_notification_with_key(
-            #     notification_key='capsoul_invite_received',
-            #     user=user,
-            #     )
+            time_capsoul = TimeCapSoulRecipient.objects.filter(email = instance.email)
+            for capsoul in time_capsoul:
+                # create notification here 
+                notif = NotificationService.create_notification_with_key(
+                    notification_key='capsoul_invite_received',
+                    user=instance,
+                    time_capsoul=capsoul.time_capsoul
+                )
+           
         except Exception as e:
             print(f'\n Exception while creating user profile in signal as: {e}')
         else:
