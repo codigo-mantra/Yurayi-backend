@@ -184,11 +184,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
             if time_capsoul.status != 'unlocked':
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-            # recipients = (
-            #     RecipientsDetail.objects
-            #     .filter(time_capsoul=time_capsoul)
-            #     .values_list("recipients__email", flat=True)
-            # )
+           
             recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
             if not recipient:
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)

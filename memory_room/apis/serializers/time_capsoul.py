@@ -776,14 +776,10 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
         # Locking the TimeCapsoul for the first and only time
         time_capsoul = instance.time_capsoul
         if time_capsoul.status == 'created':
-            capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul =instance.time_capsoul).first()
+            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul =instance.time_capsoul)
             if not capsoul_recipients:
                 raise serializers.ValidationError({'recipients': 'No recipients added'})
-                
-            recipients = capsoul_recipients.recipients.all()
-            if recipients.count() < 1:
-                raise serializers.ValidationError({'recipients': 'No recipients added'})
-            
+           
             instance.unlock_date = validated_data['unlock_date']
             time_capsoul.status = 'sealed'
             instance.is_locked = True

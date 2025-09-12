@@ -18,6 +18,8 @@ def create_user_profile(sender, instance, created, **kwargs):
             # instance.save(update_fields=["s3_storage_id"])
             instance.save()
             
+            
+            
             # notif = NotificationService.create_notification_with_key(
             #     notification_key='capsoul_invite_received',
             #     user=user,
