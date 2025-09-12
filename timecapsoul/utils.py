@@ -184,3 +184,22 @@ def get_aws_secret(secret_name: str, ):
     if secret:
         return json.loads(secret)
     raise Exception(f"\n -------- Exception: AWS Secret not found --------")
+
+
+def process_sqs_messages(sqs, queue_url):
+    response = sqs.receive_message(
+        QueueUrl=queue_url,
+        MaxNumberOfMessages=10,
+        WaitTimeSeconds=5
+    )
+
+    if "Messages" in response:
+        for message in response["Messages"]:
+            body = json.loads(message["Body"])
+            print("📩 S3 Event:", json.dumps(body, indent=2))
+
+            # Delete message from queue after processing
+            sqs.delete_message(
+                QueueUrl=queue_url,
+                ReceiptHandle=message["ReceiptHandle"]
+            )

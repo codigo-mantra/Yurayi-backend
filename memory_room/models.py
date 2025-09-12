@@ -485,15 +485,25 @@ class TimeCapSoulDetail(BaseModel):
 
 
 class TimeCapSoulRecipient(BaseModel):
-     name = models.CharField(max_length=255, verbose_name="Recipient Name")
-     email = models.EmailField(verbose_name="Recipient Email")
+    time_capsoul = models.ForeignKey(
+        TimeCapSoul,
+        on_delete=models.CASCADE,
+        related_name="recipient_detail",
+        verbose_name="TimeCapSoul", 
+        blank=True, 
+        null=True
+    )
+    name = models.CharField(max_length=255, verbose_name="Recipient Name")
+    email = models.EmailField(verbose_name="Recipient Email")
+    is_opened = models.BooleanField(default=False)
+    is_logged_in = models.BooleanField(default=False)
 
-     class Meta:
-         verbose_name = "TimeCapSoul Recipient"
-         verbose_name_plural = "TimeCapSoul Recipients"
+    class Meta:
+        verbose_name = "TimeCapSoul Recipient"
+        verbose_name_plural = "TimeCapSoul Recipients"
 
-     def __str__(self):
-         return f"{self.name} <{self.email}>"
+    def __str__(self):
+        return f"{self.name} <{self.email}>"
 
 
 class RecipientsDetail(BaseModel):

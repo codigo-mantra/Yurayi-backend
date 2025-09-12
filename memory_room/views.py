@@ -4,6 +4,8 @@ from allauth.socialaccount.models import SocialAccount
 from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoul, RecipientsDetail, TimeCapSoulDetail
 from memory_room.utils import get_readable_file_size_from_bytes
 from timecapsoul.utils import send_html_email
+from memory_room.tasks.notification import generate_notification
+
 
 # from timecapsoul.utils import MediaThumbnailExtractor
 # # Create your views here.
@@ -37,27 +39,43 @@ from timecapsoul.utils import send_html_email
 from userauth.models import User
 
 def testing_view(request):
+    print(f'request received')
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
     # email = 'krishnayadav.codigomantra@gmail.com'
-    email = 'krishnayadavpb07@gmail.com'
+    # email = 'krishnayadavpb07@gmail.com'
+    email = 'jasvir.codigo@gmail.com'
+
     
-    # send_html_email(
-    #     subject="You’ve received a Time Capsoul sealed with love.",
-    #     # to_email='jasvir.codigo@gmail.com',
-    #     to_email=email,
-    #     template_name="userauth/time_capsoul_tagged.html",
-    #     context={
-    #         "user": 'Jasvir Kaur',
-    #         'sender_name': 'Krishna Yadav',
-    #         'unlock_date': '04/02/2025'
-    #     },
-    # )
+    send_html_email(
+        subject="You’ve received a Time Capsoul sealed with love.",
+        # to_email='jasvir.codigo@gmail.com',
+        to_email=email,
+        template_name="userauth/time_capsoul_tagged.html",
+        context={
+            "user": 'Jasvir Kaur',
+            'sender_name': 'Krishna Yadav',
+            'unlock_date': '04/02/2025'
+        },
+    )
+    
+    send_html_email(
+        subject="You’ve received a Time Capsoul sealed with love.",
+        # to_email='jasvir.codigo@gmail.com',
+        to_email='krishnayadavpb07@gmail.com',
+        template_name="userauth/time_capsoul_tagged.html",
+        context={
+            "user": 'Jasvir Kaur',
+            'sender_name': 'Krishna Yadav',
+            'unlock_date': '04/02/2025'
+        },
+    )
     
     # email = 'admin@gmail.com'
     # import uuid
     # from userauth.models import User
     # user = User.objects.get(email = email)
+    
 
     # objs = []
     # for user in User.objects.filter(s3_storage_id__isnull=True):
@@ -155,11 +173,20 @@ def testing_view(request):
         #             media.file_size  = size
         #             media.save()
         #             print(size)
+        # res = generate_notification.apply_async()
     except:
         print('Not deleted')
     else:
+        pass
         # capsoul = TimeCapSoulDetail.objects.get(id=25)
-        print('Yes deleted')
+        # print('Yes deleted response: ',res)
+        # logger.warning(f'Test warnign logger in by user {user.username}')
+        # logger.error(f'Test errors logger in by user {user.username}')
+        # logger.info(f'Test info here logger in by user {user.username}')
+        # logger.critical(f'Test critical  here logger in by user {user.username}')
+
+
+
     # return render(request, 'userauth/time_capsoul_tagged.html', context={
     #     'user': "Krishna yadav",
     #     'sender_name': "Karan",

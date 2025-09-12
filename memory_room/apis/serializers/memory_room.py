@@ -11,7 +11,6 @@ from memory_room.models import (
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file
-MODE = settings.MODE
 from django.core.files.base import ContentFile
 
 

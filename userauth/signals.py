@@ -8,6 +8,7 @@ import os, uuid
 from memory_room.notification_service import NotificationService
 
 
+
 @receiver(post_save, sender=User)
 def create_user_profile(sender, instance, created, **kwargs):
     if created:
@@ -16,6 +17,11 @@ def create_user_profile(sender, instance, created, **kwargs):
             instance.s3_storage_id = uuid.uuid4()
             # instance.save(update_fields=["s3_storage_id"])
             instance.save()
+            
+            # notif = NotificationService.create_notification_with_key(
+            #     notification_key='capsoul_invite_received',
+            #     user=user,
+            #     )
         except Exception as e:
             print(f'\n Exception while creating user profile in signal as: {e}')
         else:
@@ -34,9 +40,10 @@ def delete_cover_cache(sender, instance, **kwargs):
 
 
 @receiver(post_save, sender=UserProfile)
-def create_profile_update_notification(sender, instance, *args, **kwargs):
-    notif = NotificationService.create_notification_with_key(
-        user=instance.user,
-        notification_key='profile_updated'
-        )
+def create_profile_update_notification(sender,created, instance, *args, **kwargs):
+    if not created:
+        notif = NotificationService.create_notification_with_key(
+            user=instance.user,
+            notification_key='profile_updated'
+            )
     

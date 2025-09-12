@@ -5,6 +5,7 @@ from django.conf import settings
 import base64, hmac, hashlib
 from datetime import datetime, timedelta
 from django.shortcuts import get_object_or_404
+from userauth.models import User
 
 from django.core.files.images import ImageFile 
 from timecapsoul.utils import MediaThumbnailExtractor
@@ -19,6 +20,7 @@ from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_im
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
 
 from rest_framework import serializers
+from memory_room.notification_service import NotificationService
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug
 
 
@@ -195,8 +197,8 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         ]
 
     def get_tagged_members(self, obj):
-        time_capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul=obj)
-        serializer = RecipientsDetailSerializer(time_capsoul_recipients, many=True)
+        capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj)
+        serializer = TimeCapSoulRecipientSerializer(capsoul_recipients, many=True)
         return serializer.data
 
     def get_is_owner(self, obj):
@@ -217,9 +219,8 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
 
 
     def get_status(self, obj):
-        # update status time-capsoul 
         if obj.status == 'sealed':
-            current_datetime = timezone.now()  # ✅ timezone-aware datetime
+            current_datetime = timezone.now()  
             unlock_date = obj.details.unlock_date
             if unlock_date and current_datetime > unlock_date:
                 obj.status = 'unlocked'
@@ -783,11 +784,18 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             if recipients.count() < 1:
                 raise serializers.ValidationError({'recipients': 'No recipients added'})
             
-            
             instance.unlock_date = validated_data['unlock_date']
             time_capsoul.status = 'sealed'
             instance.is_locked = True
             time_capsoul.save()
+            
+            # create notification at sealed of owner
+            notif = NotificationService.create_notification_with_key(
+                notification_key='capsoul_sealed',
+                user=time_capsoul.user,
+                time_capsoul=time_capsoul
+                )
+            
             # send email here tagged 
             time_cap_owner = instance.time_capsoul.user.first_name if instance.time_capsoul.user.first_name else instance.time_capsoul.user.email
             try:
@@ -797,7 +805,19 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                     for recipient in tagged_recients:
                         person_name = recipient[0]
                         person_email = recipient[-1]
-
+                        
+                        # create notification at invited for tagger person
+                        try:
+                            user = User.objects.get(email = person_email)
+                        except Exception as e:
+                            # skip it here
+                            pass
+                        else:
+                            notif = NotificationService.create_notification_with_key(
+                                notification_key='capsoul_invite_received',
+                                user=user,
+                                time_capsoul=time_capsoul
+                            )
                         try:
                             send_html_email(
                                 subject="You’ve received a Time Capsoul sealed with love.",
@@ -829,8 +849,9 @@ class TimeCapSoulRecipientSerializer(serializers.ModelSerializer):
 class RecipientsDetailSerializer(serializers.ModelSerializer):
     recipients = TimeCapSoulRecipientSerializer(many=True)
 
+
     class Meta:
-        model = RecipientsDetail
+        model = TimeCapSoulRecipient
         fields = ['id', 'recipients']  
 
     def create(self, validated_data):
@@ -838,25 +859,24 @@ class RecipientsDetailSerializer(serializers.ModelSerializer):
         if not time_capsoul:
             raise serializers.ValidationError("TimeCapsoul context is required.")
 
-        # ✅ Get existing RecipientsDetail created via signal
-        recipients_detail = get_object_or_404(RecipientsDetail, time_capsoul=time_capsoul)
-
         recipients_data = validated_data.pop('recipients', [])
 
         for recipient_data in recipients_data:
-            recipient, _ = TimeCapSoulRecipient.objects.get_or_create(**recipient_data)
-            recipients_detail.recipients.add(recipient)
+            name = recipient_data['name']
+            email  = recipient_data['email']
 
-        return recipients_detail
+            recipient, _ = TimeCapSoulRecipient.objects.get_or_create(name=name, email=email, time_capsoul= time_capsoul)
+        
+        return recipient
 
 
-    def update(self, instance, validated_data):
-        recipients_data = validated_data.pop('recipients', None)
+    # def update(self, instance, validated_data):
+    #     recipients_data = validated_data.pop('recipients', None)
 
-        if recipients_data is not None:
-            instance.recipients.clear()
-            for recipient_data in recipients_data:
-                recipient, _ = TimeCapSoulRecipient.objects.get_or_create(**recipient_data)
-                instance.recipients.add(recipient)
+    #     if recipients_data is not None:
+    #         instance.recipients.clear()
+    #         for recipient_data in recipients_data:
+    #             recipient, _ = TimeCapSoulRecipient.objects.get_or_create(**recipient_data)
+    #             instance.recipients.add(recipient)
 
-        return instance
+    #     return instance

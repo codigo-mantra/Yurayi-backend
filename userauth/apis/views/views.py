@@ -361,11 +361,11 @@ class LoginView(APIView):
             user = User.objects.filter(username__iexact=identifier).first()
 
         if not user:
-            return Response( {"error": "Invalid login credentials. Please check your credentials and try again."},status=400)
+            return Response( {"error": "Invalid Credentials. Please try again."},status=400)
 
 
         if not user.check_password(password):
-            return Response( {"error": "Invalid login credentials. Please check your credentials and try again."},status=400)
+            return Response( {"error": "Invalid Credentials. Please try again."},status=400)
 
 
         if not user.is_active:
@@ -615,7 +615,7 @@ class ForgotPasswordView(APIView):
             
         )
 
-        return Response({"detail": "Password reset email sent."}, status=status.HTTP_200_OK)
+        return Response({"detail": "We’ve emailed you a password reset link. Please check your inbox."}, status=status.HTTP_200_OK)
 
 class PasswordResetConfirmView(APIView):
     """

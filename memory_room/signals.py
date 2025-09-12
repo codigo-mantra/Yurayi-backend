@@ -30,10 +30,6 @@ def create_user_mapper(sender, instance, created, **kwargs):
         TimeCapSoulDetail.objects.create(
             time_capsoul=instance,
         )
-        # also create here recipients-details
-        RecipientsDetail.objects.create(
-            time_capsoul = instance
-            )
 
 
 

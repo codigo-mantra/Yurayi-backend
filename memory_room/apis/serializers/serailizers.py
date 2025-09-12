@@ -3,7 +3,6 @@ from rest_framework import serializers
 from userauth.models import Assets
 from memory_room.models import MemoryRoom, TimeCapSoul, CustomMemoryRoomTemplate, CustomTimeCapSoulTemplate,MemoryRoomDetail
 from django.conf import settings
-MODE = settings.MODE
 
 class AssetSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()

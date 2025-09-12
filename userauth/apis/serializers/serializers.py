@@ -262,14 +262,18 @@ class RegistrationSerializer(serializers.ModelSerializer):
         confirm_password = data.get("confirm_password")
 
         errors = {}
+        
+        if not email:
+            errors["email"] = "Please enter your email address to continue."
+            
 
         if User.objects.filter(email=email).exists():
-            errors["email"] = "Email already exists."
+            errors["email"] = "Email already exists. Please use a different one or log in."
 
         if not password or not confirm_password:
-            errors["password"] = "Both password and confirm password are required."
+            errors["password"] = "Please create a password to keep your memories safe."
         elif password != confirm_password:
-            errors["password"] = "Passwords do not match."
+            errors["password"] = "Passwords don’t match. Let’s try that again."
         
         try:
             validator = CustomPasswordValidator()
@@ -399,8 +403,11 @@ class ForgotPasswordSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
     def validate_email(self, value):
+        if value is None or value== '':
+            raise serializers.ValidationError({'email': "Please enter your email address to continue."})
+        
         if not User.objects.filter(email=value).exists():
-            raise serializers.ValidationError("No account is associated with this email address. Please enter the registered email to reset your password.")
+            raise serializers.ValidationError("We couldn’t find an account with that email. Please check and try again  .")
         return value
     
 

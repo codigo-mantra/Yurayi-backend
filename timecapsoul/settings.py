@@ -29,10 +29,8 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 load_env()  # get credential from env file
 AWS_SECRET = get_aws_secret(env('AWS_SECRET_MANAGER_NAME')) # get credential from AWS Secret Manager 
 
-MODE = env('MODE')
-DBMODE = env('DBMODE')
-
-print(f'\n Project is running in : {MODE} DB-Mode: {DBMODE}')
+ENVIRONMENT_TYPE = env('ENVIRONMENT_TYPE')
+print(f'\n Project is running in env type : {ENVIRONMENT_TYPE}')
 
 SECRET_KEY = 'django-insecure-xv5_(#zp+y*ixeerilyq^!$2mo$q6y139znuj+jqte4k1pa=89'
 ENCRYPTION_KEY = base64.b64decode("8ZqN0rj8s8asfV0nZTzPpS4wpAe6o7pFfV9s5F0qf+Q=")
@@ -50,6 +48,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'django.contrib.sites', 
+    'django_celery_results',
     'storages',    
     'channels',   
     'corsheaders',
@@ -103,11 +102,7 @@ TEMPLATES = [
 # WSGI_APPLICATION = 'timecapsoul.wsgi.application'
 ASGI_APPLICATION = "timecapsoul.asgi.application"
 
-
-
-
-
-if DBMODE == 'PROD':
+if ENVIRONMENT_TYPE == 'PROD':
     # production db config
     DATABASES = {
         'default': {
@@ -122,7 +117,8 @@ if DBMODE == 'PROD':
             },
         }
     }
-else:
+    
+elif ENVIRONMENT_TYPE == 'DEV':
     # local db config
     # DATABASES = {
     #     'default': {
@@ -138,7 +134,6 @@ else:
     #         },
     #     }
     # }
-    
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
@@ -182,21 +177,21 @@ AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
 MEDIA_FILES_BUCKET = "yurayi-media"
 DECRYPT_LINK_TTL_SECONDS = 300  # 5 minutes
 DECRYPT_LINK_SECRET = "12345678901234567890123456789012"  # for JWT signing
-if MODE == 'PROD':
-    STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
-    AWS_STORAGE_BUCKET_NAME = AWS_SECRET['AWS_STORAGE_BUCKET_NAME']
-    AWS_S3_REGION_NAME = AWS_SECRET['AWS_S3_REGION_NAME']
-    AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
-    AWS_S3_URL_PROTOCOL = 'https'
-    AWS_KMS_KEY_ID = AWS_SECRET['KMS_ARN']
-    AWS_KMS_REGION = AWS_SECRET['KMS_REGION']
-    AWS_S3_USE_SSL = True
-    AWS_S3_VERIFY = True
-    AWS_DEFAULT_ACL = None
-    DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
-    MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
-else:
-    STATICFILES_DIRS = [BASE_DIR / "static"]
+# if MODE == 'PROD':
+STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
+AWS_STORAGE_BUCKET_NAME = AWS_SECRET['AWS_STORAGE_BUCKET_NAME']
+AWS_S3_REGION_NAME = AWS_SECRET['AWS_S3_REGION_NAME']
+AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
+AWS_S3_URL_PROTOCOL = 'https'
+AWS_KMS_KEY_ID = AWS_SECRET['KMS_ARN']
+AWS_KMS_REGION = AWS_SECRET['KMS_REGION']
+AWS_S3_USE_SSL = True
+AWS_S3_VERIFY = True
+AWS_DEFAULT_ACL = None
+DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
+MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
+# else:
+#     STATICFILES_DIRS = [BASE_DIR / "static"]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -266,11 +261,6 @@ SOCIALACCOUNT_ADAPTER = "userauth.apis.helpers.google_adapter.CustomSocialAccoun
 
 REST_USE_JWT = True
 
-# SIMPLE_JWT = {
-#     'AUTH_HEADER_TYPES': ('JWT', 'Bearer'),
-#     'ACCESS_TOKEN_LIFETIME': timedelta(days=1),
-#     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-# }
 
 DJRESTAUTH_TOKEN_MODEL = None
 
@@ -339,24 +329,16 @@ JWT_ISSUER = "secure_auth"
 
 COOKIE_DOMAIN = None  # set to  domain in prod
 REFRESH_COOKIE_NAME = "refresh_token"
-REFRESH_COOKIE_SAMESITE = "Strict"
+REFRESH_COOKIE_SAMESITE = "None"
 REFRESH_COOKIE_SECURE = not DEBUG
 REFRESH_COOKIE_HTTPONLY = True
 REFRESH_COOKIE_PATH = "/"
-
-
-CACHES = {
-    "default": {
-        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
-        "LOCATION": "my_cache_table",
-    }
-}
 
 # Access token cookie
 ACCESS_COOKIE_NAME = "access_token"
 ACCESS_COOKIE_SECURE = True          # True in production (HTTPS), False for local dev
 ACCESS_COOKIE_HTTPONLY = True        # Prevent JS access (XSS protection)
-ACCESS_COOKIE_SAMESITE = "Strict"      # "Strict" | "Lax" | "None"
+ACCESS_COOKIE_SAMESITE = "None"      # "Strict" | "Lax" | "None"
 ACCESS_COOKIE_PATH = "/"
 
 # ACCESS_TOKEN_LIFETIME = 60 * 15      # 15 minutes (example)
@@ -392,3 +374,33 @@ CACHES = {
         }
     }
 }
+
+# Celery settings
+CELERY_ACCEPT_CONTENT = ["json"]
+CELERY_TASK_SERIALIZER = "json"
+CELERY_RESULT_SERIALIZER = "json"
+CELERY_TIMEZONE = "Asia/Kolkata"
+CELERY_CACHE_BACKEND = "default"
+CELERY_RESULT_BACKEND = "django-db"  # store task results in DB
+
+import urllib.parse
+from kombu import Queue
+
+if ENVIRONMENT_TYPE == "PROD":
+    aws_secret_escaped = urllib.parse.quote(AWS_SECRET_ACCESS_KEY, safe='')  # encode all special chars
+    CELERY_BROKER_URL = f"sqs://{AWS_ACCESS_KEY_ID}:{aws_secret_escaped}@"
+    CELERY_BROKER_TRANSPORT_OPTIONS = {
+        "region": AWS_S3_REGION_NAME,   
+        "visibility_timeout": 3600,     # 1 hour
+        "polling_interval": 1,
+        "queue_name_prefix": "timecapsoul-",  # optional
+    }
+
+    CELERY_TASK_DEFAULT_QUEUE = "yurayi-prod-queue"
+    CELERY_TASK_QUEUES = (
+        Queue("yurayi-prod-queue"),
+    )
+
+elif ENVIRONMENT_TYPE == 'DEV':
+    CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+

@@ -3,26 +3,27 @@ from django.core.exceptions import ValidationError
 
 class CustomPasswordValidator:
     def validate(self, password, user=None, username=None):
+        error_message = 'Please Use at least 8 characters with 1 uppercase letter, 1 number, and 1 symbol.'
         if len(password) < 8:
-            raise ValidationError("Password must be at least 8 characters long.")
+            raise ValidationError(error_message)
 
         if not re.search(r"[A-Z]", password):
-            raise ValidationError("Password must include at least one uppercase letter.")
+            raise ValidationError(error_message)
 
         if not re.search(r"[a-z]", password):
-            raise ValidationError("Password must include at least one lowercase letter.")
+            raise ValidationError(error_message)
 
         if not re.search(r"\d", password):
-            raise ValidationError("Password must include at least one digit.")
+            raise ValidationError(error_message)
 
         if not re.search(r"[!@#$%^&*(),.?\":{}|<>]", password):
-            raise ValidationError("Password must include at least one special character.")
+            raise ValidationError(error_message)
 
         if username and username.lower() in password.lower():
-            raise ValidationError("Password should not contain the username.")
+            raise ValidationError(error_message)
         
         if password.startswith('_'):
-            raise ValidationError("Password cannot start or end with an underscore.")
+            raise ValidationError(error_message)
 
     def get_help_text(self):
         return (

@@ -38,7 +38,7 @@ from memory_room.models import (
 from memory_room.apis.serializers.time_capsoul import (
     TimeCapSoulTemplateDefaultReadOnlySerializer, TimeCapSoulCreationSerializer,TimeCapSoulMediaFileReadOnlySerializer,
     TimeCapSoulSerializer, TimeCapSoulUpdationSerializer,TimeCapSoulMediaFileSerializer,TimeCapSoulMediaFilesReadOnlySerailizer, TimeCapsoulMediaFileUpdationSerializer,
-    TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimeCapSoulMediaFileReadOnlySerializer
+    TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimeCapSoulMediaFileReadOnlySerializer, TimeCapSoulRecipientSerializer
 )
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature
 
@@ -104,7 +104,7 @@ class CreateTimeCapSoulView(SecuredView):
         time_capsouls = TimeCapSoul.objects.filter(user=user)
         try:
             tagged_time_capsouls = TimeCapSoul.objects.filter(
-                recipient_details__recipients__email=user.email
+                recipient_detail__email=user.email
             )
         except TimeCapSoulRecipient.DoesNotExist:
             tagged_time_capsouls = None
@@ -184,13 +184,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
             if time_capsoul.status != 'unlocked':
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-            recipients = (
-                RecipientsDetail.objects
-                .filter(time_capsoul=time_capsoul)
-                .values_list("recipients__email", flat=True)
-            )
-
-            if user.email not in recipients:
+            # recipients = (
+            #     RecipientsDetail.objects
+            #     .filter(time_capsoul=time_capsoul)
+            #     .values_list("recipients__email", flat=True)
+            # )
+            recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
+            if not recipient:
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
             media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
@@ -699,14 +699,10 @@ class RecipientsDetailCreateOrUpdateView(SecuredView):
         """
         user = self.get_current_user(request)
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
-
-        try:
-            recipients_detail = RecipientsDetail.objects.get(time_capsoul=time_capsoul)
-            serializer = RecipientsDetailSerializer(recipients_detail)
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        except RecipientsDetail.DoesNotExist:
-            return Response({"message": "No recipients found for this Time Capsule."}, status=status.HTTP_404_NOT_FOUND)
-
+        capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul=time_capsoul)
+        data  = TimeCapSoulRecipientSerializer(capsoul_recipients, many=True).data
+        return Response(data)
+        
     def post(self, request, time_capsoul_id):
         """
         Create a new RecipientsDetail for a given TimeCapSoul.
@@ -717,7 +713,7 @@ class RecipientsDetailCreateOrUpdateView(SecuredView):
         serializer = RecipientsDetailSerializer(data=request.data, context={'time_capsoul': time_capsoul})
         if serializer.is_valid():
             serializer.save()
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            return Response(status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def put(self, request, time_capsoul_id):
