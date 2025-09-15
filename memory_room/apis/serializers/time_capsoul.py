@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from django.shortcuts import get_object_or_404
 from userauth.models import User
 
+
 from django.core.files.images import ImageFile 
 from timecapsoul.utils import MediaThumbnailExtractor
 from memory_room.apis.serializers.memory_room import AssetSerializer
@@ -23,6 +24,14 @@ from userauth.tasks import send_html_email_task
 from rest_framework import serializers
 from memory_room.notification_service import NotificationService
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug
+
+from  memory_room.tasks.notification import (
+    capsoul_almost_unlock,
+    capsoul_unlocked,
+    capsoul_waiting,
+    capsoul_reminder_7_days,
+    capsoul_memory_one_year_ago,
+)
 
 
 class TimeCapSoulTemplateDefaultReadOnlySerializer(serializers.ModelSerializer):
@@ -788,6 +797,24 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             time_capsoul.status = 'sealed'
             instance.is_locked = True
             time_capsoul.save()
+            unlock_time = instance.unlock_date
+           
+            # CAPSOUL_ALMOST_UNLOCK → exactly at unlock time
+            capsoul_almost_unlock.apply_async((instance.id,), eta=unlock_time)
+
+            # CAPSOUL_UNLOCKED → exactly at unlock time
+            capsoul_unlocked.apply_async((instance.id,), eta=unlock_time)
+
+            # CAPSOUL_WAITING → 24 hours after unlock
+            capsoul_waiting.apply_async((instance.id,), eta=unlock_time + timedelta(hours=24))
+
+            # CAPSOUL_REMINDER_7_DAYS → 7 days after unlock
+            capsoul_reminder_7_days.apply_async((instance.id,), eta=unlock_time + timedelta(days=7))
+            
+            # CAPSOUL_MEMORY_ONE_YEAR_AGO → at unlock time (owner)
+            capsoul_memory_one_year_ago.apply_async((instance.id,), eta=unlock_time)
+
+            
             
             # create notification at sealed of owner
             notif = NotificationService.create_notification_with_key(

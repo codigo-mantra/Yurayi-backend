@@ -35,8 +35,11 @@ print(f'\n Project is running in env type : {ENVIRONMENT_TYPE}')
 SECRET_KEY = 'django-insecure-xv5_(#zp+y*ixeerilyq^!$2mo$q6y139znuj+jqte4k1pa=89'
 ENCRYPTION_KEY = base64.b64decode("8ZqN0rj8s8asfV0nZTzPpS4wpAe6o7pFfV9s5F0qf+Q=")
 
-
-DEBUG = True
+if ENVIRONMENT_TYPE == 'PROD':
+    DEBUG = False
+else:
+    DEBUG = True
+    
 ALLOWED_HOSTS = ["*"] 
 
 # Application definition
