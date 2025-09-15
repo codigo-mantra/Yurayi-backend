@@ -499,6 +499,12 @@ class TimeCapSoulRecipient(BaseModel):
     is_logged_in = models.BooleanField(default=False)
 
     class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["time_capsoul", "email"],
+                name="unique_capsoul_email"
+            )
+        ]
         verbose_name = "TimeCapSoul Recipient"
         verbose_name_plural = "TimeCapSoul Recipients"
 

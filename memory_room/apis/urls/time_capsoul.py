@@ -2,7 +2,7 @@ from django.urls import path
 from memory_room.apis.views.time_capsoul import (
     TimeCapSoulCoverView, TimeCapSoulDefaultTemplateAPI, CreateTimeCapSoulView,TimeCapSoulUpdationView,
     TimeCapSoulMediaFilesView, TimeCapSoulMediaFileUpdationView, TimeCapSoulUnlockView, MoveTimeCapSoulMediaFile,TimeCapSoulMediaFileDownloadView,RecipientsDetailCreateOrUpdateView,TimeCapsoulMediaFileFilterView, TimeCapsoulFilterView,
-    ServeTimeCapSoulMedia,SetTimeCapSoulCover
+    ServeTimeCapSoulMedia,SetTimeCapSoulCover,TaggedCapsoulTracker
 )
 
 urlpatterns = [
@@ -20,4 +20,6 @@ urlpatterns = [
     path('media/filter/', TimeCapsoulMediaFileFilterView.as_view(), name='timecapsoul-media-filter'),
     path('filter/', TimeCapsoulFilterView.as_view(), name='timecapsoul-filter'),
     path("api/media/time-capsoul/<int:media_file_id>/serve/<path:s3_key>/", ServeTimeCapSoulMedia.as_view(), name="serve-media"),
+    path('recipients/tracker/<int:capsoul_id>/', TaggedCapsoulTracker.as_view()),
+    
 ]

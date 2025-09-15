@@ -960,3 +960,12 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
 
         except ClientError as e:
             return Response(status=status.HTTP_404_NOT_FOUND)
+
+class TaggedCapsoulTracker(SecuredView):
+    
+    def post(self, request, capsoul_id, format=None):
+        user = self.get_current_user(request)
+        capsoul_recipient = get_object_or_404(TimeCapSoulRecipient, time_capsoul__id=capsoul_id, email= user.email)
+        capsoul_recipient.is_opened = True
+        capsoul_recipient.save()
+        return Response()

@@ -49,6 +49,7 @@ from userauth.serializers import LoginSerializer
 from allauth.account.utils import perform_login
 from memory_room.notification_service import NotificationService
 from memory_room.notification_message import NOTIFICATIONS
+from userauth.tasks import send_html_email_task
 
 REFRESH_TTL_DAYS = settings.REFRESH_TOKEN_TTL_DAYS
 
@@ -187,11 +188,19 @@ class RegistrationView(APIView):
         device_name = serializer.validated_data.get('device_name')
         user = serializer.save()
         
-        send_html_email(
-            subject='Welcome to Yurayi',
-            to_email=user.email,
-            template_name='userauth/registeration_confirmation.html',
-            context={'email': user.email},
+        # send_html_email(
+        #     subject='Welcome to Yurayi',
+        #     to_email=user.email,
+        #     template_name='userauth/registeration_confirmation.html',
+        #     context={'email': user.email},
+        # )
+        send_html_email_task.apply_async(
+            kwargs={
+                "subject": 'Welcome to Yurayi',
+                "to_email": user.email,
+                "template_name": 'userauth/registeration_confirmation.html',
+                "context": {'email': user.email},
+            }
         )
         
 

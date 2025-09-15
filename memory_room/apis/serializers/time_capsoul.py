@@ -871,7 +871,7 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
 class TimeCapSoulRecipientSerializer(serializers.ModelSerializer):
     class Meta:
         model = TimeCapSoulRecipient
-        fields = ['id', 'name', 'email']
+        fields = ['id', 'is_opened', 'name', 'email']
 
 
 class RecipientsDetailSerializer(serializers.ModelSerializer):
