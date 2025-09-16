@@ -385,6 +385,8 @@ CELERY_RESULT_SERIALIZER = "json"
 CELERY_TIMEZONE = "Asia/Kolkata"
 CELERY_CACHE_BACKEND = "default"
 CELERY_RESULT_BACKEND = "django-db"  # store task results in DB
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
 
 import urllib.parse
 from kombu import Queue
