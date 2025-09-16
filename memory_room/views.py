@@ -6,6 +6,8 @@ from memory_room.utils import get_readable_file_size_from_bytes
 from timecapsoul.utils import send_html_email
 from userauth.tasks import send_html_email_task
 
+import logging
+logger = logging.getLogger(__name__)
 
 # from timecapsoul.utils import MediaThumbnailExtractor
 # # Create your views here.
@@ -39,7 +41,7 @@ from userauth.tasks import send_html_email_task
 from userauth.models import User
 
 def testing_view(request):
-    print(f'request received')
+    logger.info('testing_view called', extra={"path": request.path})
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
     email = 'krishnayadav.codigomantra@gmail.com'

@@ -1,4 +1,5 @@
 import boto3, io
+import logging
 import json
 import time
 import mimetypes
@@ -46,6 +47,8 @@ from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 
 from memory_room.utils import determine_download_chunk_size
 
+logger = logging.getLogger(__name__)
+
 from memory_room.crypto_utils import generate_signed_path
 
 class MemoryRoomCoverView(SecuredView):
@@ -54,6 +57,7 @@ class MemoryRoomCoverView(SecuredView):
     Only authenticated users can access this.
     """
     def get(self, request):
+        logger.info("MemoryRoomCoverView.get called")
         """
         Returns all memory room cover assets ordered by creation date.
         """
@@ -70,6 +74,7 @@ class UserMemoryRoomListView(SecuredView):
     API endpoint to list all non-deleted memory rooms of the current user.
     """
     def get(self,request):
+        logger.info("UserMemoryRoomListView.get called")
         """
         Returns all memory rooms for the current user that are not deleted.
         """
@@ -83,6 +88,7 @@ class MemoryRoomTemplateDefaultViewSet(SecuredView):
     API endpoint to list all default memory room templates.
     """
     def get(self, request):
+        logger.info("MemoryRoomTemplateDefaultViewSet.get called")
         """
         Returns all non-deleted default memory room templates ordered by creation.
         """
@@ -103,6 +109,7 @@ class CreateMemoryRoomView(SecuredView):
     """
 
     def post(self, request, format=None):
+        logger.info("CreateMemoryRoomView.post called")
         """
         Create a new memory room.
         """
@@ -118,6 +125,7 @@ class CreateMemoryRoomView(SecuredView):
         })
 
     def delete(self, request, memory_room_id, format=None):
+        logger.info("CreateMemoryRoomView.delete called", extra={"memory_room_id": memory_room_id})
         """
         Delete an existing memory room.
         """
@@ -133,6 +141,7 @@ class CreateMemoryRoomView(SecuredView):
         )
 
     def patch(self, request, memory_room_id):
+        logger.info("CreateMemoryRoomView.patch called", extra={"memory_room_id": memory_room_id})
         """
         Partially update fields of a memory room.
         """
@@ -147,6 +156,7 @@ class CreateMemoryRoomView(SecuredView):
 
 class SetMemoryRoomCoverImageAPIView(SecuredView):
     def post(self, request, memory_room_id, cover_image_id):
+        logger.info("SetMemoryRoomCoverImageAPIView.post called", extra={"memory_room_id": memory_room_id, "cover_image_id": cover_image_id})
         # print(f'Requst received')
 
         user = self.get_current_user(request)
@@ -173,6 +183,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         return get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
 
     def get(self, request, memory_room_id):
+        logger.info("MemoryRoomMediaFileListCreateAPI.get called", extra={"memory_room_id": memory_room_id})
         """
         List all media files of a memory room.
         """
@@ -548,7 +559,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                             del future_to_index[future]
                         
                         except Exception as e:
-                            print(f"Task completion error: {e}")
+                            logger.exception("Task completion error")
                             del future_to_index[future]
                     
                     time.sleep(0.1)

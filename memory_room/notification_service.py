@@ -5,7 +5,7 @@ from memory_room.models import Notification
 from memory_room.notification_message import NOTIFICATIONS
 
 
-# logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 class NotificationService:
     @staticmethod
@@ -35,12 +35,16 @@ class NotificationService:
             return notification
 
         except (ValidationError, DatabaseError, ValueError) as e:
-            # logger.error(
-            #     "Failed to create notification: %s (user=%s, category=%s, type=%s)",
-            #     str(e), getattr(user, "id", None), category, category_type,
-            #     exc_info=True,
-            # )
-            print(f'Exception as {e}')
+            logger.error(
+                "Failed to create notification",
+                extra={
+                    "user_id": getattr(user, "id", None),
+                    "category": category,
+                    "category_type": category_type,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
             return None
    
     @staticmethod
@@ -73,10 +77,13 @@ class NotificationService:
             return notification
 
         except (ValidationError, DatabaseError, ValueError) as e:
-            # logger.error(
-            #     "Failed to create notification: %s (user=%s, category=%s, type=%s)",
-            #     str(e), getattr(user, "id", None), category, category_type,
-            #     exc_info=True,
-            # )
-            print(f'Exception as {e}')
+            logger.error(
+                "Failed to create notification with key",
+                extra={
+                    "user_id": getattr(user, "id", None),
+                    "notification_key": notification_key,
+                    "error": str(e),
+                },
+                exc_info=True,
+            )
             return None

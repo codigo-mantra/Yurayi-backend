@@ -25,13 +25,9 @@ from rest_framework import serializers
 from memory_room.notification_service import NotificationService
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug
 
-from  memory_room.tasks.notification import (
-    capsoul_almost_unlock,
-    capsoul_unlocked,
-    capsoul_waiting,
-    capsoul_reminder_7_days,
-    capsoul_memory_one_year_ago,
-)
+import logging
+logger = logging.getLogger(__name__)
+
 
 
 class TimeCapSoulTemplateDefaultReadOnlySerializer(serializers.ModelSerializer):
@@ -85,7 +81,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
             name=default.name, slug=default.slug, summary=default.summary,
             cover_image=default.cover_image, default_template=default
         )
-        print(f'\nTime-capsoul Custom Template created: {custom}')
+        logger.info('Time-capsoul Custom Template created', extra={"template_id": custom.id})
         return TimeCapSoul.objects.create(user=user, capsoul_template=custom)
 
     def _create_custom_room(self, data, user):
@@ -533,7 +529,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                 progress_callback=upload_progress_callback
             )
         except Exception as e:
-            print(f'[Upload Error] {e}')
+            logger.error('Upload Error', extra={"error": str(e)})
             if progress_callback:
                 progress_callback(-1, f"Upload failed: {str(e)}")
             raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
@@ -556,7 +552,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                         decrypted_bytes=decrypted_bytes, extension=ext
                     )
                 except Exception as e:
-                    print(f'Exception while media thumbnail extraction: {e}')
+                    logger.exception('Exception while media thumbnail extraction')
                 else:
                     if thumbnail_data:
                         from django.core.files.base import ContentFile
@@ -566,7 +562,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                         asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
                         validated_data['thumbnail'] = asset
         except Exception as e:
-            print(f'\n Exception while extracting thumbnail: \n{e}')
+            logger.exception('Exception while extracting thumbnail')
 
         if progress_callback:
             progress_callback(95, "Finalizing...")
@@ -695,7 +691,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     created_at = created_at
                 )
             except Exception as e:
-                print(f'Exception while creating time-capsoul replica as: {e}')
+                logger.exception('Exception while creating time-capsoul replica')
                 pass 
             
             else:
@@ -708,7 +704,9 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                                 try:
                                     file_bytes,content_type = decrypt_and_get_image(media_s3_key)
                                 except Exception as e:
-                                    print(f'Exception while media file decryption as {e}')
+                                    logger.exception('Exception while media file decryption')
+                                except Exception as e:
+                                    logger.exception('Exception while media file decryption')
                                 else:
                                     # here uploading plain file  without any encryption to s3 with public access
                                     s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)

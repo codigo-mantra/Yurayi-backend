@@ -4,6 +4,8 @@ from .models import User, UserMapper
 from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica, RecipientsDetail, MemoryRoomMediaFile, MemoryRoomTemplateDefault
 
 from django.core.cache import cache
+import logging
+logger = logging.getLogger(__name__)
 
 
 @receiver(post_save, sender=User)
@@ -56,7 +58,7 @@ def attach_memory_room_media__files_detail(sender, instance, created, **kwargs):
             detail = MemoryRoomDetail.objects.create(memory_room=instance.memory_room, )
             detail.media_files.add(instance)
         else:
-            print('media file added')
+            logger.info('Memory room media file attached to detail', extra={"memory_room_id": instance.memory_room_id, "media_id": instance.id})
             pass
 
 

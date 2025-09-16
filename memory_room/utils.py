@@ -7,6 +7,8 @@ from django.conf import settings
 from django.utils.text import slugify
 
 from rest_framework import serializers
+import logging
+logger = logging.getLogger(__name__)
 
 def generate_unique_slug(instance, queryset=None):
     """
@@ -70,7 +72,7 @@ def get_readable_file_size_from_bytes(size_in_bytes):
                 readable_size = f"{gb:.2f} GB"
 
     except (ValueError, TypeError) as e:
-        print(f"\nException: {e}")
+        logger.warning("Invalid file size for readable conversion", extra={"error": str(e)})
 
     finally:
         return readable_size
@@ -299,6 +301,6 @@ class S3FileHandler:
             raise Exception(f"S3 delete failed: {str(e)}")
         else:
             is_deleted = True
-            print(f'File deleted successfully from s3 s3: {s3_key} status: {is_deleted}')
+            logger.info('File deleted from s3', extra={"s3_key": s3_key, "deleted": is_deleted})
         finally:
             return is_deleted

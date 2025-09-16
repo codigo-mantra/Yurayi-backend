@@ -4,6 +4,8 @@ from django.conf import settings
 from .models import  User, UserProfile,Assets
 from django.core.cache import cache
 from timecapsoul.utils import send_html_email
+import logging
+logger = logging.getLogger(__name__)
 import os, uuid
 from memory_room.models import TimeCapSoulRecipient
 from memory_room.notification_service import NotificationService
@@ -28,9 +30,9 @@ def create_user_profile(sender, instance, created, **kwargs):
                 )
            
         except Exception as e:
-            print(f'\n Exception while creating user profile in signal as: {e}')
+            logger.exception("Exception while creating user profile in signal")
         else:
-            print(f'Profile created for: {instance}')
+            logger.info("Profile created for user", extra={"user_id": instance.id})
 
 
 

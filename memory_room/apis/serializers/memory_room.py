@@ -21,6 +21,8 @@ AWS_KMS_KEY_ID = '843da3bb-9a57-4d9f-a8ab-879a6109f460'
 MEDIA_FILES_BUCKET = settings.MEDIA_FILES_BUCKET
 
 from timecapsoul.utils import MediaThumbnailExtractor
+import logging
+logger = logging.getLogger(__name__)
 
 class AssetSerializer(serializers.ModelSerializer):
     """
@@ -453,6 +455,7 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
                 }
             )
         except Exception as e:
+            logger.error('S3 upload failed', extra={"error": str(e)})
             raise Exception(f"S3 upload failed: {str(e)}")
 
         s3_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"

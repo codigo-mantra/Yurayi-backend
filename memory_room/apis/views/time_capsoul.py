@@ -1,4 +1,5 @@
 import boto3,mimetypes
+import logging
 from rest_framework.parsers import MultiPartParser
 from django.shortcuts import get_object_or_404
 from rest_framework import generics, permissions, status
@@ -7,6 +8,8 @@ from botocore.exceptions import ClientError
 from django.conf import settings
 from django.http import StreamingHttpResponse, Http404,HttpResponse, JsonResponse, HttpResponseNotFound
 from memory_room.utils import determine_download_chunk_size
+
+logger = logging.getLogger(__name__)
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.exceptions import ValidationError
 from rest_framework import serializers
@@ -49,6 +52,7 @@ class TimeCapSoulCoverView(SecuredView):
     Only authenticated users can access this.
     """
     def get(self,request):
+        logger.info("TimeCapSoulCoverView.get called")
         """
         Returns all Time CapSoul Cover assets ordered by creation date.
         """
@@ -63,6 +67,7 @@ class TimeCapSoulCoverView(SecuredView):
 
 class TimeCapSoulDefaultTemplateAPI(SecuredView):
     def get(self, request, format=None):
+        logger.info("TimeCapSoulDefaultTemplateAPI.get called")
         cache_key = 'time_capsoul_templates'
         data  = cache.get(cache_key)
         if not data:
@@ -84,6 +89,7 @@ class CreateTimeCapSoulView(SecuredView):
         return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
 
     def post(self, request, format=None):
+        logger.info("CreateTimeCapSoulView.post called")
         """
         Create a new time-capsoul.
         """
@@ -99,6 +105,7 @@ class CreateTimeCapSoulView(SecuredView):
         }, status=status.HTTP_201_CREATED)
     
     def get(self, request, format=None):
+        logger.info("CreateTimeCapSoulView.get list called")
         """Time CapSoul list"""
         user = self.get_current_user(request)
         time_capsouls = TimeCapSoul.objects.filter(user=user)
@@ -131,6 +138,7 @@ class CreateTimeCapSoulView(SecuredView):
         
 class TimeCapSoulUpdationView(SecuredView):
     def patch(self, request, time_capsoul_id):
+        logger.info("TimeCapSoulUpdationView.patch called", extra={"time_capsoul_id": time_capsoul_id})
         user = self.get_current_user(request)
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
         serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True)
@@ -140,6 +148,7 @@ class TimeCapSoulUpdationView(SecuredView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     def delete(self, request, time_capsoul_id):
+        logger.info("TimeCapSoulUpdationView.delete called", extra={"time_capsoul_id": time_capsoul_id})
         user = self.get_current_user(request)
         time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id, time_capsoul__user = user)
 
@@ -168,6 +177,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         return get_object_or_404(TimeCapSoul, id=time_capsoul_id)
 
     def get(self, request, time_capsoul_id):
+        logger.info("TimeCapSoulMediaFilesView.get called", extra={"time_capsoul_id": time_capsoul_id})
         """
         List all media files of a time-capsoul.
         """
@@ -182,11 +192,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
             time_capsoul = self.get__tagged_time_capsoul(time_capsoul_id)
 
             if time_capsoul.status != 'unlocked':
+                logger.info("Tagged recipient not allowed: capsoul locked", extra={"time_capsoul_id": time_capsoul_id})
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
            
             recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
             if not recipient:
+                logger.info("Recipient not found for tagged capsoul", extra={"time_capsoul_id": time_capsoul_id, "email": user.email})
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
             media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
@@ -468,7 +480,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                             del future_to_index[future]
 
                         except Exception as e:
-                            print(f"Task completion error: {e}")
+                            logger.exception("Task completion error")
                             del future_to_index[future]
 
                     time.sleep(0.1)
@@ -571,7 +583,7 @@ class SetTimeCapSoulCover(SecuredView):
                     file_type = media_file.file_type
                 )
             except Exception as e:
-                print(f'Exception while creating time-capsoul replica as: {e}')
+                logger.exception('Exception while creating time-capsoul replica')
                 pass 
         else:
             if not time_capsoul.capsoul_template.default_template:

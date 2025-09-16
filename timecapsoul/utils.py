@@ -6,6 +6,8 @@ import json
 from email.mime.image import MIMEImage
 
 from django.conf import settings
+import logging
+logger = logging.getLogger(__name__)
 
 from mutagen.mp3 import MP3
 from mutagen.mp4 import MP4
@@ -43,11 +45,11 @@ class MediaThumbnailExtractor:
                 try:
                     audio = MP3(data, ID3=ID3)
                 except Exception as e:
-                    print("🔴 MP3 header sync issue, trying raw ID3")
+                    logger.warning("MP3 header sync issue, trying raw ID3")
                     try:
                         audio = ID3(data)
                     except Exception as e2:
-                        print(f"❌ Failed to read ID3 tags: {e2}")
+                        logger.error("Failed to read ID3 tags", extra={"error": str(e2)})
                         return None
 
                 tags = getattr(audio, 'tags', audio)
@@ -66,7 +68,7 @@ class MediaThumbnailExtractor:
                     return audio.pictures[0].data
 
         except Exception as e:
-            print(f"❌ Thumbnail extraction failed: {e}")
+            logger.error("Thumbnail extraction failed", extra={"error": str(e)})
         return None
     
     def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):
@@ -80,11 +82,11 @@ class MediaThumbnailExtractor:
                 try:
                     audio = MP3(data, ID3=ID3)
                 except Exception as e:
-                    print("🔴 MP3 header sync issue, trying raw ID3")
+                    logger.warning("MP3 header sync issue, trying raw ID3")
                     try:
                         audio = ID3(data)
                     except Exception as e2:
-                        print(f"❌ Failed to read ID3 tags: {e2}")
+                        logger.error("Failed to read ID3 tags", extra={"error": str(e2)})
                         return None
 
                 tags = getattr(audio, 'tags', audio)
@@ -103,7 +105,7 @@ class MediaThumbnailExtractor:
                     return audio.pictures[0].data
 
         except Exception as e:
-            print(f"❌ Thumbnail extraction failed: {e}")
+            logger.error("Thumbnail extraction failed", extra={"error": str(e)})
         return None
 
 def send_html_email(subject, to_email, template_name, context=None, inline_images=None, email_list = None):
@@ -165,7 +167,7 @@ def load_env(path='.env'):
                         key, val = line.split('=', 1)
                         os.environ[key] = val
                     else:
-                        print(f"\n ----- Warning: Skipping invalid .env line: {line} -----")
+                        logger.warning("Skipping invalid .env line", extra={"line": line})
 
 
 def get_aws_secret(secret_name: str, ):
@@ -195,8 +197,8 @@ def process_sqs_messages(sqs, queue_url):
 
     if "Messages" in response:
         for message in response["Messages"]:
-            body = json.loads(message["Body"])
-            print("📩 S3 Event:", json.dumps(body, indent=2))
+            body = json.loads(message["Body"]) 
+            logger.info("S3 Event received", extra={"body": body})
 
             # Delete message from queue after processing
             sqs.delete_message(

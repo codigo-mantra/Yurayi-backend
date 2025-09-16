@@ -30,7 +30,9 @@ load_env()  # get credential from env file
 AWS_SECRET = get_aws_secret(env('AWS_SECRET_MANAGER_NAME')) # get credential from AWS Secret Manager 
 
 ENVIRONMENT_TYPE = env('ENVIRONMENT_TYPE')
-print(f'\n Project is running in env type : {ENVIRONMENT_TYPE}')
+import logging
+logger = logging.getLogger(__name__)
+logger.info('Project environment', extra={"env": ENVIRONMENT_TYPE})
 
 SECRET_KEY = 'django-insecure-xv5_(#zp+y*ixeerilyq^!$2mo$q6y139znuj+jqte4k1pa=89'
 ENCRYPTION_KEY = base64.b64decode("8ZqN0rj8s8asfV0nZTzPpS4wpAe6o7pFfV9s5F0qf+Q=")
@@ -52,6 +54,7 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     'django.contrib.sites', 
     'django_celery_results',
+    'django_celery_beat',
     'storages',    
     'channels',   
     'corsheaders',
@@ -268,8 +271,7 @@ REST_USE_JWT = True
 DJRESTAUTH_TOKEN_MODEL = None
 
 FRONTEND_URL = env('FRONTEND_URL')
-
-print(FRONTEND_URL)
+logger.debug('Frontend URL loaded')
 
 REST_AUTH = {
     "USE_JWT": True,
@@ -408,4 +410,57 @@ if ENVIRONMENT_TYPE == "PROD":
 
 elif ENVIRONMENT_TYPE == 'DEV':
     CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+
+
+
+# Logger configuration
+from boto3.session import Session
+
+# if ENVIRONMENT_TYPE == 'PROD':
+
+log_group ="yurayi-prod-log-group"
+
+logger_boto3_session = Session(
+    aws_access_key_id = AWS_ACCESS_KEY_ID,
+    aws_secret_access_key = AWS_SECRET_ACCESS_KEY,
+    region_name = 'ap-south-1',
+)
+
+
+LOGGING = {
+"version": 1,
+"disable_existing_loggers": False,
+"formatters": {
+    "aws": {
+        "format": "%(asctime)s [%(levelname)-8s] %(message)s [%(pathname)s:%(lineno)d]",
+        "datefmt": "%Y-%m-%d %H:%M:%S",
+    },
+},
+"handlers": {
+    "watchtower": {
+        "level": "INFO",
+        "class": "watchtower.CloudWatchLogHandler",
+        "boto3_session": logger_boto3_session,
+        "log_group": log_group,
+        "stream_name": 'logs',
+        "formatter": "aws",
+    },
+    "console": {
+        "level": "INFO",
+        "class": "logging.StreamHandler",
+        "formatter": "aws",
+    },
+},
+"loggers": {
+    "watchtower": {
+        "level": "INFO",
+        "handlers": ["watchtower"],
+        "propagate": False,
+    },
+},
+"root": {
+    "handlers": ["console"],
+    "level": "INFO",
+},
+}
 

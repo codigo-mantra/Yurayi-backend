@@ -2,6 +2,7 @@
 Encryption/Decryption utilities for S3 images.
 """
 import base64, os
+import logging
 import boto3
 from botocore.config import Config
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
@@ -86,7 +87,8 @@ def encrypt_and_upload_file(*, key, plaintext_bytes, content_type="application/o
     except Exception as e:
         if progress_callback:
             progress_callback(-1, f"Upload failed: {str(e)}")
-        print(f'exception as ', e)
+        logger = logging.getLogger(__name__)
+        logger.exception("Encrypt and upload failed")
         raise e
 
 
