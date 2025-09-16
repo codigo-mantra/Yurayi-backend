@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 from userauth.models import User
 
 def testing_view(request):
-    logger.info('testing_view called', extra={"path": request.path})
+    logger.info('testing_view called')
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
     email = 'krishnayadav.codigomantra@gmail.com'

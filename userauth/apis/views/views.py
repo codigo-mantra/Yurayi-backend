@@ -66,12 +66,12 @@ GOOGLE_CLIENT_ID = settings.GOOGLE_OAUTH_CLIENT_ID
 
 class ContactUsAPIView(APIView):
     def post(self, request):
-        logger.info("ContactUsAPIView.post called", extra={"path": request.path})
+        logger.info("ContactUsAPIView.post called")
         serializer = ContactUsSerializer(data=request.data)
         if serializer.is_valid():
             serializer.save()
             email = serializer.validated_data.get('email')
-            logger.debug("ContactUs form valid", extra={"email": email})
+            logger.debug("ContactUs form valid")
             send_html_email(
                 subject='We’ve received your message',
                 to_email=email,
@@ -87,7 +87,7 @@ class GoogleAuthView(APIView):
     serializer_class = GoogleAccessTokenSerializer
 
     def post(self, request, *args, **kwargs):
-        logger.info("GoogleAuthView.post called", extra={"path": request.path})
+        logger.info("GoogleAuthView.post called")
         serializer = self.serializer_class(
             data=request.data,
             context={'request': request, 'view': self}
@@ -184,14 +184,14 @@ class GenerateJWTTokenView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        logger.info("GenerateJWTTokenView.get called", extra={"user_id": getattr(request.user, 'id', None)})
+        logger.info("GenerateJWTTokenView.get called")
         tokens = JWTTokenSerializer.get_token(request.user)
         return Response(tokens)
 
 
 class RegistrationView(APIView):
     def post(self, request):
-        logger.info("RegistrationView.post called", extra={"path": request.path})
+        logger.info("RegistrationView.post called")
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         device_name = serializer.validated_data.get('device_name')
@@ -290,14 +290,14 @@ class SecuredView(APIView):
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        logger.info("SecuredView.initial", extra={"method": request.method, "path": request.path})
+        logger.info("SecuredView.initial")
 
         import datetime
         from datetime import datetime, timezone
 
         token = request.COOKIES.get(settings.ACCESS_COOKIE_NAME)
         if not token:
-            logger.warning("Access token missing", extra={"ip": request.META.get("REMOTE_ADDR")})
+            logger.warning("Access token missing")
             return self.unauthorized("Access token missing")
 
         try:
@@ -332,19 +332,19 @@ class SecuredView(APIView):
             try:
                 session = Session.objects.get(pk=sid)
                 if session.revoked:
-                    logger.warning("Session revoked", extra={"sid": sid})
+                    logger.warning("Session revoked")
                     return self.unauthorized("Session revoked")
                 session.last_used_at = timezone.now()
                 session.save(update_fields=["last_used_at"])
                 self.session = session
             except Session.DoesNotExist:
-                logger.warning("Invalid session", extra={"sid": sid})
+                logger.warning("Invalid session")
                 return self.unauthorized("Invalid session")
 
         # fetch user
         user_id = payload.get("user_id")
         self.current_user = get_object_or_404(User, id=user_id)
-        logger.debug("Authenticated user in SecuredView.initial", extra={"user_id": user_id})
+        logger.debug("Authenticated user in SecuredView.initial")
         self.token_payload = payload
         
     def get_current_user(self, request):
@@ -359,7 +359,7 @@ class SecuredView(APIView):
                 
             
     def unauthorized(self, message):
-        logger.warning("Unauthorized access", extra={"message": message})
+        logger.warning("Unauthorized access")
         raise NotAuthenticated()
         # return Response({"detail": message}, status=status.HTTP_401_UNAUTHORIZED)
 
@@ -368,7 +368,7 @@ class SecuredView(APIView):
 class LoginView(APIView):
     
     def post(self, request):
-        logger.info("LoginView.post called", extra={"path": request.path})
+        logger.info("LoginView.post called")
         return self._handle_username_email_login(request)
 
     def _handle_username_email_login(self, request):
@@ -389,17 +389,17 @@ class LoginView(APIView):
             user = User.objects.filter(username__iexact=identifier).first()
 
         if not user:
-            logger.info("Login failed: user not found", extra={"identifier": identifier})
+            logger.info("Login failed: user not found")
             return Response( {"error": "Invalid Credentials. Please try again."},status=400)
 
 
         if not user.check_password(password):
-            logger.info("Login failed: bad password", extra={"user_id": getattr(user, 'id', None)})
+            logger.info("Login failed: bad password")
             return Response( {"error": "Invalid Credentials. Please try again."},status=400)
 
 
         if not user.is_active:
-            logger.info("Login failed: inactive user", extra={"user_id": user.id})
+            logger.info("Login failed: inactive user")
             return Response({'error': 'Account inactive. Contact support to reactivate.'}, status=403)
         
         # # Track device/session
@@ -445,7 +445,7 @@ class LoginView(APIView):
             domain=settings.COOKIE_DOMAIN,
             path=settings.ACCESS_COOKIE_PATH,
         )
-        logger.info("Login success", extra={"user_id": user.id, "session_id": session.id})
+        logger.info("Login success")
         return resp
 
 
@@ -472,7 +472,7 @@ class LogoutView(APIView):
     permission_classes = [permissions.AllowAny]
 
     def post(self, request):
-        logger.info("LogoutView.post called", extra={"path": request.path})
+        logger.info("LogoutView.post called")
         # Get access token from cookie (consistent with ProfileView)
         token_value = request.COOKIES.get(settings.ACCESS_COOKIE_NAME)
         from django.utils import timezone
@@ -652,7 +652,7 @@ class ForgotPasswordView(APIView):
             
         )
 
-        logger.info("Password reset email sent", extra={"user_id": user.id})
+        logger.info("Password reset email sent")
         return Response({"detail": "We’ve emailed you a password reset link. Please check your inbox."}, status=status.HTTP_200_OK)
 
 class PasswordResetConfirmView(APIView):
@@ -715,7 +715,7 @@ class PasswordResetConfirmView(APIView):
             domain=settings.COOKIE_DOMAIN,
             path=settings.ACCESS_COOKIE_PATH,
         )
-        logger.info("Password updated and tokens issued", extra={"user_id": user.id, "session_id": session.id})
+        logger.info("Password updated and tokens issued")
         return resp
 
 
@@ -777,7 +777,7 @@ class UserProfileUpdateView(SecuredView):
                 notification_key='profile_updated',
                 user=user,
             )
-            logger.info("Profile updated", extra={"user_id": user.id})
+            logger.info("Profile updated")
             return Response({
                 "message": "Profile updated successfully",
                 "data": serializer.data
@@ -817,7 +817,7 @@ class UserAddressDetailView(SecuredView):
             return None
 
     def get(self, request, pk):
-        logger.info("UserAddressDetailView.get called", extra={"pk": pk})
+        logger.info("UserAddressDetailView.get called")
         user = self.current_user
         if user is None:
             raise NotAuthenticated()
@@ -829,7 +829,7 @@ class UserAddressDetailView(SecuredView):
         return Response(serializer.data)
 
     def put(self, request, pk):
-        logger.info("UserAddressDetailView.put called", extra={"pk": pk})
+        logger.info("UserAddressDetailView.put called")
         user = self.current_user
         if user is None:
             raise NotAuthenticated()
@@ -844,7 +844,7 @@ class UserAddressDetailView(SecuredView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, pk):
-        logger.info("UserAddressDetailView.delete called", extra={"pk": pk})
+        logger.info("UserAddressDetailView.delete called")
         user = self.current_user
         if user is None:
             raise NotAuthenticated()

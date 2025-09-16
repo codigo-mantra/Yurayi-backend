@@ -49,7 +49,7 @@ class MediaThumbnailExtractor:
                     try:
                         audio = ID3(data)
                     except Exception as e2:
-                        logger.error("Failed to read ID3 tags", extra={"error": str(e2)})
+                        logger.error("Failed to read ID3 tags")
                         return None
 
                 tags = getattr(audio, 'tags', audio)
@@ -68,7 +68,7 @@ class MediaThumbnailExtractor:
                     return audio.pictures[0].data
 
         except Exception as e:
-            logger.error("Thumbnail extraction failed", extra={"error": str(e)})
+            logger.error("Thumbnail extraction failed")
         return None
     
     def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):
@@ -86,7 +86,7 @@ class MediaThumbnailExtractor:
                     try:
                         audio = ID3(data)
                     except Exception as e2:
-                        logger.error("Failed to read ID3 tags", extra={"error": str(e2)})
+                        logger.error("Failed to read ID3 tags")
                         return None
 
                 tags = getattr(audio, 'tags', audio)
@@ -105,7 +105,7 @@ class MediaThumbnailExtractor:
                     return audio.pictures[0].data
 
         except Exception as e:
-            logger.error("Thumbnail extraction failed", extra={"error": str(e)})
+            logger.error("Thumbnail extraction failed")
         return None
 
 def send_html_email(subject, to_email, template_name, context=None, inline_images=None, email_list = None):
@@ -167,7 +167,7 @@ def load_env(path='.env'):
                         key, val = line.split('=', 1)
                         os.environ[key] = val
                     else:
-                        logger.warning("Skipping invalid .env line", extra={"line": line})
+                        logger.warning("Skipping invalid .env line")
 
 
 def get_aws_secret(secret_name: str, ):
@@ -198,7 +198,7 @@ def process_sqs_messages(sqs, queue_url):
     if "Messages" in response:
         for message in response["Messages"]:
             body = json.loads(message["Body"]) 
-            logger.info("S3 Event received", extra={"body": body})
+            logger.info("S3 Event received")
 
             # Delete message from queue after processing
             sqs.delete_message(

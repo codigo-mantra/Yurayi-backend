@@ -72,7 +72,7 @@ def get_readable_file_size_from_bytes(size_in_bytes):
                 readable_size = f"{gb:.2f} GB"
 
     except (ValueError, TypeError) as e:
-        logger.warning("Invalid file size for readable conversion", extra={"error": str(e)})
+        logger.warning("Invalid file size for readable conversion")
 
     finally:
         return readable_size
@@ -301,6 +301,6 @@ class S3FileHandler:
             raise Exception(f"S3 delete failed: {str(e)}")
         else:
             is_deleted = True
-            logger.info('File deleted from s3', extra={"s3_key": s3_key, "deleted": is_deleted})
+            logger.info('File deleted from s3')
         finally:
             return is_deleted

@@ -14,10 +14,13 @@ import json, time
 from memory_room.models import Notification
 from userauth.apis.views.views import SecuredView
 from memory_room.apis.serializers.notification import NotificationSerializer, NotificationUpdateSerializer
+import logging
+logger = logging.getLogger(__name__)
 
 # user-notification-list
 class NotificationListView(SecuredView):
     def get(self, request):
+        logger.info("NotificationListView.get called")
         user  = self.get_current_user(request)
         notications = Notification.objects.filter(user=user, is_deleted = False).order_by("-created_at")
         data  = NotificationSerializer(notications, many=True).data
@@ -28,17 +31,21 @@ class NotificationListView(SecuredView):
 class UpdateNotificationView(SecuredView):
     
     def post(self, request, notification_id):
+        logger.info(f"UpdateNotificationView.post called with notification_id: {notification_id}")
         user  = self.get_current_user(request)
         notication = get_object_or_404(Notification, id=notification_id, user = user, is_deleted=False)
         serializer = NotificationUpdateSerializer(instance = notication, data = request.data)
         serializer.is_valid(raise_exception= True)
         serializer.save()
+        logger.info(f"UpdateNotificationView.post called with notification_id: {notification_id}")
+
         return Response(serializer.data,  status=status.HTTP_200_OK)
     
 
 #  Mark all as read or clear
 class NotificationMarkAllReadView(SecuredView):
     def post(self, request):
+        logger.info("NotificationMarkAllReadView.post called")
         user  = self.get_current_user(request)
         updation_type = request.data.get('updation_type', None)
         if not updation_type:
@@ -48,6 +55,7 @@ class NotificationMarkAllReadView(SecuredView):
             Notification.objects.filter(user=user, is_read=False, is_deleted = False).update(is_read=True)
             message = {"detail": "All notifications marked as read."}
         elif updation_type == 'clear_all':
+            logger.info(f"NotificationMarkAllReadView.post data saved with updation_type: {updation_type} for user: {user.email}")
             Notification.objects.filter(user=user, is_deleted = False).update(is_deleted=True)
             message = {"detail": "All notifications cleared."}
         else:
@@ -60,6 +68,7 @@ class NotificationMarkAllReadView(SecuredView):
 class NotificationStreamView(SecuredView):
 
     def get(self, request, *args, **kwargs):
+        logger.info("NotificationStreamView.get called")
         user = self.get_current_user(request)
         last_event_id = request.headers.get("Last-Event-ID")
 

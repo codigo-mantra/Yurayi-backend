@@ -81,7 +81,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
             name=default.name, slug=default.slug, summary=default.summary,
             cover_image=default.cover_image, default_template=default
         )
-        logger.info('Time-capsoul Custom Template created', extra={"template_id": custom.id})
+        logger.info('Time-capsoul Custom Template created')
         return TimeCapSoul.objects.create(user=user, capsoul_template=custom)
 
     def _create_custom_room(self, data, user):
@@ -529,7 +529,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                 progress_callback=upload_progress_callback
             )
         except Exception as e:
-            logger.error('Upload Error', extra={"error": str(e)})
+            logger.error('Upload Error')
             if progress_callback:
                 progress_callback(-1, f"Upload failed: {str(e)}")
             raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})

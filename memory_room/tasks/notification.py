@@ -3,6 +3,8 @@ from userauth.models import User
 from django.utils import timezone
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
+import logging
+logger = logging.getLogger(__name__)
 
 
 from memory_room.models import TimeCapSoulDetail, TimeCapSoulRecipient
@@ -10,6 +12,7 @@ from memory_room.notification_service import NotificationService
 
 
 def recipients_nofitication_creator(recipients:TimeCapSoulRecipient, notification_key:str, is_opened=None):
+    logger.info("recipients_nofitication_creator called")
     
     for recipient in recipients:
         
@@ -33,6 +36,7 @@ def recipients_nofitication_creator(recipients:TimeCapSoulRecipient, notificatio
 
 @shared_task
 def capsoul_almost_unlock(capsoul_id):
+    logger.info("capsoul_almost_unlock task called")
     try:
         detail = TimeCapSoulDetail.objects.get(id=capsoul_id)
 
@@ -45,6 +49,7 @@ def capsoul_almost_unlock(capsoul_id):
 
 @shared_task
 def capsoul_unlocked(capsoul_id):
+    logger.info("capsoul_unlocked task called")
     try:
         detail = TimeCapSoulDetail.objects.get(id=capsoul_id)
     except Exception as e:
@@ -61,6 +66,7 @@ def capsoul_unlocked(capsoul_id):
 @shared_task
 def capsoul_waiting(capsoul_id):
     """create notification for 24 hour reminder"""
+    logger.info("capsoul_waiting task called")
     detail = TimeCapSoulDetail.objects.get(id=capsoul_id)
     # Notify tagged person after 24 hours if shared capsoul they havent open'd it
     recipients  = TimeCapSoulRecipient.objects.filter(time_capsoul = detail.time_capsoul)
@@ -70,6 +76,7 @@ def capsoul_waiting(capsoul_id):
 @shared_task
 def capsoul_reminder_7_days(capsoul_id):
     """create notification for 7 days reminder"""
+    logger.info("capsoul_reminder_7_days task called")
     
     detail = TimeCapSoulDetail.objects.get(id=capsoul_id)
     # Notify tagged person after 24 hours if shared capsoul they havent open'd it
@@ -80,6 +87,7 @@ def capsoul_reminder_7_days(capsoul_id):
 @shared_task
 def capsoul_memory_one_year_ago(capsoul_id):
     """create notification for 1 years reminder"""
+    logger.info("capsoul_memory_one_year_ago task called")
     
     detail = TimeCapSoulDetail.objects.get(id=capsoul_id)
     # Notify only owner
@@ -92,6 +100,7 @@ def capsoul_memory_one_year_ago(capsoul_id):
 
 @shared_task
 def capsoul_notification_handler():
+    logger.info("capsoul_notification_handler task called")
     now = timezone.now()
 
     # Sealed capsouls scheduled for today

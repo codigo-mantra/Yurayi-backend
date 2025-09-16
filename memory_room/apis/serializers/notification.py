@@ -1,5 +1,7 @@
 from rest_framework import serializers
 from memory_room.models import Notification
+import logging
+logger = logging.getLogger(__name__)
 
 class NotificationSerializer(serializers.ModelSerializer):
     class Meta:
@@ -25,6 +27,7 @@ class NotificationUpdateSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", 'title', 'message')
 
     def validate(self, attrs):
+        logger.info("NotificationUpdateSerializer.validate called")
         # Only allow ONE field to be updated at a time
         update_flags = [field for field in ["is_read", "is_deleted"] if field in attrs]
 
@@ -36,6 +39,7 @@ class NotificationUpdateSerializer(serializers.ModelSerializer):
         return attrs
 
     def update(self, instance, validated_data):
+        logger.info("NotificationUpdateSerializer.update called")
         if "is_read" in validated_data:
             instance.is_read = validated_data["is_read"]
         elif "is_deleted" in validated_data and validated_data["is_deleted"]:

@@ -30,10 +30,6 @@ load_env()  # get credential from env file
 AWS_SECRET = get_aws_secret(env('AWS_SECRET_MANAGER_NAME')) # get credential from AWS Secret Manager 
 
 ENVIRONMENT_TYPE = env('ENVIRONMENT_TYPE')
-import logging
-logger = logging.getLogger(__name__)
-logger.info('Project environment', extra={"env": ENVIRONMENT_TYPE})
-
 SECRET_KEY = 'django-insecure-xv5_(#zp+y*ixeerilyq^!$2mo$q6y139znuj+jqte4k1pa=89'
 ENCRYPTION_KEY = base64.b64decode("8ZqN0rj8s8asfV0nZTzPpS4wpAe6o7pFfV9s5F0qf+Q=")
 
@@ -222,7 +218,6 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
     'COMPONENT_SPLIT_REQUEST': True,
 }
-
 ACCOUNT_AUTHENTICATION_METHOD = "email"
 ACCOUNT_USERNAME_REQUIRED = False
 ACCOUNT_EMAIL_REQUIRED = True
@@ -259,7 +254,6 @@ REST_USE_JWT = True
 DJRESTAUTH_TOKEN_MODEL = None
 
 FRONTEND_URL = env('FRONTEND_URL')
-logger.debug('Frontend URL loaded')
 
 REST_AUTH = {
     "USE_JWT": True,
@@ -415,43 +409,6 @@ logger_boto3_session = Session(
 )
 
 
-# LOGGING = {
-# "version": 1,
-# "disable_existing_loggers": False,
-# "formatters": {
-#     "aws": {
-#         "format": "%(asctime)s [%(levelname)-8s] %(message)s [%(pathname)s:%(lineno)d]",
-#         "datefmt": "%Y-%m-%d %H:%M:%S",
-#     },
-# },
-# "handlers": {
-#     "watchtower": {
-#         "level": "INFO",
-#         "class": "watchtower.CloudWatchLogHandler",
-#         "boto3_session": logger_boto3_session,
-#         "log_group": log_group,
-#         "stream_name": 'logs',
-#         "formatter": "aws",
-#     },
-#     "console": {
-#         "level": "INFO",
-#         "class": "logging.StreamHandler",
-#         "formatter": "aws",
-#     },
-# },
-# "loggers": {
-#     "watchtower": {
-#         "level": "INFO",
-#         "handlers": ["watchtower"],
-#         "propagate": False,
-#     },
-# },
-# "root": {
-#     "handlers": ["console"],
-#     "level": "INFO",
-# },
-# }
-
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,
@@ -462,36 +419,39 @@ LOGGING = {
         },
     },
     "handlers": {
+        # CloudWatch handler
+        "watchtower": {
+            "level": "INFO",
+            "class": "watchtower.CloudWatchLogHandler",
+            "boto3_session": logger_boto3_session,
+            "log_group": log_group,
+            "stream_name": "logs",
+            "formatter": "aws",
+        },
+        # Console handler
         "console": {
-            "level": "DEBUG" if DEBUG else "INFO",
+            "level": "INFO",
             "class": "logging.StreamHandler",
             "formatter": "aws",
         },
     },
+    "loggers": {
+        # Default logger for Django
+        "django": {
+            "level": "INFO",
+            "handlers": ["console", "watchtower"],
+            "propagate": False,
+        },
+        # Custom app logger
+        "myapp": {
+            "level": "DEBUG",
+            "handlers": ["console", "watchtower"],
+            "propagate": False,
+        },
+    },
+    # Root logger
     "root": {
-        "handlers": ["console"],
-        "level": "DEBUG" if DEBUG else "INFO",
+        "level": "INFO",
+        "handlers": ["console", "watchtower"],
     },
 }
-
-
-import logging
-import watchtower
-from boto3.session import Session
-
-if ENVIRONMENT_TYPE == "PROD":
-    logger_boto3_session = Session(
-        aws_access_key_id=AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
-        region_name="ap-south-1",
-    )
-
-    watchtower_handler = watchtower.CloudWatchLogHandler(
-        boto3_session=logger_boto3_session,
-        log_group="yurayi-prod-log-group",
-        stream_name="logs",
-    )
-
-    root_logger = logging.getLogger()
-    root_logger.addHandler(watchtower_handler)
-    root_logger.setLevel(logging.INFO)

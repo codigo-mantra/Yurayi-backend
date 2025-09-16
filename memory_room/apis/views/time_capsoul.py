@@ -61,7 +61,8 @@ class TimeCapSoulCoverView(SecuredView):
         if not data:
             assets = Assets.objects.filter(asset_types='Time CapSoul Cover').order_by('-created_at')
             data = AssetSerializer(assets, many=True).data
-            cache.set(cache_key, data, timeout=60*10) # 10 minutes cached  
+            cache.set(cache_key, data, timeout=60*10) # 10 minutes cached 
+        logger.info(f"TimeCapSoulCoverView.get data: served from cache")
             
         return Response(data)
 
@@ -138,7 +139,7 @@ class CreateTimeCapSoulView(SecuredView):
         
 class TimeCapSoulUpdationView(SecuredView):
     def patch(self, request, time_capsoul_id):
-        logger.info("TimeCapSoulUpdationView.patch called", extra={"time_capsoul_id": time_capsoul_id})
+        logger.info("TimeCapSoulUpdationView.patch called")
         user = self.get_current_user(request)
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
         serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True)
@@ -148,7 +149,7 @@ class TimeCapSoulUpdationView(SecuredView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     def delete(self, request, time_capsoul_id):
-        logger.info("TimeCapSoulUpdationView.delete called", extra={"time_capsoul_id": time_capsoul_id})
+        logger.info("TimeCapSoulUpdationView.delete called")
         user = self.get_current_user(request)
         time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id, time_capsoul__user = user)
 
@@ -177,7 +178,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         return get_object_or_404(TimeCapSoul, id=time_capsoul_id)
 
     def get(self, request, time_capsoul_id):
-        logger.info("TimeCapSoulMediaFilesView.get called", extra={"time_capsoul_id": time_capsoul_id})
+        logger.info("TimeCapSoulMediaFilesView.get called")
         """
         List all media files of a time-capsoul.
         """
@@ -192,13 +193,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
             time_capsoul = self.get__tagged_time_capsoul(time_capsoul_id)
 
             if time_capsoul.status != 'unlocked':
-                logger.info("Tagged recipient not allowed: capsoul locked", extra={"time_capsoul_id": time_capsoul_id})
+                logger.info("Tagged recipient not allowed: capsoul locked")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
            
             recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
             if not recipient:
-                logger.info("Recipient not found for tagged capsoul", extra={"time_capsoul_id": time_capsoul_id, "email": user.email})
+                logger.info("Recipient not found for tagged capsoul")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
             media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)

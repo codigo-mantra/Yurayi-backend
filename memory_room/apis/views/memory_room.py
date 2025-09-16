@@ -125,7 +125,7 @@ class CreateMemoryRoomView(SecuredView):
         })
 
     def delete(self, request, memory_room_id, format=None):
-        logger.info("CreateMemoryRoomView.delete called", extra={"memory_room_id": memory_room_id})
+        logger.info("CreateMemoryRoomView.delete called")
         """
         Delete an existing memory room.
         """
@@ -141,7 +141,7 @@ class CreateMemoryRoomView(SecuredView):
         )
 
     def patch(self, request, memory_room_id):
-        logger.info("CreateMemoryRoomView.patch called", extra={"memory_room_id": memory_room_id})
+        logger.info("CreateMemoryRoomView.patch called")
         """
         Partially update fields of a memory room.
         """
@@ -156,7 +156,7 @@ class CreateMemoryRoomView(SecuredView):
 
 class SetMemoryRoomCoverImageAPIView(SecuredView):
     def post(self, request, memory_room_id, cover_image_id):
-        logger.info("SetMemoryRoomCoverImageAPIView.post called", extra={"memory_room_id": memory_room_id, "cover_image_id": cover_image_id})
+        logger.info("SetMemoryRoomCoverImageAPIView.post called")
         # print(f'Requst received')
 
         user = self.get_current_user(request)
@@ -183,7 +183,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         return get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
 
     def get(self, request, memory_room_id):
-        logger.info("MemoryRoomMediaFileListCreateAPI.get called", extra={"memory_room_id": memory_room_id})
+        logger.info("MemoryRoomMediaFileListCreateAPI.get called")
         """
         List all media files of a memory room.
         """

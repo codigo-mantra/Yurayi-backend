@@ -455,7 +455,7 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
                 }
             )
         except Exception as e:
-            logger.error('S3 upload failed', extra={"error": str(e)})
+            logger.error('S3 upload failed')
             raise Exception(f"S3 upload failed: {str(e)}")
 
         s3_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"

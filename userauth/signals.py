@@ -32,7 +32,7 @@ def create_user_profile(sender, instance, created, **kwargs):
         except Exception as e:
             logger.exception("Exception while creating user profile in signal")
         else:
-            logger.info("Profile created for user", extra={"user_id": instance.id})
+            logger.info("Profile created for user")
 
 
 
