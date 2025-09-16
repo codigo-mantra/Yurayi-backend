@@ -859,17 +859,15 @@ class ServeTimeCapSoulMedia(SecuredView):
             else:
                 time_capsoul = media_file.time_capsoul
                 
-            capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul=time_capsoul).first()
+            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul=time_capsoul, email = user.email).first()
             if not capsoul_recipients:
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
-            recipients_data = list(capsoul_recipients.recipients.values_list("email", flat=True))
-            if user.email not in recipients_data:
-                return Response(status=status.HTTP_404_NOT_FOUND)
+            # recipients_data = list(capsoul_recipients.recipients.values_list("email", flat=True))
+            # if user.email not in recipients_data:
+            #     return Response(status=status.HTTP_404_NOT_FOUND)
         except Exception:
             return Response(status=status.HTTP_404_NOT_FOUND)
-
-        
 
         if not exp or not sig:
             return Response(status=status.HTTP_404_NOT_FOUND)
@@ -897,9 +895,8 @@ class ServeTimeCapSoulMedia(SecuredView):
                     file_bytes,content_type = decrypt_and_get_image(str(s3_key))
                     
                     # store in cache
-                    cache.set(cache_key, file_bytes, timeout=60*5)  
-                    cache.set(f'{cache_key}_type', content_type, timeout=60*5)  
-
+                    cache.set(cache_key, file_bytes, timeout=60*60)  
+                    cache.set(f'{cache_key}_type', content_type, timeout=60*60)  
 
         response = HttpResponse(file_bytes, content_type=content_type)
         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # # Build CSP header

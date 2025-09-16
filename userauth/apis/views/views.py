@@ -191,18 +191,12 @@ class GenerateJWTTokenView(APIView):
 
 class RegistrationView(APIView):
     def post(self, request):
-        logger.info("RegistrationView.post called")
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         device_name = serializer.validated_data.get('device_name')
         user = serializer.save()
+        logger.info(f"new user register as {user.email}")
         
-        # send_html_email(
-        #     subject='Welcome to Yurayi',
-        #     to_email=user.email,
-        #     template_name='userauth/registeration_confirmation.html',
-        #     context={'email': user.email},
-        # )
         send_html_email_task.apply_async(
             kwargs={
                 "subject": 'Welcome to Yurayi',
@@ -211,7 +205,6 @@ class RegistrationView(APIView):
                 "context": {'email': user.email},
             }
         )
-        
 
         # # refresh = RefreshToken.for_user(user)
         # profile = UserProfile.objects.get(user = user)
@@ -261,21 +254,7 @@ class RegistrationView(APIView):
         )
 
         return resp
-
-        #     return Response({
-        #         "message": "Registration successful.",
-        #         "refresh": str(refresh),
-        #         "access": str(refresh.access_token),
-        #         "user": {
-        #             "email": user.email,
-        #             'username': user.username,
-        #             'profile_image': profile.profile_image.s3_url if profile.profile_image else None,
-        #             'created_at': user.created_at,
-        #         }
-        #     }, status=status.HTTP_201_CREATED)
         
-        # return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
 def _gen_refresh_value():
     return secrets.token_urlsafe(48)
 
