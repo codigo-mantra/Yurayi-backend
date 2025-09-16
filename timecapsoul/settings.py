@@ -124,22 +124,9 @@ if ENVIRONMENT_TYPE == 'PROD':
         }
     }
     
-elif ENVIRONMENT_TYPE == 'DEV':
+# elif ENVIRONMENT_TYPE == 'DEV':
+else:
     # local db config
-    # DATABASES = {
-    #     'default': {
-    #         'ENGINE': 'django.db.backends.mysql',
-    #         'NAME': 'timecapsoulDBTEST',
-    #         'USER': 'root',
-    #         'PASSWORD': 'Test@1234',
-    #         'HOST': 'localhost',
-    #         'PORT': 3306,
-    #         'OPTIONS': {
-    #             "init_command": "SET foreign_key_checks = 0;",
-    #             'charset': 'utf8mb4',
-    #         },
-    #     }
-    # }
     DATABASES = {
         'default': {
             'ENGINE': 'django.db.backends.sqlite3',
