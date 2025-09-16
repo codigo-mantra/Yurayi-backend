@@ -799,20 +799,20 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             time_capsoul.save()
             unlock_time = instance.unlock_date
            
-            # CAPSOUL_ALMOST_UNLOCK → exactly at unlock time
-            capsoul_almost_unlock.apply_async((instance.id,), eta=unlock_time)
+            # # CAPSOUL_ALMOST_UNLOCK → exactly at unlock time
+            # capsoul_almost_unlock.apply_async((instance.id,), eta=unlock_time)
 
-            # CAPSOUL_UNLOCKED → exactly at unlock time
-            capsoul_unlocked.apply_async((instance.id,), eta=unlock_time)
+            # # CAPSOUL_UNLOCKED → exactly at unlock time
+            # capsoul_unlocked.apply_async((instance.id,), eta=unlock_time)
 
-            # CAPSOUL_WAITING → 24 hours after unlock
-            capsoul_waiting.apply_async((instance.id,), eta=unlock_time + timedelta(hours=24))
+            # # CAPSOUL_WAITING → 24 hours after unlock
+            # capsoul_waiting.apply_async((instance.id,), eta=unlock_time + timedelta(hours=24))
 
-            # CAPSOUL_REMINDER_7_DAYS → 7 days after unlock
-            capsoul_reminder_7_days.apply_async((instance.id,), eta=unlock_time + timedelta(days=7))
+            # # CAPSOUL_REMINDER_7_DAYS → 7 days after unlock
+            # capsoul_reminder_7_days.apply_async((instance.id,), eta=unlock_time + timedelta(days=7))
             
-            # CAPSOUL_MEMORY_ONE_YEAR_AGO → at unlock time (owner)
-            capsoul_memory_one_year_ago.apply_async((instance.id,), eta=unlock_time)
+            # # CAPSOUL_MEMORY_ONE_YEAR_AGO → at unlock time (owner)
+            # capsoul_memory_one_year_ago.apply_async((instance.id,), eta=unlock_time + timedelta(days=364))
 
             
             
