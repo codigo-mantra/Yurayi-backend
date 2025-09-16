@@ -427,40 +427,83 @@ logger_boto3_session = Session(
 )
 
 
+# LOGGING = {
+# "version": 1,
+# "disable_existing_loggers": False,
+# "formatters": {
+#     "aws": {
+#         "format": "%(asctime)s [%(levelname)-8s] %(message)s [%(pathname)s:%(lineno)d]",
+#         "datefmt": "%Y-%m-%d %H:%M:%S",
+#     },
+# },
+# "handlers": {
+#     "watchtower": {
+#         "level": "INFO",
+#         "class": "watchtower.CloudWatchLogHandler",
+#         "boto3_session": logger_boto3_session,
+#         "log_group": log_group,
+#         "stream_name": 'logs',
+#         "formatter": "aws",
+#     },
+#     "console": {
+#         "level": "INFO",
+#         "class": "logging.StreamHandler",
+#         "formatter": "aws",
+#     },
+# },
+# "loggers": {
+#     "watchtower": {
+#         "level": "INFO",
+#         "handlers": ["watchtower"],
+#         "propagate": False,
+#     },
+# },
+# "root": {
+#     "handlers": ["console"],
+#     "level": "INFO",
+# },
+# }
+
 LOGGING = {
-"version": 1,
-"disable_existing_loggers": False,
-"formatters": {
-    "aws": {
-        "format": "%(asctime)s [%(levelname)-8s] %(message)s [%(pathname)s:%(lineno)d]",
-        "datefmt": "%Y-%m-%d %H:%M:%S",
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "aws": {
+            "format": "%(asctime)s [%(levelname)-8s] %(message)s [%(pathname)s:%(lineno)d]",
+            "datefmt": "%Y-%m-%d %H:%M:%S",
+        },
     },
-},
-"handlers": {
-    "watchtower": {
-        "level": "INFO",
-        "class": "watchtower.CloudWatchLogHandler",
-        "boto3_session": logger_boto3_session,
-        "log_group": log_group,
-        "stream_name": 'logs',
-        "formatter": "aws",
+    "handlers": {
+        "console": {
+            "level": "DEBUG" if DEBUG else "INFO",
+            "class": "logging.StreamHandler",
+            "formatter": "aws",
+        },
     },
-    "console": {
-        "level": "INFO",
-        "class": "logging.StreamHandler",
-        "formatter": "aws",
+    "root": {
+        "handlers": ["console"],
+        "level": "DEBUG" if DEBUG else "INFO",
     },
-},
-"loggers": {
-    "watchtower": {
-        "level": "INFO",
-        "handlers": ["watchtower"],
-        "propagate": False,
-    },
-},
-"root": {
-    "handlers": ["console"],
-    "level": "INFO",
-},
 }
 
+
+import logging
+import watchtower
+from boto3.session import Session
+
+if ENVIRONMENT_TYPE == "PROD":
+    logger_boto3_session = Session(
+        aws_access_key_id=AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=AWS_SECRET_ACCESS_KEY,
+        region_name="ap-south-1",
+    )
+
+    watchtower_handler = watchtower.CloudWatchLogHandler(
+        boto3_session=logger_boto3_session,
+        log_group="yurayi-prod-log-group",
+        stream_name="logs",
+    )
+
+    root_logger = logging.getLogger()
+    root_logger.addHandler(watchtower_handler)
+    root_logger.setLevel(logging.INFO)
