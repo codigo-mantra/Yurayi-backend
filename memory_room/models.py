@@ -497,6 +497,7 @@ class TimeCapSoulRecipient(BaseModel):
     email = models.EmailField(verbose_name="Recipient Email")
     is_opened = models.BooleanField(default=False)
     is_logged_in = models.BooleanField(default=False)
+    is_capsoul_deleted = models.BooleanField(default=False)
 
     class Meta:
         constraints = [

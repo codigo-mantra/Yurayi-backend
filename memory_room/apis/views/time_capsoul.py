@@ -43,6 +43,7 @@ from memory_room.apis.serializers.time_capsoul import (
     TimeCapSoulSerializer, TimeCapSoulUpdationSerializer,TimeCapSoulMediaFileSerializer,TimeCapSoulMediaFilesReadOnlySerailizer, TimeCapsoulMediaFileUpdationSerializer,
     TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimeCapSoulMediaFileReadOnlySerializer, TimeCapSoulRecipientSerializer
 )
+from memory_room.apis.serializers.notification import TimeCapSoulRecipientUpdateSerializer
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature
 
 
@@ -110,14 +111,14 @@ class CreateTimeCapSoulView(SecuredView):
         """Time CapSoul list"""
         user = self.get_current_user(request)
         time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False)
-        try:
+        try: # tagged capsoul
             tagged_time_capsouls = TimeCapSoul.objects.filter(
-                recipient_detail__email=user.email
+                recipient_detail__email=user.email,
+                recipient_detail__is_capsoul_deleted=False
             )
+            
         except TimeCapSoulRecipient.DoesNotExist:
             tagged_time_capsouls = None
-        # else:
-            # time_capsouls = time_capsouls + tagged_time_capsouls
 
         # Get all replicas in one query (instead of loop)
         time_capsoul_replicas = TimeCapSoul.objects.filter(
@@ -859,11 +860,26 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
         except ClientError as e:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
+
 class TaggedCapsoulTracker(SecuredView):
     
     def post(self, request, capsoul_id, format=None):
+        
         user = self.get_current_user(request)
-        capsoul_recipient = get_object_or_404(TimeCapSoulRecipient, time_capsoul__id=capsoul_id, email= user.email)
-        capsoul_recipient.is_opened = True
-        capsoul_recipient.save()
-        return Response()
+        capsoul_recipient = get_object_or_404(
+            TimeCapSoulRecipient,
+            time_capsoul__id=capsoul_id,
+            email=user.email
+        )
+
+        serializer = TimeCapSoulRecipientUpdateSerializer(
+            capsoul_recipient,
+            data=request.data,
+            partial=True  
+        )
+        
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

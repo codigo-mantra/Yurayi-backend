@@ -100,8 +100,8 @@ class TimeCapSoulDetailAdmin(admin.ModelAdmin):
 
 @admin.register(TimeCapSoulRecipient)
 class TimeCapSoulRecipientsAdmin(admin.ModelAdmin):
-    list_display = ("name", "email", "created_at")
-    search_fields = ("name", "email")
+    list_display = ("name", "email", "time_capsoul", 'is_capsoul_deleted', 'is_opened','is_logged_in')
+    search_fields = ("name", "email", "time_capsoul")
 
 
 @admin.register(RecipientsDetail)

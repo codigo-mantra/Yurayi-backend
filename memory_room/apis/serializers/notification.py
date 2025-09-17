@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from memory_room.models import Notification
+from memory_room.models import Notification,TimeCapSoulRecipient
 import logging
 logger = logging.getLogger(__name__)
 
@@ -46,3 +46,9 @@ class NotificationUpdateSerializer(serializers.ModelSerializer):
             instance.is_deleted = True
         instance.save()
         return instance
+
+
+class TimeCapSoulRecipientUpdateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = TimeCapSoulRecipient
+        fields = ["is_opened", "is_capsoul_deleted"]  
