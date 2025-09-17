@@ -592,7 +592,7 @@ class DashboardAPIView(SecuredView):
         user   = self.current_user
         if user is None:
             raise NotAuthenticated()
-        user_mapper = UserMapper.objects.get(user = user)
+        user_mapper = UserMapper.objects.get_or_create(user = user)
         user_profile = UserProfile.objects.get(user = user)
         response = {
             'first_name': user.first_name,
@@ -600,7 +600,7 @@ class DashboardAPIView(SecuredView):
             'email': user.email,
             'profile_pic': user_profile.profile_image.s3_url if user_profile.profile_image else None,
             'last_login': user.last_login,
-            'free_storage_limit': user_mapper.current_storage,
+            'free_storage_limit': 0,
         }
 
         return Response(response,status=status.HTTP_200_OK)

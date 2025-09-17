@@ -203,7 +203,12 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         ]
 
     def get_tagged_members(self, obj):
-        capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj)
+        user = self.context.get('user', None) 
+        if obj.user == user:
+            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj)
+        else:
+            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, email = user.email)
+            
         serializer = TimeCapSoulRecipientSerializer(capsoul_recipients, many=True)
         return serializer.data
 

@@ -59,7 +59,7 @@ class TimeCapSoulCoverView(SecuredView):
         cache_key = 'time_capsoul_covers'
         data  = cache.get(cache_key)
         if not data:
-            assets = Assets.objects.filter(asset_types='Time CapSoul Cover').order_by('-created_at')
+            assets = Assets.objects.filter(asset_types='Time CapSoul Cover', is_deleted = False).order_by('-created_at')
             data = AssetSerializer(assets, many=True).data
             cache.set(cache_key, data, timeout=60*10) # 10 minutes cached 
         logger.info(f"TimeCapSoulCoverView.get data: served from cache")
@@ -109,7 +109,7 @@ class CreateTimeCapSoulView(SecuredView):
         logger.info("CreateTimeCapSoulView.get list called")
         """Time CapSoul list"""
         user = self.get_current_user(request)
-        time_capsouls = TimeCapSoul.objects.filter(user=user)
+        time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False)
         try:
             tagged_time_capsouls = TimeCapSoul.objects.filter(
                 recipient_detail__email=user.email
@@ -151,13 +151,16 @@ class TimeCapSoulUpdationView(SecuredView):
     def delete(self, request, time_capsoul_id):
         logger.info("TimeCapSoulUpdationView.delete called")
         user = self.get_current_user(request)
-        time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id, time_capsoul__user = user)
+        time_capsoul_detail = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
 
-        if time_capsoul_detail.is_locked:
-            return Response({'message': 'Soory Time capsoul is locked it cant be deleted'})
-        else:
-            time_capsoul_detail.delete()
-            return Response({'message': "Time capsoul deleted successfully"})
+        # if time_capsoul_detail.is_locked:
+        #     return Response({'message': 'Soory Time capsoul is locked it cant be deleted'})
+        # else:
+        # time_capsoul_detail.delete()
+        capsoul = time_capsoul_detail.time_capsoul
+        capsoul.is_deleted = True
+        capsoul.save()
+        return Response({'message': "Time capsoul deleted successfully"})
 
 class TimeCapSoulMediaFilesView(SecuredView):
     """
@@ -182,25 +185,32 @@ class TimeCapSoulMediaFilesView(SecuredView):
         """
         List all media files of a time-capsoul.
         """
+        from django.utils import timezone
         user = self.get_current_user(request)
+        
 
         # if user is Owner of the time-capsoul 
         try:
-            time_capsoul = TimeCapSoul.objects.get(id=time_capsoul_id, user=user)
+            time_capsoul = TimeCapSoul.objects.get(id=time_capsoul_id, user=user, is_deleted = False)
 
         except TimeCapSoul.DoesNotExist:
             # --- Case 2: Tagged recipient ---
             time_capsoul = self.get__tagged_time_capsoul(time_capsoul_id)
 
-            if time_capsoul.status != 'unlocked':
-                logger.info("Tagged recipient not allowed: capsoul locked")
-                return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+            # if time_capsoul.status != 'unlocked':
+            #     logger.info("Tagged recipient not allowed: capsoul locked")
+            #     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
            
             recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
             if not recipient:
                 logger.info("Recipient not found for tagged capsoul")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+            
+            if time_capsoul.details.unlock_date and timezone.now() < time_capsoul.details.unlock_date:
+                logger.info("Recipient not found for tagged capsoul")
+                return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+
 
             media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
 
@@ -218,98 +228,6 @@ class TimeCapSoulMediaFilesView(SecuredView):
         serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files.distinct(), many=True)
         return Response({"media_files": serializer.data})
 
-    # def post(self, request, time_capsoul_id):
-    #     """
-    #     Upload multiple media files to a TimeCapSoul with streaming progress updates.
-    #     Each file has its own IV for decryption.
-    #     """
-    #     user = self.get_current_user(request)
-    #     time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
-
-    #     files = request.FILES.getlist('file')
-    #     created_objects = []
-    #     results = []
-
-    #     if len(files) == 0: 
-    #         raise serializers.ValidationError({'file': "Media files are required"})
-
-    #     # Parse IVs from frontend
-    #     try:
-    #         ivs_json = request.POST.get('ivs', '[]')
-    #         ivs = json.loads(ivs_json)
-    #     except json.JSONDecodeError:
-    #         raise serializers.ValidationError({'ivs': "Invalid IVs format"})
-
-    #     # Ensure we have an IV for each file
-    #     if len(ivs) != len(files):
-    #         raise serializers.ValidationError({
-    #             'ivs': f"Number of IVs ({len(ivs)}) must match number of files ({len(files)})"
-    #         })
-
-    #     def file_upload_stream():
-    #         for index, uploaded_file in enumerate(files):
-    #             file_iv = ivs[index]
-    #             yield f"data: Starting upload of {uploaded_file.name}\n\n"
-    #             file_size = uploaded_file.size
-    #             chunk_size = determine_download_chunk_size(file_size)  # same helper determine chunk size
-    #             uploaded_so_far = 0
-    #             percentage = 0
-
-    #             try:
-    #                 # Read file chunks and send progress updates
-    #                 for chunk in uploaded_file.chunks(chunk_size):
-    #                     uploaded_so_far += len(chunk)
-    #                     new_percentage = int((uploaded_so_far / file_size) * 100)
-    #                     if new_percentage > percentage:
-    #                         percentage = new_percentage
-    #                         yield f"data: {uploaded_file.name} -> {percentage}\n\n"
-
-    #                 # Reset file pointer before saving
-    #                 uploaded_file.seek(0)
-    #                 serializer = TimeCapSoulMediaFileSerializer(
-    #                     data={
-    #                         'file': uploaded_file,
-    #                         'iv': file_iv
-    #                     },
-    #                     context={'user': user, 'time_capsoul': time_capsoul}
-    #                 )
-    #                 if serializer.is_valid():
-    #                     media_file = serializer.save()
-    #                     created_objects.append(media_file)
-    #                     results.append({
-    #                         "file": uploaded_file.name,
-    #                         "status": "success",
-    #                         "progress": 100,
-    #                         "data": TimeCapSoulMediaFileReadOnlySerializer(media_file).data
-    #                     })
-    #                     yield f"data: {uploaded_file.name} -> 100\n\n"
-    #                     yield f"data: {uploaded_file.name} upload completed successfully\n\n"
-    #                 else:
-    #                     results.append({
-    #                         "file": uploaded_file.name,
-    #                         "status": "failed",
-    #                         "progress": percentage,
-    #                         "errors": serializer.errors
-    #                     })
-    #                     yield f"data: {uploaded_file.name} upload failed: {json.dumps(serializer.errors)}\n\n"
-
-    #             except Exception as e:
-    #                 results.append({
-    #                     "file": uploaded_file.name,
-    #                     "status": "failed",
-    #                     "progress": percentage,
-    #                     "error": str(e)
-    #                 })
-    #                 yield f"data: {uploaded_file.name} upload failed: {str(e)}\n\n"
-
-    #         # Send final results
-    #         yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
-
-    #     return StreamingHttpResponse(
-    #         file_upload_stream(),
-    #         content_type='text/event-stream',
-    #         status=status.HTTP_200_OK
-    #     )
     
     def post(self, request, time_capsoul_id):
         """
@@ -494,38 +412,6 @@ class TimeCapSoulMediaFilesView(SecuredView):
             status=status.HTTP_200_OK
         )
 
-    
-    # def post(self, request, time_capsoul_id):
-    #     """
-    #     Upload multiple media files to a time-capsoul room.
-    #     """
-    #     user = self.get_current_user(request)
-    #     time_capsoul_detail = get_object_or_404(TimeCapSoulDetail, time_capsoul__id=time_capsoul_id)
-    #     if not time_capsoul_detail.is_locked:
-    #         files = request.FILES.getlist('file')
-    #         if len(files)  == 0:
-    #             return Response({'message': "Files are required to upload in time-capsoul"})
-    #         else:
-    #             created_objects = []
-
-    #             for uploaded_file in files:
-    #                 serializer = TimeCapSoulMediaFileSerializer(
-    #                     data={**request.data, 'file': uploaded_file},
-    #                     context={'user': user, 'time_capsoul': time_capsoul_detail.time_capsoul}
-    #                 )
-    #                 if serializer.is_valid():
-    #                     media_file = serializer.save()
-    #                     created_objects.append(media_file)
-    #                 else:
-    #                     return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-    #             return Response(
-    #                 TimeCapSoulMediaFileReadOnlySerializer(created_objects, many=True).data,
-    #                 status=status.HTTP_201_CREATED
-    #             )
-    #     else:
-    #         return Response({'message': 'Soory Time capsoul is locked now media files uploads not applicable'})
-
 
 class SetTimeCapSoulCover(SecuredView):
     "Set as time-capsoul cover"
@@ -655,7 +541,9 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
         time_capsoul  = media_file.time_capsoul
         if time_capsoul.status == 'created':
-            media_file.delete()
+            # media_file.delete()
+            media_file.is_deleted = True
+            media_file.save()
             return Response({'message': 'Time Capsoul media deleted successfully'})
         return Response({'message': 'Soory Time capsoul media files cant be deleted'})
 
