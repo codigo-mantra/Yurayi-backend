@@ -269,7 +269,6 @@ class SecuredView(APIView):
 
     def initial(self, request, *args, **kwargs):
         super().initial(request, *args, **kwargs)
-        logger.info("SecuredView.initial")
 
         import datetime
         from datetime import datetime, timezone

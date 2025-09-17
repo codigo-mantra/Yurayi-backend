@@ -132,8 +132,8 @@ class CreateMemoryRoomView(SecuredView):
         user = self.get_current_user(request)
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
         room_name = memory_room.room_template.name
-        room_name.is_deleted = True
-        room_name.save()
+        memory_room.is_deleted = True
+        memory_room.save()
         # memory_room.delete()
         return Response(
             {'message': f'Memory deleted successfully named as : {room_name}'},
