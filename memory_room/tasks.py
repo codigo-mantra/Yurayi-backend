@@ -1,3 +1,6 @@
+
+
+import datetime
 from celery import shared_task
 from userauth.models import User
 from django.utils import timezone
@@ -9,6 +12,11 @@ logger = logging.getLogger(__name__)
 
 from memory_room.models import TimeCapSoulDetail, TimeCapSoulRecipient
 from memory_room.notification_service import NotificationService
+
+@shared_task
+def send_report():
+    print("Report sent at:", datetime.datetime.now())
+    return "Done"
 
 
 def recipients_nofitication_creator(recipients:TimeCapSoulRecipient, notification_key:str, is_opened=None):
@@ -100,6 +108,7 @@ def capsoul_memory_one_year_ago(capsoul_id):
 
 @shared_task
 def capsoul_notification_handler():
+    print('---notification task called ---')
     logger.info("capsoul_notification_handler task called")
     now = timezone.now()
 
@@ -118,6 +127,7 @@ def capsoul_notification_handler():
         
         # Exactly at unlock → Unlocked
         if capsoul.unlock_date <= now < capsoul.unlock_date + timedelta(minutes=1):
+            print('---almost unlock called ---')
             capsoul_almost_unlock.apply_async((capsoul.id,))
             capsoul_unlocked.apply_async((capsoul.id,))
     
@@ -126,14 +136,20 @@ def capsoul_notification_handler():
 
         # 24 hours after unlock → Waiting
         if unlock_date + timedelta(hours=24) <= now < unlock_date + timedelta(hours=24, minutes=1):
+            print('--- capsoul_waiting called ---')
+            
             capsoul_waiting.apply_async((capsoul.id,))
 
         # 7 days after unlock → Reminder 7 Days
         if unlock_date + timedelta(days=7) <= now < unlock_date + timedelta(days=7, minutes=1):
             capsoul_reminder_7_days.apply_async((capsoul.id,))
+            print('--- capsoul_reminder_7_days called ---')
+            
 
         # 1 year after unlock → Memory One Year Ago
         if unlock_date + timedelta(days=365) <= now < unlock_date + timedelta(days=365, minutes=1):
+            print('--- capsoul_memory_one_year_ago called ---')
+            
             capsoul_memory_one_year_ago.apply_async((capsoul.id,))
 
             

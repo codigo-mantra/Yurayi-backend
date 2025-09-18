@@ -115,7 +115,7 @@ class CreateTimeCapSoulView(SecuredView):
             tagged_time_capsouls = TimeCapSoul.objects.filter(
                 recipient_detail__email=user.email,
                 recipient_detail__is_capsoul_deleted=False
-            )
+            ).exclude(user = user)
             
         except TimeCapSoulRecipient.DoesNotExist:
             tagged_time_capsouls = None
@@ -123,7 +123,9 @@ class CreateTimeCapSoulView(SecuredView):
         # Get all replicas in one query (instead of loop)
         time_capsoul_replicas = TimeCapSoul.objects.filter(
             user=user,
-            capsoul_replica_refrence__in=time_capsouls
+            capsoul_replica_refrence__in=time_capsouls,
+            is_deleted = False
+            
         )
         if tagged_time_capsouls:
             time_capsouls = time_capsouls.union(tagged_time_capsouls)
