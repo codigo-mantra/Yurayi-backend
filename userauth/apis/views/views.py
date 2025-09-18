@@ -73,13 +73,15 @@ class ContactUsAPIView(APIView):
             serializer.save()
             email = serializer.validated_data.get('email')
             logger.debug("ContactUs form valid")
-            send_html_email(
-                subject='We’ve received your message',
-                to_email=email,
-                template_name='userauth/contact_us.html',
-                context={'first_name': serializer._validated_data.get('first_name')},
-                
+            send_html_email_task.apply_async(
+                kwargs={
+                    "subject": 'We’ve received your message',
+                    "to_email": email,
+                    "template_name": 'userauth/contact_us.html',
+                    "context": {'first_name': serializer._validated_data.get('first_name')},
+                }
             )
+
             return Response({"message": "Contact request submitted successfully."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -109,12 +111,14 @@ class GoogleAuthView(APIView):
             return e.response
 
         if is_new_user:
-            send_html_email(
-                subject='Welcome to Yurayi',
-                to_email=user.email,
-                template_name='userauth/registeration_confirmation.html',
-                context={'email': user.email},
-            )
+            send_html_email_task.apply_async(
+            kwargs={
+                "subject": 'Welcome to Yurayi',
+                "to_email": user.email,
+                "template_name": 'userauth/registeration_confirmation.html',
+                "context": {'email': user.email},
+            }
+        )
 
         
         
@@ -638,15 +642,16 @@ class ForgotPasswordView(APIView):
         reset_url = f"{settings.FRONTEND_URL}reset-password/{uidb64}/{token}/"
 
         # Use shared email sending function
-        send_html_email(
-            subject="Reset Your Yurayi Password",
-            to_email=user.email,
-            template_name="userauth/reset_password_email.html",
-            context={
-                "user": user,
-                "reset_url": reset_url,
+        send_html_email_task.apply_async(
+            kwargs={
+                "subject": "Reset Your Yurayi Password",
+                "to_email": user.email,
+                "template_name": "userauth/reset_password_email.html",
+                "context": {
+                    "user": user,
+                    "reset_url": reset_url,
             },
-            
+            }
         )
 
         logger.info("Password reset email sent")
@@ -728,13 +733,13 @@ class NewsletterSubscribeAPIView(APIView):
             defaults={"is_active": True}
         )
         message = "Successfully subscribed."
-        
-        send_html_email(
-            subject='Thank you for email subscription',
-            to_email=email,
-            template_name='userauth/new_letter_subscription.html',
-            context={'email': str(email)},
-           
+        send_html_email_task.apply_async(
+            kwargs={
+                "subject":'Thank you for email subscription',
+                "to_email": email,
+                "template_name": 'userauth/new_letter_subscription.html',
+                "context": {'email': str(email)},
+            }
         )
 
 
