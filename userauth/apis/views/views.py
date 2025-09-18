@@ -1,4 +1,5 @@
 import re, os
+import uuid
 import logging
 import secrets
 from django.shortcuts import get_object_or_404
@@ -115,25 +116,19 @@ class GoogleAuthView(APIView):
                 context={'email': user.email},
             )
 
-        # refresh = RefreshToken.for_user(user)
-
-        # return Response({
-        #     'access': str(refresh.access_token),
-        #     'refresh': str(refresh),
-        #     'user': {
-        #         'id': user.id,
-        #         'email': user.email,
-        #         'username': user.username,
-        #         'first_name': user.first_name,
-        #         'last_name': user.last_name,
-        #     },
-        #     'is_new_user': is_new_user
-        # })
+        
         
         # Track device/session
         device_name = ''
-        ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
-        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
+        # Extract IP and User-Agent
+        ua = (request.META.get("HTTP_USER_AGENT") or None)
+        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
+
+        # Assign unique placeholders if missing
+        if not ua:
+            ua = f"custom-ua-{uuid.uuid4()}"
+        if not ip:
+            ip = f"custom-ip-{uuid.uuid4()}"
         session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
 
         access = create_access_jwt_for_user(user, session_id=session.id)
@@ -209,9 +204,16 @@ class RegistrationView(APIView):
         # # refresh = RefreshToken.for_user(user)
         # profile = UserProfile.objects.get(user = user)
             
-        # Track device/session
-        ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
-        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
+        # Extract IP and User-Agent
+        ua = (request.META.get("HTTP_USER_AGENT") or None)
+        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
+
+        # Assign unique placeholders if missing
+        if not ua:
+            ua = f"custom-ua-{uuid.uuid4()}"
+        if not ip:
+            ip = f"custom-ip-{uuid.uuid4()}"
+            
         session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
 
         access = create_access_jwt_for_user(user, session_id=session.id)
@@ -259,89 +261,6 @@ def _gen_refresh_value():
     return secrets.token_urlsafe(48)
 
 
-class SecuredView(APIView):
-    """
-    Base API view that authenticates users via access token in cookies.
-    Provides `self.current_user`, `self.session`, and `self.token_payload`.
-    """
-
-    permission_classes = []  # disable DRF auth; we do cookie-based auth manually
-
-    def initial(self, request, *args, **kwargs):
-        super().initial(request, *args, **kwargs)
-
-        import datetime
-        from datetime import datetime, timezone
-
-        token = request.COOKIES.get(settings.ACCESS_COOKIE_NAME)
-        if not token:
-            logger.warning("Access token missing")
-            return self.unauthorized("Access token missing")
-
-        try:
-            payload = decode_jwt_noverify(token)
-        except Exception:
-            logger.warning("Invalid access token")
-            return self.unauthorized("Invalid access token")
-
-        # check expiry
-        exp_ts = payload.get("exp")
-
-        if not exp_ts or datetime.now(timezone.utc) >= datetime.fromtimestamp(exp_ts, tz=timezone.utc):
-            logger.warning("Access token expired")
-            return self.unauthorized("Access token expired")
-
-        # check revoked tokens
-        jti = payload.get("jti")
-        # if jti and RevokedToken.objects.filter(jti=jti, expires_at__gt=timezone.now()).exists():
-        from django.utils import timezone
-
-        if jti and RevokedToken.objects.filter(
-                jti=jti,
-                expires_at__gt=timezone.now()
-            ).exists():
-            logger.warning("Token has been revoked")
-            return self.unauthorized("Token has been revoked")
-
-        # check session
-        sid = payload.get("sid")
-        self.session = None
-        if sid:
-            try:
-                session = Session.objects.get(pk=sid)
-                if session.revoked:
-                    logger.warning("Session revoked")
-                    return self.unauthorized("Session revoked")
-                session.last_used_at = timezone.now()
-                session.save(update_fields=["last_used_at"])
-                self.session = session
-            except Session.DoesNotExist:
-                logger.warning("Invalid session")
-                return self.unauthorized("Invalid session")
-
-        # fetch user
-        user_id = payload.get("user_id")
-        self.current_user = get_object_or_404(User, id=user_id)
-        logger.debug("Authenticated user in SecuredView.initial")
-        self.token_payload = payload
-        
-    def get_current_user(self, request):
-        try:
-            if self.current_user is None:
-                raise NotAuthenticated()
-            else:
-                return self.current_user
-        except Exception as e:
-            logger.exception("Exception while getting current user")
-            pass
-                
-            
-    def unauthorized(self, message):
-        logger.warning("Unauthorized access")
-        raise NotAuthenticated()
-        # return Response({"detail": message}, status=status.HTTP_401_UNAUTHORIZED)
-
-
 
 class LoginView(APIView):
     
@@ -380,9 +299,17 @@ class LoginView(APIView):
             logger.info("Login failed: inactive user")
             return Response({'error': 'Account inactive. Contact support to reactivate.'}, status=403)
         
-        # # Track device/session
-        ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
-        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
+        # Extract IP and User-Agent
+        ua = (request.META.get("HTTP_USER_AGENT") or None)
+        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
+
+        # Assign unique placeholders if missing
+        if not ua:
+            ua = f"custom-ua-{uuid.uuid4()}"
+        if not ip:
+            ip = f"custom-ip-{uuid.uuid4()}"
+       
+            
         session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
 
         access = create_access_jwt_for_user(user, session_id=session.id)
@@ -440,6 +367,98 @@ class LoginView(APIView):
             }
         }, status=200)
    
+
+class SecuredView(APIView):
+    """
+    Base API view that authenticates users via access token in cookies.
+    Provides `self.current_user`, `self.session`, and `self.token_payload`.
+    """
+
+    permission_classes = []  # disable DRF auth; we do cookie-based auth manually
+
+    def initial(self, request, *args, **kwargs):
+        super().initial(request, *args, **kwargs)
+
+        import datetime
+        from datetime import datetime, timezone
+        # Validate IP and User-Agent
+        ua = (request.META.get("HTTP_USER_AGENT") or None)
+        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
+
+
+        token = request.COOKIES.get(settings.ACCESS_COOKIE_NAME)
+        if not token:
+            logger.warning("Access token missing")
+            return self.unauthorized("Access token missing")
+
+        try:
+            payload = decode_jwt_noverify(token)
+        except Exception:
+            logger.warning("Invalid access token")
+            return self.unauthorized("Invalid access token")
+
+        # check expiry
+        exp_ts = payload.get("exp")
+
+        if not exp_ts or datetime.now(timezone.utc) >= datetime.fromtimestamp(exp_ts, tz=timezone.utc):
+            logger.warning("Access token expired")
+            return self.unauthorized("Access token expired")
+
+        # check revoked tokens
+        jti = payload.get("jti")
+        # if jti and RevokedToken.objects.filter(jti=jti, expires_at__gt=timezone.now()).exists():
+        from django.utils import timezone
+
+        if jti and RevokedToken.objects.filter(
+                jti=jti,
+                expires_at__gt=timezone.now()
+            ).exists():
+            logger.warning("Token has been revoked")
+            return self.unauthorized("Token has been revoked")
+
+        # check session
+        sid = payload.get("sid")
+        self.session = None
+        if sid:
+            try:
+                session = Session.objects.get(pk=sid)
+                if session.user_agent != ua or session.ip_address != ip:
+                    logger.warning(f"Session hijack attempt. Expected ua={session.user_agent}, ip={session.ip_address}; got ua={ua}, ip={ip}")
+                    return self.unauthorized("Session invalid for this device")
+                
+                if session.revoked:
+                    logger.warning("Session revoked")
+                    return self.unauthorized("Session revoked")
+                session.last_used_at = timezone.now()
+                session.save(update_fields=["last_used_at"])
+                self.session = session
+            except Session.DoesNotExist:
+                logger.warning("Invalid session")
+                return self.unauthorized("Invalid session")
+
+        # fetch user
+        user_id = payload.get("user_id")
+        self.current_user = get_object_or_404(User, id=user_id)
+        logger.debug("Authenticated user in SecuredView.initial")
+        self.token_payload = payload
+        
+    def get_current_user(self, request):
+        try:
+            if self.current_user is None:
+                raise NotAuthenticated()
+            else:
+                return self.current_user
+        except Exception as e:
+            logger.exception("Exception while getting current user")
+            pass
+                
+            
+    def unauthorized(self, message):
+        logger.warning("Unauthorized access")
+        raise NotAuthenticated()
+        # return Response({"detail": message}, status=status.HTTP_401_UNAUTHORIZED)
+
+
   
 from rest_framework import permissions
 class LogoutView(APIView):
