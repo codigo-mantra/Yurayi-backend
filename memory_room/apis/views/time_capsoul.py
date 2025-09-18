@@ -152,13 +152,7 @@ class TimeCapSoulUpdationView(SecuredView):
     def delete(self, request, time_capsoul_id):
         logger.info("TimeCapSoulUpdationView.delete called")
         user = self.get_current_user(request)
-        time_capsoul_detail = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
-
-        # if time_capsoul_detail.is_locked:
-        #     return Response({'message': 'Soory Time capsoul is locked it cant be deleted'})
-        # else:
-        # time_capsoul_detail.delete()
-        capsoul = time_capsoul_detail.time_capsoul
+        capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
         capsoul.is_deleted = True
         capsoul.save()
         return Response({'message': "Time capsoul deleted successfully"})

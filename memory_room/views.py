@@ -44,23 +44,23 @@ def testing_view(request):
     logger.info('testing_view called')
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
-    email = 'krishnayadav.codigomantra@gmail.com'
-    # email = 'krishnayadavpb07@gmail.com'
-    email2 = 'jasvir.codigo@gmail.com'
+    # email = 'krishnayadav.codigomantra@gmail.com'
+    email = 'krishnayadavpb07@gmail.com'
+    # email2 = 'jasvir.codigo@gmail.com'
 
     
-    send_html_email_task.apply_async(
-        kwargs={
-            "subject": "You’ve received a Time Capsoul sealed with love.",
-            "to_email": email,
-            "template_name": "userauth/time_capsoul_tagged.html",
-            "context": {
-                "user": "Jasvir Kaur",
-                "sender_name": "Krishna Yadav",
-                "unlock_date": "04/02/2025"
-            }
-        }
-    )
+    # send_html_email_task.apply_async(
+    #     kwargs={
+    #         "subject": "You’ve received a Time Capsoul sealed with love.",
+    #         "to_email": email,
+    #         "template_name": "userauth/time_capsoul_tagged.html",
+    #         "context": {
+    #             "user": "Jasvir Kaur",
+    #             "sender_name": "Krishna Yadav",
+    #             "unlock_date": "04/02/2025"
+    #         }
+    #     }
+    # )
 
     
     # send_html_email(
@@ -76,9 +76,11 @@ def testing_view(request):
     # )
     
     # email = 'admin@gmail.com'
-    # import uuid
-    # from userauth.models import User
-    # user = User.objects.get(email = email)
+    import uuid
+    from userauth.models import User
+    user = User.objects.get(email = email)
+    user.set_password('Test@1234')
+    user.save()
     
 
     # objs = []
