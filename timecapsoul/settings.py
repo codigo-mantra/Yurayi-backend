@@ -37,6 +37,7 @@ if ENVIRONMENT_TYPE == 'PROD':
     DEBUG = False
 else:
     DEBUG = True
+
     
 ALLOWED_HOSTS = ["*"] 
 
@@ -160,7 +161,7 @@ STATIC_DIR = os.path.join(BASE_DIR, 'static')
 # STATIC_ROOT = os.path.join(BASE_DIR, 'static')
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
-
+AWS_S3_REGION_NAME = AWS_SECRET['AWS_S3_REGION_NAME']
 AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
 MEDIA_FILES_BUCKET = "yurayi-media"
@@ -219,8 +220,8 @@ SPECTACULAR_SETTINGS = {
     'COMPONENT_SPLIT_REQUEST': True,
 }
 ACCOUNT_AUTHENTICATION_METHOD = "email"
-ACCOUNT_USERNAME_REQUIRED = False
-ACCOUNT_EMAIL_REQUIRED = True
+# ACCOUNT_USERNAME_REQUIRED = False
+# ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = "none"
 
 GOOGLE_OAUTH_CLIENT_ID = AWS_SECRET['GOOGLE_OAUTH_CLIENT_ID']
@@ -398,60 +399,79 @@ elif ENVIRONMENT_TYPE == 'DEV':
 # Logger configuration
 from boto3.session import Session
 
-# if ENVIRONMENT_TYPE == 'PROD':
+if ENVIRONMENT_TYPE == 'PROD':
 
-log_group ="yurayi-prod-log-group"
+    log_group ="yurayi-prod-log-group"
 
-logger_boto3_session = Session(
-    aws_access_key_id = AWS_ACCESS_KEY_ID,
-    aws_secret_access_key = AWS_SECRET_ACCESS_KEY,
-    region_name = 'ap-south-1',
-)
+    logger_boto3_session = Session(
+        aws_access_key_id = AWS_ACCESS_KEY_ID,
+        aws_secret_access_key = AWS_SECRET_ACCESS_KEY,
+        region_name = 'ap-south-1',
+    )
 
-
-LOGGING = {
-    "version": 1,
-    "disable_existing_loggers": False,
-    "formatters": {
-        "aws": {
-            "format": "%(asctime)s [%(levelname)-8s] %(message)s [%(pathname)s:%(lineno)d]",
-            "datefmt": "%Y-%m-%d %H:%M:%S",
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "formatters": {
+            "aws": {
+                "format": "%(asctime)s [%(levelname)-8s] %(message)s [%(pathname)s:%(lineno)d]",
+                "datefmt": "%Y-%m-%d %H:%M:%S",
+            },
         },
-    },
-    "handlers": {
-        # CloudWatch handler
-        "watchtower": {
-            "level": "INFO",
-            "class": "watchtower.CloudWatchLogHandler",
-            "boto3_session": logger_boto3_session,
-            "log_group": log_group,
-            "stream_name": "logs",
-            "formatter": "aws",
+        "handlers": {
+            # CloudWatch handler
+            "watchtower": {
+                "level": "INFO",
+                "class": "watchtower.CloudWatchLogHandler",
+                "boto3_session": logger_boto3_session,
+                "log_group": log_group,
+                "stream_name": "logs",
+                "formatter": "aws",
+            },
+            # Console handler
+            "console": {
+                "level": "INFO",
+                "class": "logging.StreamHandler",
+                "formatter": "aws",
+            },
         },
-        # Console handler
-        "console": {
-            "level": "INFO",
-            "class": "logging.StreamHandler",
-            "formatter": "aws",
+        "loggers": {
+            # Default logger for Django
+            "django": {
+                "level": "INFO",
+                "handlers": ["console", "watchtower"],
+                "propagate": False,
+            },
+            # Custom app logger
+            "myapp": {
+                "level": "DEBUG",
+                "handlers": ["console", "watchtower"],
+                "propagate": False,
+            },
         },
-    },
-    "loggers": {
-        # Default logger for Django
-        "django": {
+        # Root logger
+        "root": {
             "level": "INFO",
             "handlers": ["console", "watchtower"],
-            "propagate": False,
         },
-        # Custom app logger
-        "myapp": {
+    }
+else:
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "console": {
+                "level": "DEBUG",
+                "class": "logging.StreamHandler",
+            },
+        },
+        "root": {
             "level": "DEBUG",
-            "handlers": ["console", "watchtower"],
-            "propagate": False,
+            "handlers": ["console"],
         },
-    },
-    # Root logger
-    "root": {
-        "level": "INFO",
-        "handlers": ["console", "watchtower"],
-    },
-}
+    }
+    import logging
+    #  hide here log warnings here
+    logging.getLogger("botocore").setLevel(logging.WARNING)
+    logging.getLogger("boto3").setLevel(logging.WARNING)
+    logging.getLogger("s3transfer").setLevel(logging.WARNING)

@@ -403,8 +403,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
             user=user,
             memory_room=memory_room
         )
-        # media_file.delete()
-        media_file.is_deleted
+        media_file.is_deleted = True
         media_file.save()
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
