@@ -648,7 +648,7 @@ class ForgotPasswordView(APIView):
                 "to_email": user.email,
                 "template_name": "userauth/reset_password_email.html",
                 "context": {
-                    "user": user,
+                    "user":user.username if user.username else user.email,
                     "reset_url": reset_url,
             },
             }
