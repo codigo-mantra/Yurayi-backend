@@ -233,6 +233,37 @@ class TimeCapSoulMediaFilesView(SecuredView):
         """
         user = self.get_current_user(request)
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+        replica_instance = None
+        
+        if time_capsoul.status == 'unlocked':
+            # create  replica here
+            try:
+                replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul)
+            except TimeCapSoul.DoesNotExist as e:
+                # create custom template for replica
+                from django.utils import timezone
+
+                created_at = timezone.localtime(timezone.now())
+                template = time_capsoul.capsoul_template
+                replica_template = CustomTimeCapSoulTemplate.objects.create(
+                    name = template.name + '(1)',
+                    summary = template.summary,
+                    cover_image = template.cover_image,
+                    default_template = time_capsoul.capsoul_template.default_template,
+                    created_at = created_at
+                )
+                replica_template.slug = generate_unique_slug(replica_template)
+                replica_instance = TimeCapSoul.objects.create(
+                                                        user = user,
+                                                        capsoul_template=replica_template,
+                                                        status = 'created',
+                                                        capsoul_replica_refrence = time_capsoul,
+                                                        created_at = created_at
+                )
+        
+        if replica_instance:
+            time_capsoul = replica_instance
+            
 
         files = request.FILES.getlist('file')
         created_objects = []
@@ -551,7 +582,6 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
         serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True)
         serializer.is_valid(raise_exception=True)
-        # update_media_file = serializer.validated_data.get('instance')
         update_media_file = serializer.save()
         return Response(TimeCapSoulMediaFileReadOnlySerializer(update_media_file).data)
 

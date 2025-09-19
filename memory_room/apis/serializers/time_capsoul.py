@@ -303,30 +303,43 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul)
             except TimeCapSoul.DoesNotExist as e:
                 # create custom template for replica
+                created_at = timezone.localtime(timezone.now())
+                
                 template = CustomTimeCapSoulTemplate.objects.create(
                     name = name + '(1)',
                     summary = summary,
                     cover_image = cover_image,
-                    default_template = time_capsoul.capsoul_template.default_template
+                    default_template = time_capsoul.capsoul_template.default_template,
+                    created_at = created_at
                 )
                 template.slug = generate_unique_slug(template)
                 replica_instance = TimeCapSoul.objects.create(
                                                             user = user,
                                                             capsoul_template=template,
                                                             status = 'created',
-                                                            capsoul_replica_refrence = time_capsoul
+                                                            capsoul_replica_refrence = time_capsoul,
+                                                            created_at = created_at
                                                             )
+            else:
                 
-            template = replica_instance.capsoul_template
-            template.name = name
-            template.summary = summary
-            template.cover_image = cover_image
-            template.slug = generate_unique_slug(template)
-            template.save()
-            replica_instance.save()
-            return instance
-            
+                name = validated_data.get('name', replica_instance.capsoul_template.name)
+                summary = validated_data.get('summary', replica_instance.capsoul_template.summary)
+                cover_image = validated_data.get('cover_image')
 
+                if isinstance(cover_image, int):
+                    cover_image = self.validate_cover_image(cover_image)
+                        
+                if cover_image is None:
+                    cover_image = replica_instance.capsoul_template.cover_image
+
+                template = replica_instance.capsoul_template
+                template.name = name
+                template.summary = summary
+                template.cover_image = cover_image
+                template.slug = generate_unique_slug(template)
+                template.save()
+                replica_instance.save()
+                return instance
 
         else:
             if instance.capsoul_template.default_template is None: # create from scratch
@@ -882,8 +895,10 @@ class RecipientsDetailSerializer(serializers.ModelSerializer):
         for recipient_data in recipients_data:
             name = recipient_data['name']
             email  = recipient_data['email']
-
-            recipient, _ = TimeCapSoulRecipient.objects.get_or_create(name=name, email=email, time_capsoul= time_capsoul)
+            try:
+                recipient = TimeCapSoulRecipient.objects.get(email=email, time_capsoul= time_capsoul)
+            except TimeCapSoulRecipient.DoesNotExist:
+                recipient = TimeCapSoulRecipient.objects.create(name=name, email=email, time_capsoul= time_capsoul)
         
         return recipient
 

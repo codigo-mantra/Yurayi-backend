@@ -46,11 +46,11 @@ def delete_cover_cache(sender, instance, **kwargs):
     cache.delete(capsoul_cover)
 
 
-@receiver(post_save, sender=UserProfile)
-def create_profile_update_notification(sender,created, instance, *args, **kwargs):
-    if not created:
-        notif = NotificationService.create_notification_with_key(
-            user=instance.user,
-            notification_key='profile_updated'
-            )
+# @receiver(post_save, sender=UserProfile)
+# def create_profile_update_notification(sender,created, instance, *args, **kwargs):
+#     if not created:
+#         notif = NotificationService.create_notification_with_key(
+#             user=instance.user,
+#             notification_key='profile_updated'
+#             )
     
