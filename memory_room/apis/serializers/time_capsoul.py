@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from django.shortcuts import get_object_or_404
 from userauth.models import User
 
+from memory_room.tasks import capsoul_almost_unlock,capsoul_unlocked
 
 
 from django.core.files.images import ImageFile 
@@ -816,7 +817,13 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             instance.is_locked = True
             time_capsoul.save()
             unlock_time = instance.unlock_date
-            capsoul_notification_handler.apply_async()
+            from datetime import timedelta
+            from django.utils import timezone
+
+            now = timezone.now()
+            if now <= instance.unlock_date <= now + timedelta(hours=1):
+                capsoul_almost_unlock.apply_async((time_capsoul.id,),eta=instance.unlock_date)
+                capsoul_unlocked.apply_async((time_capsoul.id,), eta=instance.unlock_date)
            
             
             # create notification at sealed of owner

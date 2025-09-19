@@ -45,6 +45,7 @@ def recipients_nofitication_creator(recipients:TimeCapSoulRecipient, notificatio
 @shared_task
 def capsoul_almost_unlock(capsoul_id):
     logger.info("capsoul_almost_unlock task called")
+    is_created = False
     try:
         detail = TimeCapSoulDetail.objects.get(id=capsoul_id)
 
@@ -54,10 +55,16 @@ def capsoul_almost_unlock(capsoul_id):
         recipients  = TimeCapSoulRecipient.objects.filter(time_capsoul = detail.time_capsoul)
         # create notification for  all tagged recipients 
         recipients_nofitication_creator(recipients=recipients, notification_key='capsoul_almost_unlock')
+        is_created = True
+    finally:
+        return is_created
+        
 
 @shared_task
 def capsoul_unlocked(capsoul_id):
     logger.info("capsoul_unlocked task called")
+    is_created = False
+    
     try:
         detail = TimeCapSoulDetail.objects.get(id=capsoul_id)
     except Exception as e:
@@ -69,6 +76,11 @@ def capsoul_unlocked(capsoul_id):
             user=detail.time_capsoul.user,
             time_capsoul=detail.time_capsoul
         )
+        is_created = True
+    finally:
+        return is_created
+        
+        
 
 
 @shared_task
@@ -110,6 +122,9 @@ def capsoul_memory_one_year_ago(capsoul_id):
 def capsoul_notification_handler():
     print('---notification task called ---')
     logger.info("capsoul_notification_handler task called")
+    from datetime import timedelta
+    from django.utils import timezone
+
     now = timezone.now()
 
     # Sealed capsouls scheduled for today
@@ -126,10 +141,11 @@ def capsoul_notification_handler():
     for capsoul in sealed_capsouls:
         
         # Exactly at unlock → Unlocked
-        if capsoul.unlock_date <= now < capsoul.unlock_date + timedelta(minutes=1):
+        # if capsoul.unlock_date <= now < capsoul.unlock_date + timedelta(minutes=1):
+        if now <= capsoul.unlock_date <= now + timedelta(hours=1):
             print('---almost unlock called ---')
-            capsoul_almost_unlock.apply_async((capsoul.id,))
-            capsoul_unlocked.apply_async((capsoul.id,))
+            capsoul_almost_unlock.apply_async((capsoul.id,),eta=capsoul.unlock_date)
+            capsoul_unlocked.apply_async((capsoul.id,),eta=capsoul.unlock_date)
     
     for capsoul in unlocked_capsouls:
         unlock_date = capsoul.unlock_date
@@ -137,12 +153,11 @@ def capsoul_notification_handler():
         # 24 hours after unlock → Waiting
         if unlock_date + timedelta(hours=24) <= now < unlock_date + timedelta(hours=24, minutes=1):
             print('--- capsoul_waiting called ---')
-            
-            capsoul_waiting.apply_async((capsoul.id,))
+            capsoul_waiting.apply_async((capsoul.id,),eta=capsoul.unlock_date)
 
         # 7 days after unlock → Reminder 7 Days
         if unlock_date + timedelta(days=7) <= now < unlock_date + timedelta(days=7, minutes=1):
-            capsoul_reminder_7_days.apply_async((capsoul.id,))
+            capsoul_reminder_7_days.apply_async((capsoul.id,),eta=capsoul.unlock_date)
             print('--- capsoul_reminder_7_days called ---')
             
 
@@ -150,7 +165,7 @@ def capsoul_notification_handler():
         if unlock_date + timedelta(days=365) <= now < unlock_date + timedelta(days=365, minutes=1):
             print('--- capsoul_memory_one_year_ago called ---')
             
-            capsoul_memory_one_year_ago.apply_async((capsoul.id,))
+            capsoul_memory_one_year_ago.apply_async((capsoul.id,),eta=capsoul.unlock_date)
 
             
 
