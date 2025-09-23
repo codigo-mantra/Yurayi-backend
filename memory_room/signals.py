@@ -2,7 +2,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import User, UserMapper
 from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica, RecipientsDetail, MemoryRoomMediaFile, MemoryRoomTemplateDefault
-
+from memory_room.utils import to_mb, parse_storage_size
 from django.core.cache import cache
 import logging
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ def create_user_mapper(sender, instance, created, **kwargs):
     if created:
         UserMapper.objects.create(
             user=instance,
-            max_storage_limit='100 MB',     # default value
+            max_storage_limit='15 GB',     # default value
             current_storage='0 MB'          # default usage
         )
 
@@ -41,6 +41,15 @@ def attach_media_to_timecapsoul_detail(sender, instance, created, **kwargs):
         try:
             detail = TimeCapSoulDetail.objects.get(time_capsoul=instance.time_capsoul)
             detail.media_files.add(instance)
+            user_mapper = instance.user.user_mapper.first()
+            if user_mapper: 
+                user_mapper.current_storage =  str( parse_storage_size(instance.file_size)[0] +  parse_storage_size(user_mapper.current_storage)[0]) + ' MB'
+                user_mapper.save()
+            # clear cache
+            stored_cached_data = f'user_storage_id_{instance.user.s3_storage_id}'
+            if stored_cached_data:
+                cache.delete(stored_cached_data)
+            
         except TimeCapSoulDetail.DoesNotExist:
             # Optionally create the detail if it doesn't exist
             detail = TimeCapSoulDetail.objects.create(time_capsoul=instance.time_capsoul, )
@@ -53,6 +62,17 @@ def attach_memory_room_media__files_detail(sender, instance, created, **kwargs):
         try:
             detail = MemoryRoomDetail.objects.get(memory_room=instance.memory_room)
             detail.media_files.add(instance)
+            user_mapper = instance.user.user_mapper.first()
+
+            if user_mapper: 
+                user_mapper.current_storage =  str( parse_storage_size(instance.file_size)[0] +  parse_storage_size(user_mapper.current_storage)[0]) + ' MB'
+                user_mapper.save()
+            
+            # clear cache
+            stored_cached_data = f'user_storage_id_{instance.user.s3_storage_id}'
+            if stored_cached_data:
+                cache.delete(stored_cached_data)
+                
         except MemoryRoomDetail.DoesNotExist:
             # Optionally create the detail if it doesn't exist
             detail = MemoryRoomDetail.objects.create(memory_room=instance.memory_room, )

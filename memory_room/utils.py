@@ -304,3 +304,88 @@ class S3FileHandler:
             logger.info('File deleted from s3')
         finally:
             return is_deleted
+
+
+import re
+
+# def parse_storage_size(size_str, default_unit="MB"):
+#     """
+#     Parse a size string like '1.53 MB', '200 kb', '3.4 Gb', '0.75 tb'
+#     into (float_value, unit in uppercase).
+#     If size_str is empty or invalid, return (0, default_unit)
+#     """
+#     if not size_str or not size_str.strip():
+#         return 0, default_unit.upper()
+    
+#     match = re.match(r"(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)", size_str.strip(), re.IGNORECASE)
+#     if not match:
+#         return 0, default_unit.upper()
+    
+#     value, unit = match.groups()
+#     return float(value), unit.upper()
+
+import re
+
+def parse_storage_size(size_str):
+    """
+    Parse a size string like '1.53 MB', '200 kb', '3.4 Gb', '0.75 tb'
+    and always return the value in GB.
+    If size_str is empty or invalid, return (0, 'GB')
+    """
+    if not size_str or not size_str.strip():
+        return 0, "GB"
+    
+    match = re.match(r"(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)", size_str.strip(), re.IGNORECASE)
+    if not match:
+        return 0, "GB"
+    
+    value, unit = match.groups()
+    value = float(value)
+    unit = unit.upper()
+
+    # Convert everything to GB
+    if unit == "KB":
+        value = value / (1024 * 1024)
+    elif unit == "MB":
+        value = value / 1024
+    elif unit == "GB":
+        value = value
+    elif unit == "TB":
+        value = value * 1024
+
+    return value, "GB"
+
+
+
+def to_mb(value, unit):
+    """
+    Convert any size to MB.
+    """
+    unit = unit.upper()
+    if unit == "KB":
+        return value / 1024
+    elif unit == "MB":
+        return value
+    elif unit == "GB":
+        return value * 1024
+    elif unit == "TB":
+        return value * 1024 * 1024
+    else:
+        raise ValueError(f"Unknown unit: {unit}")
+    
+
+def to_gb(value, unit):
+    """
+    Convert any size to GB.
+    """
+    unit = unit.upper()
+    if unit == "KB":
+        return value / (1024 * 1024)
+    elif unit == "MB":
+        return value / 1024
+    elif unit == "GB":
+        return value
+    elif unit == "TB":
+        return value * 1024
+    else:
+        raise ValueError(f"Unknown unit: {unit}")

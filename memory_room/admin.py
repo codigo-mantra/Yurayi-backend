@@ -45,7 +45,7 @@ class CustomMemoryRoomTemplateAdmin(admin.ModelAdmin):
 
 @admin.register(MemoryRoom)
 class MemoryRoomAdmin(admin.ModelAdmin):
-    list_display = ("user", "room_template", "created_at")
+    list_display = ("user", "room_template", 'occupied_storage', "created_at", )
     list_filter = ("room_template",)
     search_fields = ("user__username",)
 
@@ -94,7 +94,7 @@ class TimeCapSoulAdmin(admin.ModelAdmin):
 
 @admin.register(TimeCapSoulDetail)
 class TimeCapSoulDetailAdmin(admin.ModelAdmin):
-    list_display = ('id', "time_capsoul", "unlock_date", "created_at")
+    list_display = ('id', "time_capsoul", 'occupied_storage', "unlock_date", "created_at")
     filter_horizontal = ("media_files",)
 
 
@@ -106,7 +106,7 @@ class TimeCapSoulRecipientsAdmin(admin.ModelAdmin):
 
 @admin.register(RecipientsDetail)
 class RecipientsDetailsAdmin(admin.ModelAdmin):
-    list_display = ("time_capsoul", "created_at")
+    list_display = ("time_capsoul",  "created_at")
     filter_horizontal = ("recipients",)
 
 

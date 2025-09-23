@@ -53,6 +53,7 @@ INSTALLED_APPS = [
     'django_celery_results',
     'django_celery_beat',
     'storages',    
+    'ckeditor',
     'channels',   
     'corsheaders',
     'drf_spectacular',
@@ -375,7 +376,7 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 import urllib.parse
 from kombu import Queue
-
+# SQS Confuguration 
 if ENVIRONMENT_TYPE == "PROD":
     aws_secret_escaped = urllib.parse.quote(AWS_SECRET_ACCESS_KEY, safe='')  # encode all special chars
     CELERY_BROKER_URL = f"sqs://{AWS_ACCESS_KEY_ID}:{aws_secret_escaped}@"
@@ -391,7 +392,8 @@ if ENVIRONMENT_TYPE == "PROD":
         Queue("yurayi-prod-queue"),
     )
 
-elif ENVIRONMENT_TYPE == 'DEV':
+else: 
+    # ENVIRONMENT_TYPE == 'DEV':
     CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 
 
@@ -456,6 +458,7 @@ if ENVIRONMENT_TYPE == 'PROD':
         },
     }
 else:
+    # local level logs
     LOGGING = {
         "version": 1,
         "disable_existing_loggers": False,

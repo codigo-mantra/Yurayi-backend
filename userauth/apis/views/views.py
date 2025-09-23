@@ -40,11 +40,12 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from userauth.jwt_utils import create_access_jwt_for_user, decode_jwt_noverify
 
 
-from userauth.models import UserProfile, NewsletterSubscriber, UserAddress,Session, RefreshToken, RevokedToken
+from userauth.models import UserProfile, NewsletterSubscriber, UserAddress,Session, RefreshToken, RevokedToken, YurayiPolicy
 from timecapsoul.utils import send_html_email
 from userauth.apis.serializers.serializers import  (
     RegistrationSerializer, UserProfileUpdateSerializer, GoogleAccessTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
-    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer,UserAddressSerializer
+    CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer,UserAddressSerializer, 
+    YurayiPolicySerializer,SessionSerializer
     )
 
 from userauth.serializers import LoginSerializer
@@ -190,35 +191,55 @@ class GenerateJWTTokenView(APIView):
 
 class RegistrationView(APIView):
     def post(self, request):
+        logger.info(f'RegistrationView is called ')
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        
+        # other related info like location
+        city = serializer.validated_data.get('city')
+        country = serializer.validated_data.get('country')
+        latitude = serializer.validated_data.get('latitude')
+        longitude = serializer.validated_data.get('longitude')
+        ip_address = serializer.validated_data.get('ip_address')
         device_name = serializer.validated_data.get('device_name')
+        logger.info(f'RegistrationView is called  requested data is valid and  user location received')
+        
+        
         user = serializer.save()
         logger.info(f"new user register as {user.email}")
         
-        send_html_email_task.apply_async(
-            kwargs={
-                "subject": 'Welcome to Yurayi',
-                "to_email": user.email,
-                "template_name": 'userauth/registeration_confirmation.html',
-                "context": {'email': user.email},
-            }
-        )
-
-        # # refresh = RefreshToken.for_user(user)
-        # profile = UserProfile.objects.get(user = user)
+        # send_html_email_task.apply_async(
+        #     kwargs={
+        #         "subject": 'Welcome to Yurayi',
+        #         "to_email": user.email,
+        #         "template_name": 'userauth/registeration_confirmation.html',
+        #         "context": {'email': user.email},
+        #     }
+        # )
+        logger.info(f'RegistrationView in new user created as {user.email}')
+        
             
         # Extract IP and User-Agent
         ua = (request.META.get("HTTP_USER_AGENT") or None)
-        ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
+        if not ip_address:
+            ip_address = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
 
         # Assign unique placeholders if missing
         if not ua:
             ua = f"custom-ua-{uuid.uuid4()}"
-        if not ip:
-            ip = f"custom-ip-{uuid.uuid4()}"
+        if not ip_address:
+            ip_address = f"custom-ip-{uuid.uuid4()}"
             
-        session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
+        session = Session.objects.create(
+            user=user,
+            name=device_name,
+            user_agent=ua,
+            ip_address=ip_address,
+            city = city, 
+            country = country,
+            latitude = latitude,
+            longitude = longitude
+        )
 
         access = create_access_jwt_for_user(user, session_id=session.id)
         refresh_value = _gen_refresh_value()
@@ -258,7 +279,7 @@ class RegistrationView(APIView):
             domain=settings.COOKIE_DOMAIN,
             path=settings.ACCESS_COOKIE_PATH,
         )
-
+        logger.info(f'RegistrationView response data served to {user.email}')
         return resp
         
 def _gen_refresh_value():
@@ -533,9 +554,18 @@ class CustomPasswordResetView(PasswordResetView):
 class CustomPasswordResetConfirmView(PasswordResetConfirmView):
     serializer_class = CustomPasswordResetConfirmSerializer
 
-class CustomPasswordChangeView(PasswordChangeView):
-    serializer_class = CustomPasswordChangeSerializer
-
+class CustomPasswordChangeView(SecuredView):
+    
+    def post(self, request, format=None):
+        user = self.get_current_user(request)
+        logger.info(f"CustomPasswordChangeView called by {user.email}")
+        serializer = CustomPasswordChangeSerializer(data = request.data, context = {'user': user})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        logger.info(f"CustomPasswordChangeView password changed successfully {user.email}")
+        return Response(status=status.HTTP_200_OK)
+        
+        
 
 # Base class for authenticated users      
 # class SecuredView(APIView):
@@ -857,3 +887,83 @@ class UserAddressDetailView(SecuredView):
 
         address.delete()
         return Response({"detail": "Address deleted."}, status=status.HTTP_204_NO_CONTENT)
+
+
+class UserQueriesAPIView(SecuredView):
+    def post(self, request):
+        user = self.get_current_user(request)
+        logger.info(f"UserQueriesAPIView called by {user.email}")
+        
+        serializer = ContactUsSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.validated_data['user'] = user
+            serializer.save()
+            email = serializer.validated_data.get('email')
+            logger.debug("ContactUs form valid")
+            send_html_email_task.apply_async(
+                kwargs={
+                    "subject": 'We’ve received your message',
+                    "to_email": email,
+                    "template_name": 'userauth/contact_us.html',
+                    "context": {'first_name': serializer._validated_data.get('first_name')},
+                }
+            )
+            logger.info(f"UserQueriesAPIView successfully saved by {user.email}")
+            return Response({"message": "Contact request submitted successfully."}, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+class YurayiPolicyView(APIView):
+    def get(self, request):
+        name = self.request.query_params.get("name") 
+        if name:
+            queryset = queryset.filter(name__icontains=name, is_deleted = False)
+        else:
+            queryset = YurayiPolicy.objects.filter(is_deleted = False)
+        data = YurayiPolicySerializer(queryset, many=True).data
+            
+        return Response(data)
+    
+class SessionListAPIView(SecuredView):
+    """List all active sessions of the current user"""
+
+    def get(self, request):
+        user  = self.get_current_user(request)
+        
+        sessions = Session.objects.filter(user=user, revoked=False)
+        serializer = SessionSerializer(sessions, many=True)
+        response = {
+            'current_session_id': self.session.id,
+            'others_sessions': serializer.data
+        }
+        return Response(response, status=status.HTTP_200_OK)
+    
+
+
+class SessionDeleteAPIView(SecuredView):
+    """Revoke a specific session"""
+
+    def delete(self, request, session_id):
+        from django.utils import timezone
+
+        user  = self.get_current_user(request)
+        session = get_object_or_404(Session, id=session_id, user=user, revoked=False)
+        session.revoked = True
+        session.last_used_at = timezone.now()
+        session.save()
+        return Response({"detail": "Session revoked successfully"}, status=status.HTTP_200_OK)
+
+
+class SessionClearOthersAPIView(SecuredView):
+    """Revoke all sessions except the current one"""
+
+    def post(self, request):
+        from django.utils import timezone
+
+        user  = self.get_current_user(request)
+        current_session_id = request.data.get('current_session_id', None)
+        if not current_session_id:
+            raise ValidationError({'current_session_id': "Current session id is required"})
+        
+        sessions = Session.objects.filter(user=user, revoked=False).exclude(id=current_session_id)
+        count = sessions.update(revoked=True, last_used_at=timezone.now())
+        return Response({"detail": f"{count} sessions revoked (except current)"}, status=status.HTTP_200_OK)

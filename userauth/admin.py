@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, UserProfile, Assets, ContactUs, NewsletterSubscriber, UserAddress
+from .models import User, UserProfile, Assets, ContactUs, NewsletterSubscriber, UserAddress, YurayiPolicy
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
@@ -21,6 +21,13 @@ class UserAdmin(BaseUserAdmin):
             'fields': ('username', 'email', 'password1', 'password2', 'is_staff', 'is_active')}
         ),
     )
+
+@admin.register(YurayiPolicy)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ('name', 'policy_content')
+
+
+
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):

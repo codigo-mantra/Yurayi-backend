@@ -74,4 +74,3 @@ class MemoryRoomCreateSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         return MemoryRoom.objects.create(user=self.context['request'].user, **validated_data)
-

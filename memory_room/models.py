@@ -97,13 +97,14 @@ class MemoryRoom(BaseModel):
         related_name="memory_rooms",
         verbose_name="Room Template"
     )
+    occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used memory-room", max_length=255)
 
     class Meta:
         verbose_name = "Memory Room"
         verbose_name_plural = "Memory Rooms"
 
     def __str__(self):
-        return f"{self.user.username}'s {self.room_template.name}"
+        return f"{self.user.username or self.user.email}'s {self.room_template.name} id: {self.pk}"
 
 
 FILE_TYPES = (

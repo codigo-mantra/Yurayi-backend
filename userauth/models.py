@@ -3,7 +3,7 @@ from django.utils import timezone
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin
 from .managers import UserManager
 from memory_room.utils import upload_file_to_s3_bucket
-
+from ckeditor.fields import RichTextField
 
 class BaseModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="Created At")
@@ -68,6 +68,7 @@ class ContactUs(BaseModel):
     phone_number = models.CharField(max_length=13, blank=True, null=True, verbose_name="Phone Number")
     email = models.EmailField(verbose_name="Email Address")
     message = models.TextField(verbose_name="Message")
+    user = models.ForeignKey('User', on_delete=models.CASCADE, blank=True, null=True, related_name='user_queries')
 
     class Meta:
         verbose_name = "Contact Us Submission"
@@ -194,6 +195,12 @@ class Session(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     last_used_at = models.DateTimeField(default=timezone.now)
     revoked = models.BooleanField(default=False)
+    
+    # location info  fields
+    city = models.CharField(max_length=100, blank=True, null=True)
+    country = models.CharField(max_length=100, blank=True, null=True)
+    latitude = models.FloatField(blank=True, null=True)
+    longitude = models.FloatField(blank=True, null=True)
 
     def __str__(self):
         return f"{self.user.username} — {self.name or 'device'} — {self.id}"
@@ -220,3 +227,9 @@ class RevokedToken(models.Model):
 
     def __str__(self):
         return f"Revoked({self.jti})"
+
+
+class YurayiPolicy(BaseModel):
+    name = models.CharField(max_length=255)
+    policy_content = RichTextField()
+    

@@ -6,7 +6,8 @@ from django.urls import include, path, re_path
 from userauth.apis.views.views import (
     LoginView, RegistrationView, LogoutView,
     GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,UserProfileUpdateView,
-    CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView,UserAddressListCreateView,UserAddressDetailView
+    CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView,UserAddressListCreateView,UserAddressDetailView, 
+    UserQueriesAPIView, YurayiPolicyView, SessionListAPIView, SessionDeleteAPIView, SessionClearOthersAPIView
     
 )
 from rest_framework_simplejwt.views import TokenVerifyView
@@ -14,8 +15,11 @@ from rest_framework_simplejwt.views import TokenVerifyView
 
 
 urlpatterns = [
+    path("policies/", YurayiPolicyView.as_view(), name="policy"),
     path('news-letter/subscription/', NewsletterSubscribeAPIView.as_view(), name='newsletter-subscribe'),
     path('contact-us/', ContactUsAPIView.as_view(), name='contact-us'),
+    path('user-queries/', UserQueriesAPIView.as_view(), name='user_queries'),
+
     path('register/', RegistrationView.as_view(), name='register'),
     path('login/', LoginView.as_view(), name='login'),
     path('logout/', LogoutView.as_view(), name='logout'),
@@ -37,6 +41,10 @@ urlpatterns = [
 
     path('user/addresses/', UserAddressListCreateView.as_view(), name='user-address-list-create'),
     path('user/addresses/<int:pk>/', UserAddressDetailView.as_view(), name='user-address-detail'),
+    
+    path("sessions/", SessionListAPIView.as_view(), name="session-list"),
+    path("sessions/<uuid:session_id>/", SessionDeleteAPIView.as_view(), name="session-delete"),
+    path("sessions/clear-others/", SessionClearOthersAPIView.as_view(), name="session-clear-others"),
 
     path("rest/auth/", include("dj_rest_auth.urls")),
     # re_path(r"^api/v1/auth/accounts/", include("allauth.urls")),

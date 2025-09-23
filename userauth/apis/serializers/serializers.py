@@ -1,6 +1,6 @@
 import re, requests
 from rest_framework import serializers
-from userauth.models import ContactUs, User, UserProfile, Assets,UserAddress
+from userauth.models import ContactUs, User, UserProfile, Assets,UserAddress, YurayiPolicy, Session
 
 from dj_rest_auth.registration.serializers import SocialLoginSerializer
 from rest_framework import serializers
@@ -76,76 +76,6 @@ import requests
 
 User = get_user_model()
 
-# class GoogleIDTokenSerializer(serializers.Serializer):
-#     id_token = serializers.CharField()
-
-#     def validate(self, attrs):
-#         id_token = attrs.get("id_token")
-#         if not id_token:
-#             raise serializers.ValidationError("id_token is required")
-#         attrs["access_token"] = id_token  
-#         return attrs
-
-#     def generate_unique_username(self, first_name):
-#         base_username = f"{first_name.lower()}" if first_name else "user"
-#         username = base_username
-#         counter = 1
-#         while User.objects.filter(username=username).exists():
-#             username = f"{base_username}{counter}"
-#             counter += 1
-#         return username
-
-#     def create(self, validated_data):
-#         request = self.context.get("request")
-#         access_token = validated_data.get("access_token")
-
-#         # Fetch user info from Google
-#         user_info_response = requests.get(
-#             "https://www.googleapis.com/oauth2/v3/tokeninfo",
-#             params={"id_token": access_token}
-#         )
-#         if not user_info_response.ok:
-#             raise serializers.ValidationError("Failed to fetch user info from Google")
-
-#         user_info = user_info_response.json()
-#         email = user_info['email'].lower().strip()
-#         uid = user_info.get("sub")
-#         first_name = user_info.get("given_name", email).replace(" ", "")
-#         last_name = user_info.get("family_name", "").replace(" ", "")
-#         username = self.generate_unique_username(first_name=first_name)
-
-#         # Try to get or create the user
-#         try:
-#             user = User.objects.get(email=email)
-#             is_new_user = False
-#         except User.DoesNotExist:
-#             user = User.objects.create(
-#                 email=email,
-#                 username=username,
-#                 first_name=first_name,
-#                 last_name=last_name
-#             )
-#             user.last_login = None
-#             user.save()
-#             is_new_user = True
-
-#         # Create SocialAccount object (not saved to DB)
-#         account = SocialAccount(
-#             user=user,
-#             uid=uid,
-#             provider=GoogleProvider.id,
-#             extra_data=user_info
-#         )
-
-#         # Create SocialLogin object
-#         login = SocialLogin(user=user, account=account)
-#         login.state = SocialLogin.state_from_request(request)
-
-#         # Track user status internally (used in view)
-#         self.is_new_user = is_new_user
-
-#         return login
-
 class GoogleAccessTokenSerializer(serializers.Serializer):
     access_token = serializers.CharField()
 
@@ -168,7 +98,7 @@ class GoogleAccessTokenSerializer(serializers.Serializer):
         request = self.context.get("request")
         access_token = validated_data.get("access_token")
 
-        # ✅ Fetch user info using access_token
+        # Fetch user info using access_token
         user_info_response = requests.get(
             "https://www.googleapis.com/oauth2/v3/userinfo",
             headers={"Authorization": f"Bearer {access_token}"}
@@ -237,15 +167,22 @@ def validate_username(username):
             "Username must be 5-30 characters long and can only contain letters, numbers, and underscores."
         )
     return username
+
 class RegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True)
     confirm_password = serializers.CharField(write_only=True, required=True)
     device_name = serializers.CharField(required=False, allow_blank=True)
     
+    # user location info
+    ip_address = serializers.CharField(required=False, allow_blank=True)
+    city = serializers.CharField(required=False, allow_blank=True)
+    country = serializers.CharField(required=False, allow_blank=True)
+    latitude = serializers.CharField(required=False, allow_blank=True)
+    longitude = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'confirm_password','device_name']
+        fields = ['email', 'password', 'confirm_password','device_name', 'city', 'country', 'latitude', 'longitude', 'ip_address']
 
     def generate_unique_username(self, first_name, last_name):
         base_username = f"{first_name.lower()}.{last_name.lower()}" if first_name and last_name else "user"
@@ -289,6 +226,12 @@ class RegistrationSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         password = validated_data.pop("password")
         validated_data.pop("confirm_password")
+        validated_data.pop("city", None)
+        validated_data.pop("country", None)
+        validated_data.pop("latitude", None)
+        validated_data.pop("longitude", None)
+        validated_data.pop("ip_address", None)
+        validated_data.pop("device_name",None)
 
         email = validated_data.get("email")
         base_username = email.split("@")[0]
@@ -370,6 +313,7 @@ class CustomPasswordResetSerializer(PasswordResetSerializer):
 
 # Password Reset Confirm
 class CustomPasswordResetConfirmSerializer(PasswordResetConfirmSerializer):
+    old_password = serializers.CharField()
     def validate(self, attrs):
         return super().validate(attrs)
 
@@ -378,21 +322,39 @@ class CustomPasswordResetConfirmSerializer(PasswordResetConfirmSerializer):
         # Optionally activate user or log them in
         return user
 
-# Password Change
-class CustomPasswordChangeSerializer(PasswordChangeSerializer):
+class CustomPasswordChangeSerializer(serializers.Serializer):
+    old_password = serializers.CharField(required=True, write_only=True)
+    new_password1 = serializers.CharField(required=True, write_only=True)
+    new_password2 = serializers.CharField(required=True, write_only=True)
+
     def validate_old_password(self, value):
-        user = self.context['request'].user
+        if not value:
+            raise serializers.ValidationError('Old Password is required')
+        user = self.context.get('user')
         if not user.check_password(value):
             raise serializers.ValidationError("Your current password is incorrect.")
         return value
 
     def validate(self, data):
+        # Check new passwords match
         if data["new_password1"] != data["new_password2"]:
             raise serializers.ValidationError("The new passwords do not match.")
+
+        # Prevent new password same as old password
+        if data["old_password"] == data["new_password1"]:
+            raise serializers.ValidationError("The new password cannot be the same as the old password.")
+        
+        try:
+            validator = CustomPasswordValidator()
+            validator.validate(password=data["new_password1"])
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({'new_password1': f'{e.message}'})
+
+
         return data
 
     def save(self):
-        user = self.context['request'].user
+        user = self.context.get('user')
         new_password = self.validated_data["new_password1"]
         user.set_password(new_password)
         user.save()
@@ -648,3 +610,26 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         instance.save()
 
         return instance
+
+
+
+class YurayiPolicySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = YurayiPolicy
+        fields = ["id", "name", "policy_content", "created_at", "updated_at"]
+
+class SessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Session
+        fields = [
+            "id",
+            "name",
+            'city',
+            'country',
+            'latitude',
+            'longitude',
+            "user_agent",
+            "ip_address",
+            "created_at",
+            "last_used_at",
+        ]
