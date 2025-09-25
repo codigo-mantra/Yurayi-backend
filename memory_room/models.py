@@ -97,6 +97,14 @@ class MemoryRoom(BaseModel):
         related_name="memory_rooms",
         verbose_name="Room Template"
     )
+    room_duplicate = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,   
+        null=True,
+        blank=True,
+        related_name="room_duplicates",
+        verbose_name="Room Duplicate"
+    )
     occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used memory-room", max_length=255)
 
     class Meta:
@@ -152,6 +160,14 @@ class MemoryRoomMediaFile(BaseModel):
     file_size = models.CharField(blank=True, null=True, max_length=255, verbose_name='File size')
     s3_url = models.URLField(blank=True, null=True)
     s3_key = models.CharField(blank=True, null=True,max_length=255)
+    media_file_duplicate = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,   
+        null=True,
+        blank=True,
+        related_name="media_files_duplicate",
+        verbose_name="Room Duplicate"
+    )
 
 
 

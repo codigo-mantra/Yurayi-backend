@@ -618,18 +618,43 @@ class YurayiPolicySerializer(serializers.ModelSerializer):
         model = YurayiPolicy
         fields = ["id", "name", "policy_content", "created_at", "updated_at"]
 
+from django.utils.timesince import timesince
+from django.utils import timezone
+
 class SessionSerializer(serializers.ModelSerializer):
+    last_used_display = serializers.SerializerMethodField()
+
     class Meta:
         model = Session
         fields = [
             "id",
             "name",
-            'city',
-            'country',
-            'latitude',
-            'longitude',
+            "city",
+            "country",
+            "latitude",
+            "longitude",
             "user_agent",
             "ip_address",
             "created_at",
             "last_used_at",
+            "last_used_display",   
         ]
+
+    def get_last_used_display(self, obj):
+        if not obj.last_used_at:
+            return None
+        
+        now = timezone.now()
+        diff = now - obj.last_used_at
+
+        if diff.total_seconds() < 60:
+            return "Just now"
+        elif diff.total_seconds() < 3600:
+            minutes = int(diff.total_seconds() // 60)
+            return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+        elif diff.total_seconds() < 86400:
+            hours = int(diff.total_seconds() // 3600)
+            return f"{hours} hour{'s' if hours > 1 else ''} ago"
+        else:
+            days = diff.days
+            return f"{days} day{'s' if days > 1 else ''} ago"

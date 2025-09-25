@@ -31,7 +31,8 @@ from memory_room.models import (
     MemoryRoom,
     MemoryRoomTemplateDefault,
     MemoryRoomMediaFile,
-    FILE_TYPES
+    FILE_TYPES,
+    CustomMemoryRoomTemplate
 )
 from memory_room.apis.serializers.memory_room import (
     AssetSerializer,
@@ -49,7 +50,7 @@ from memory_room.utils import determine_download_chunk_size
 
 logger = logging.getLogger(__name__)
 
-from memory_room.crypto_utils import generate_signed_path
+from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file
 
 class MemoryRoomCoverView(SecuredView):
     """
@@ -154,18 +155,38 @@ class CreateMemoryRoomView(SecuredView):
             return Response(MemoryRoomSerializer(updated_room).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
+
 class SetMemoryRoomCoverImageAPIView(SecuredView):
-    def post(self, request, memory_room_id, cover_image_id):
-        logger.info("SetMemoryRoomCoverImageAPIView.post called")
+    def post(self, request, memory_room_id, media_file_id):
+        user = self.get_current_user(request)
+        logger.info(f"SetMemoryRoomCoverImageAPIView.post called by {user.email} room: {memory_room_id} media-id: {media_file_id}")
         # print(f'Requst received')
 
         user = self.get_current_user(request)
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
-        cover_image = get_object_or_404(Assets, id=cover_image_id)
-        room_template = memory_room.room_template
-        room_template.cover_image = cover_image
-        room_template.save()
-        memory_room.save()
+        if memory_room.room_template.default_template is None:
+            media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user = user, memory_room = memory_room)
+            if media_file.file_type == 'image' and media_file.is_cover_image == False:
+                logger.info(f"SetMemoryRoomCoverImageAPIView.post cover setting started by {user.email} room: {memory_room_id} media-id: {media_file_id}")
+                
+                # now images as cover image here
+                from userauth.models import Assets
+                media_s3_key =  str(media_file.s3_key)
+                file_name = media_s3_key.split('/')[-1]
+                file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
+                
+                room_template = memory_room.room_template
+                room_template.cover_image = assets_obj
+                room_template.save()
+                memory_room.save()
+                media_file.is_cover_image = True
+                media_file.save()
+                logger.info(f'Memory Room cover set successfully by {user.email} room: {memory_room_id} media id: {media_file_id} ')
+            else:
+                logger.info(f'Memory Room cover already set by {user.email} room: {memory_room_id} media id: {media_file_id} ')
+                
         serializer = MemoryRoomSerializer(memory_room)
         return Response(serializer.data)
 
@@ -541,7 +562,6 @@ class MemoryRoomMediaFileFilterView(SecuredView):
         return paginator.get_paginated_response({'media_files': serializer.data})
 
 MEDIA_FILES_BUCKET = settings.MEDIA_FILES_BUCKET
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image
 from django.http import StreamingHttpResponse, HttpResponse
 
 
@@ -657,3 +677,78 @@ class RefreshMediaURL(SecuredView):
         new_url = generate_signed_path(full_key, expiry_seconds=60)
 
         return JsonResponse({"url": new_url})
+
+def create_duplicate_room(room:MemoryRoom):
+    from django.utils import timezone
+    new_room = None
+    logger.info(f'Room duplication creation started for user: {room.user.email} room-id: {room.id}')
+    try:
+        # create duplicate room here
+        created_at = timezone.localtime(timezone.now())
+        old_room_template = room.room_template
+        new_custom_template  =  CustomMemoryRoomTemplate.objects.create(
+            name= old_room_template.name,
+            slug = old_room_template,
+            summary = old_room_template.summary,
+            cover_image = old_room_template.cover_image,
+            default_template = old_room_template.default_template,
+            created_at = created_at
+        )
+        
+        new_room = MemoryRoom.objects.create(
+            user = room.user,
+            room_template = new_custom_template,
+            room_duplicate = room,
+            occupied_storage=room.occupied_storage,
+            created_at = created_at
+        )
+        
+    except Exception as e:
+        logger.error(f'Exception while create duplicate room for {room.user.email} room id: {room.id}')
+    else:
+        try:
+            # now create duplicate media files here
+            media_files = MemoryRoomMediaFile.objects.filter(user = room.user, memory_room = room, is_deleted =False)
+            
+            for media in media_files:
+                try:
+                    new_media = MemoryRoomMediaFile.objects.create(
+                        user = media.user,
+                        memory_room = new_room,
+                        file = media.file,
+                        file_type = media.file_type,
+                        cover_image = media.cover_image,
+                        title = media.title,
+                        description = media.description,
+                        is_cover_image = media.is_cover_image,
+                        thumbnail_url = media.thumbnail_url,
+                        thumbnail_key = media.thumbnail_key,
+                        s3_url = media.s3_url,
+                        s3_key = media.s3_key,
+                        media_file_duplicate = media,
+                        created_at = created_at
+                    )
+                except Exception as e:
+                    logger.error(f'Exception while creating media file duplicate for media: {media.id} and room: {room.id} user: {room.user.email}')
+            
+            logger.info(f'Room duplication creation completed for user: {room.user.email} room-id: {room.id}')
+            
+        
+        except Exception as e:
+            logger.error(f'Exception while creating room media duplica for {room.id}')
+        
+        return new_room
+            
+      
+class MemoryRoomDuplicationApiView(SecuredView):
+    
+    def post(self, request, memory_room_id, format=None):
+        user  = self.get_current_user(request)
+        logger.info(f'MemoryRoomDuplicationApiView is called by {user.email}')
+        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user = user)
+        duplicate_room = create_duplicate_room(memory_room)
+        serializer = MemoryRoomSerializer(duplicate_room)
+        logger.info(f'Memory room duplicate created successfully for room: {memory_room.id} for user {user.email} ')
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        
+        

@@ -611,6 +611,7 @@ def generate_signature(s3_key: str, exp: int) -> str:
 class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
     thumbnail = AssetSerializer()
     s3_url = serializers.SerializerMethodField()
+    # title = serializers.SerializerMethodField()
     class Meta:
         model = TimeCapSoulMediaFile
         fields = ('id', 'is_cover_image', 'created_at', 'updated_at','file_size', 'file_type', 's3_url', 'title', 'description', 'thumbnail')
@@ -622,6 +623,19 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
         s3_key = obj.s3_key 
         sig = generate_signature(s3_key, exp)
         return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{s3_key[37:]}/?exp={exp}&sig={sig}"
+    
+    # def get_title(self, obj):
+    #     title = obj.title
+    #     if obj.file_type== 'other':
+    #         split_title = str(obj.title).split('.')
+    #         if split_title[-1] == 'doc':
+    #             title = (split_title[0]+'.docx')
+    #         print(f'\nupdated ---title: {title} ---')
+    #     return title
+    
+   
+
+        
 
 
 class TimeCapSoulMediaFilesReadOnlySerailizer(serializers.ModelSerializer):

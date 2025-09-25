@@ -5,6 +5,7 @@ import secrets
 from django.shortcuts import get_object_or_404
 from datetime import datetime, timezone
 from rest_framework.exceptions import NotAuthenticated
+from rest_framework.parsers import MultiPartParser, FormParser
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -208,14 +209,14 @@ class RegistrationView(APIView):
         user = serializer.save()
         logger.info(f"new user register as {user.email}")
         
-        # send_html_email_task.apply_async(
-        #     kwargs={
-        #         "subject": 'Welcome to Yurayi',
-        #         "to_email": user.email,
-        #         "template_name": 'userauth/registeration_confirmation.html',
-        #         "context": {'email': user.email},
-        #     }
-        # )
+        send_html_email_task.apply_async(
+            kwargs={
+                "subject": 'Welcome to Yurayi',
+                "to_email": user.email,
+                "template_name": 'userauth/registeration_confirmation.html',
+                "context": {'email': user.email},
+            }
+        )
         logger.info(f'RegistrationView in new user created as {user.email}')
         
             
@@ -778,7 +779,7 @@ class NewsletterSubscribeAPIView(APIView):
             "message": message,
             "data": serializer.data
         }, status=status.HTTP_200_OK)
-from rest_framework.parsers import MultiPartParser, FormParser
+
 
 class UserProfileUpdateView(SecuredView):
     """
@@ -908,7 +909,7 @@ class UserQueriesAPIView(SecuredView):
                     "context": {'first_name': serializer._validated_data.get('first_name')},
                 }
             )
-            logger.info(f"UserQueriesAPIView successfully saved by {user.email}")
+            logger.info(f"UserQueriesAPIView successfully submitted by {user.email}")
             return Response({"message": "Contact request submitted successfully."}, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -928,6 +929,8 @@ class SessionListAPIView(SecuredView):
 
     def get(self, request):
         user  = self.get_current_user(request)
+        logger.info(f"SessionListAPIView called by {user.email}")
+        
         
         sessions = Session.objects.filter(user=user, revoked=False)
         serializer = SessionSerializer(sessions, many=True)
@@ -935,6 +938,7 @@ class SessionListAPIView(SecuredView):
             'current_session_id': self.session.id,
             'others_sessions': serializer.data
         }
+        logger.info(f"SessionListAPIView all session served to {user.email}")
         return Response(response, status=status.HTTP_200_OK)
     
 
@@ -943,13 +947,15 @@ class SessionDeleteAPIView(SecuredView):
     """Revoke a specific session"""
 
     def delete(self, request, session_id):
+        user  = self.get_current_user(request)
+        logger.info(f"SessionDeleteAPIView called by {user.email} session-id: {session_id}")
         from django.utils import timezone
 
-        user  = self.get_current_user(request)
         session = get_object_or_404(Session, id=session_id, user=user, revoked=False)
         session.revoked = True
         session.last_used_at = timezone.now()
         session.save()
+        logger.info(f"SessionDeleteAPIView revoked successfully for {user.email} session-id: {session_id}")
         return Response({"detail": "Session revoked successfully"}, status=status.HTTP_200_OK)
 
 
@@ -960,10 +966,12 @@ class SessionClearOthersAPIView(SecuredView):
         from django.utils import timezone
 
         user  = self.get_current_user(request)
+        logger.info(f"SessionClearOthersAPIView called by {user.email}")
         current_session_id = request.data.get('current_session_id', None)
         if not current_session_id:
             raise ValidationError({'current_session_id': "Current session id is required"})
         
         sessions = Session.objects.filter(user=user, revoked=False).exclude(id=current_session_id)
         count = sessions.update(revoked=True, last_used_at=timezone.now())
+        logger.info(f"SessionClearOthersAPIView {count} sessions revoked by {user.email}")
         return Response({"detail": f"{count} sessions revoked (except current)"}, status=status.HTTP_200_OK)
