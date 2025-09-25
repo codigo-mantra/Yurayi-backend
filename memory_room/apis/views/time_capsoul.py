@@ -1014,3 +1014,81 @@ class UserStorageTracker(SecuredView):
         logger.info(f"UserStorageTracker  data served {user.email}")
         return Response(user_storage_data)
 
+
+def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul):
+    from django.utils import timezone
+    new_capsoul = None
+    logger.info(f'Timecapsoul duplication creation started for user: {time_capsoul.user.email} capsoul-id: {time_capsoul.id}')
+    try:
+        # create duplicate room here
+        created_at = timezone.localtime(timezone.now())
+        old_capsoul_template = time_capsoul.capsoul_template
+        new_custom_template  =  CustomTimeCapSoulTemplate.objects.create(
+            name= old_capsoul_template.name,
+            slug = old_capsoul_template,
+            summary = old_capsoul_template.summary,
+            cover_image = old_capsoul_template.cover_image,
+            default_template = old_capsoul_template.default_template,
+            created_at = created_at
+        )
+        
+        new_capsoul = TimeCapSoul.objects.create(
+            user = time_capsoul.user,
+            capsoul_template = new_custom_template,
+            room_duplicate = time_capsoul,
+            created_at = created_at
+        )
+        
+    except Exception as e:
+        logger.error(f'Exception while create duplicate capsoul for {time_capsoul.user.email} capsoul id: {time_capsoul.id}')
+    else:
+        try:
+            # now create duplicate media files here
+            media_files = TimeCapSoulMediaFile.objects.filter(user = time_capsoul.user, time_capsoul = time_capsoul, is_deleted =False)
+            
+            for media in media_files:
+                try:
+                    new_media = TimeCapSoulMediaFile.objects.create(
+                        user = media.user,
+                        time_capsoul = new_capsoul,
+                        thumbnail = media.thumbnail,
+                        media_refrence_replica = None,
+                        media_duplicate = media,
+                        file = media.file,
+                        file_type = media.file_type,
+                        title = media.title,
+                        description = media.description,
+                        file_size = media.file_size,
+                        s3_url = media.s3_url,
+                        s3_key = media.s3_key,
+                        is_cover_image = media.is_cover_image,
+                        
+                        created_at = created_at
+                    )
+                except Exception as e:
+                    logger.error(f'Exception while creating media file duplicate for media: {media.id} and capsoul: {time_capsoul.id} user: {time_capsoul.user.email}')
+            
+            logger.info(f'Capsoul duplication creation completed for user: {time_capsoul.user.email} room-id: {time_capsoul.id}')
+        
+        except Exception as e:
+            logger.error(f'Exception while creating room media duplica for {time_capsoul.id}')
+        
+        return new_capsoul
+    
+    
+  
+      
+class TimeCapsoulDuplicationApiView(SecuredView):
+    
+    def post(self, request, time_capsoul_id, format=None):
+        user  = self.get_current_user(request)
+        logger.info(f'TimeCapsoulDuplicationApiView is called by {user.email} capsoul-id: {time_capsoul_id}')
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
+        if time_capsoul.status == 'created': 
+            duplicate_room = create_duplicate_time_capsoul(time_capsoul)
+            serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
+            logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response({'message': "Only timecapsoul with status crafted can create duplicates"})
+        
+        

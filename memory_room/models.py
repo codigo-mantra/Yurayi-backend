@@ -347,6 +347,14 @@ class TimeCapSoul(BaseModel):
         related_name="referenced_by",
         verbose_name="Reference Replica"
     )
+    room_duplicate = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,   
+        null=True,
+        blank=True,
+        related_name="capsoul_duplicates",
+        verbose_name="Time Capsoul Duplicate"
+    )
     
 
 
@@ -418,6 +426,14 @@ class TimeCapSoulMediaFile(AbstractMediaFile):
         blank=True,
         related_name="referenced_by_media",
         verbose_name="Reference Replica"
+    )
+    media_duplicate = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,   
+        null=True,
+        blank=True,
+        related_name="media_file_duplicates",
+        verbose_name="Room Duplicate"
     )
 
     class Meta:
