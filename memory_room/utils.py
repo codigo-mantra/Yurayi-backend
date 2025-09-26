@@ -389,3 +389,44 @@ def to_gb(value, unit):
         return value * 1024
     else:
         raise ValueError(f"Unknown unit: {unit}")
+
+
+import os
+import subprocess
+import tempfile
+
+def convert_doc_to_docx_bytes(doc_bytes: bytes) -> bytes:
+    """
+    Convert a .doc file (binary bytes) to .docx using LibreOffice.
+    Returns the .docx file bytes.
+    """
+    try:
+        
+        # Save .doc temporarily
+        with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_doc:
+            tmp_doc.write(doc_bytes)
+            tmp_doc.flush()
+            doc_path = tmp_doc.name
+
+        # Temporary output folder
+        output_dir = tempfile.mkdtemp()
+
+        # Convert to .docx using LibreOffice headless
+        subprocess.run([
+            "soffice", "--headless", "--convert-to", "docx",
+            "--outdir", output_dir, doc_path
+        ], check=True)
+
+        # Read converted file
+        docx_path = os.path.join(output_dir, os.path.basename(doc_path).replace(".doc", ".docx"))
+        with open(docx_path, "rb") as f:
+            docx_bytes = f.read()
+
+        # Cleanup
+        os.remove(doc_path)
+        os.remove(docx_path)
+        os.rmdir(output_dir)
+
+        return docx_bytes
+    except Exception as e:
+        logger.error(f'Exception while converting doc file docx as {e}')

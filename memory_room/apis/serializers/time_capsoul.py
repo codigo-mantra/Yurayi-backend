@@ -321,26 +321,26 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                                                             capsoul_replica_refrence = time_capsoul,
                                                             created_at = created_at
                                                             )
-            else:
+            # else:
                 
-                name = validated_data.get('name', replica_instance.capsoul_template.name)
-                summary = validated_data.get('summary', replica_instance.capsoul_template.summary)
-                cover_image = validated_data.get('cover_image')
+            #     name = validated_data.get('name', replica_instance.capsoul_template.name)
+            #     summary = validated_data.get('summary', replica_instance.capsoul_template.summary)
+            #     cover_image = validated_data.get('cover_image')
 
-                if isinstance(cover_image, int):
-                    cover_image = self.validate_cover_image(cover_image)
+            #     if isinstance(cover_image, int):
+            #         cover_image = self.validate_cover_image(cover_image)
                         
-                if cover_image is None:
-                    cover_image = replica_instance.capsoul_template.cover_image
+            #     if cover_image is None:
+            #         cover_image = replica_instance.capsoul_template.cover_image
 
-                template = replica_instance.capsoul_template
-                template.name = name
-                template.summary = summary
-                template.cover_image = cover_image
-                template.slug = generate_unique_slug(template)
-                template.save()
-                replica_instance.save()
-                return instance
+            #     template = replica_instance.capsoul_template
+            #     template.name = name
+            #     template.summary = summary
+            #     template.cover_image = cover_image
+            #     template.slug = generate_unique_slug(template)
+            #     template.save()
+            #     replica_instance.save()
+            #     return instance
 
         else:
             if instance.capsoul_template.default_template is None: # create from scratch
@@ -616,21 +616,38 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
         model = TimeCapSoulMediaFile
         fields = ('id', 'is_cover_image', 'created_at', 'updated_at','file_size', 'file_type', 's3_url', 'title', 'description', 'thumbnail')
 
-    def get_s3_url(self, obj):
-        import time, base64, hmac, hashlib
+    # def get_s3_url(self, obj):
+    #     import time, base64, hmac, hashlib
 
+    #     exp = int(time.time()) + 60 * 60  
+    #     s3_key = obj.s3_key 
+    #     sig = generate_signature(s3_key, exp)
+    #     if s3_key.lower().endswith(".doc"):
+    #         return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{s3_key[37:]}/?exp={exp}&sig={sig}"
+    #     else:
+    #         return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{s3_key[37:]}/?exp={exp}&sig={sig}"
+    
+    def get_s3_url(self, obj):
+        import time
         exp = int(time.time()) + 60 * 60  
         s3_key = obj.s3_key 
         sig = generate_signature(s3_key, exp)
-        return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{s3_key[37:]}/?exp={exp}&sig={sig}"
+
+        served_key = s3_key[37:]
+        if served_key.lower().endswith(".doc"):
+            served_key = served_key[:-4] + ".docx"  # change extension
+
+        return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
+
+        
     
     # def get_title(self, obj):
     #     title = obj.title
     #     if obj.file_type== 'other':
     #         split_title = str(obj.title).split('.')
-    #         if split_title[-1] == 'doc':
+    #         if str(split_title[-1]).lower() == 'doc':
     #             title = (split_title[0]+'.docx')
-    #         print(f'\nupdated ---title: {title} ---')
+    #         print(f'\n updated ---title: old: { obj.title} updated {title} ---')
     #     return title
     
    

@@ -5,6 +5,10 @@ from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoul, Rec
 from memory_room.utils import get_readable_file_size_from_bytes
 from timecapsoul.utils import send_html_email
 from userauth.tasks import send_html_email_task
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature
+import os
+import subprocess
+import tempfile
 
 import logging
 logger = logging.getLogger(__name__)
@@ -164,7 +168,7 @@ def testing_view(request):
     # for user in all_user:
     #     user.set_password('Test@1234')
     #     user.save()
-    user_storage_calculator()
+    # user_storage_calculator()
 
     
     # send_html_email_task.apply_async(
@@ -179,7 +183,16 @@ def testing_view(request):
     #         }
     #     }
     # )
-
+    media_file = TimeCapSoulMediaFile.objects.get(id = 413)
+    try:
+        file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
+    except Exception as e:
+        file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
+    except Exception as e:
+        pass
+    
+    
+    
     
     # send_html_email(
     #     subject="You’ve received a Time Capsoul sealed with love.",
