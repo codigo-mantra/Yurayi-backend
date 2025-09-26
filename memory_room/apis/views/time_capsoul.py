@@ -1020,11 +1020,14 @@ def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul):
     new_capsoul = None
     logger.info(f'Timecapsoul duplication creation started for user: {time_capsoul.user.email} capsoul-id: {time_capsoul.id}')
     try:
+        duplicate_capsoul = TimeCapSoul.objects.filter(room_duplicate = time_capsoul, is_deleted = False)
+        capsoul_duplication_number = str(1 + duplicate_capsoul.count())
+        
         # create duplicate room here
         created_at = timezone.localtime(timezone.now())
         old_capsoul_template = time_capsoul.capsoul_template
         new_custom_template  =  CustomTimeCapSoulTemplate.objects.create(
-            name= old_capsoul_template.name,
+            name= old_capsoul_template.name + capsoul_duplication_number,
             slug = old_capsoul_template,
             summary = old_capsoul_template.summary,
             cover_image = old_capsoul_template.cover_image,

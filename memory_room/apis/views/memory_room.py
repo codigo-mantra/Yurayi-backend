@@ -683,11 +683,13 @@ def create_duplicate_room(room:MemoryRoom):
     new_room = None
     logger.info(f'Room duplication creation started for user: {room.user.email} room-id: {room.id}')
     try:
+        duplicate_capsoul = MemoryRoom.objects.filter(room_duplicate = room, is_deleted = False)
+        capsoul_duplication_number = str(1 + duplicate_capsoul.count())
         # create duplicate room here
         created_at = timezone.localtime(timezone.now())
         old_room_template = room.room_template
         new_custom_template  =  CustomMemoryRoomTemplate.objects.create(
-            name= old_room_template.name,
+            name= old_room_template.name + capsoul_duplication_number,
             slug = old_room_template,
             summary = old_room_template.summary,
             cover_image = old_room_template.cover_image,
