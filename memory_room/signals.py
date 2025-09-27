@@ -11,11 +11,12 @@ logger = logging.getLogger(__name__)
 @receiver(post_save, sender=User)
 def create_user_mapper(sender, instance, created, **kwargs):
     if created:
-        UserMapper.objects.create(
+        mapper = UserMapper.objects.create(
             user=instance,
             max_storage_limit='15 GB',     # default value
             current_storage='0 MB'          # default usage
         )
+        mapper.save()
 
 # create memory-room detail
 @receiver(post_save, sender=MemoryRoom)
