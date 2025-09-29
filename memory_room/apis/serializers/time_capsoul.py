@@ -617,25 +617,17 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
         fields = ('id', 'is_cover_image', 'created_at', 'updated_at','file_size', 'file_type', 's3_url', 'title', 'description', 'thumbnail')
 
     def get_s3_url(self, obj):
-        import time, base64, hmac, hashlib
-
-        exp = int(time.time()) + 60 * 60  
+        import time
+        exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS 
         s3_key = obj.s3_key 
         sig = generate_signature(s3_key, exp)
-        return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{s3_key[37:]}/?exp={exp}&sig={sig}"
-    
-    # def get_title(self, obj):
-    #     title = obj.title
-    #     if obj.file_type== 'other':
-    #         split_title = str(obj.title).split('.')
-    #         if split_title[-1] == 'doc':
-    #             title = (split_title[0]+'.docx')
-    #         print(f'\nupdated ---title: {title} ---')
-    #     return title
-    
-   
 
-        
+        served_key = s3_key[37:]
+        if served_key.lower().endswith(".doc"):
+            served_key = served_key[:-4] + ".docx"  # change extension
+
+        return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
+
 
 
 class TimeCapSoulMediaFilesReadOnlySerailizer(serializers.ModelSerializer):

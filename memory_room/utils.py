@@ -6,9 +6,25 @@ import string, random
 from django.conf import settings
 from django.utils.text import slugify
 
+import json,io
+import hmac
+import base64
+import hashlib
+
+
 from rest_framework import serializers
 import logging
 logger = logging.getLogger(__name__)
+
+
+def generate_signature(s3_key: str, exp: int) -> str:
+    """
+    Generate base64-encoded HMAC signature for s3_key and expiry.
+    """
+    raw = f"{s3_key}:{exp}"
+    sig = hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(sig).decode().rstrip("=")
+
 
 def generate_unique_slug(instance, queryset=None):
     """
@@ -389,3 +405,49 @@ def to_gb(value, unit):
         return value * 1024
     else:
         raise ValueError(f"Unknown unit: {unit}")
+
+
+
+import os
+import subprocess
+import tempfile
+
+def convert_doc_to_docx_bytes(doc_bytes: bytes, media_file_id=None, email=None) -> bytes:
+    """
+    Convert a .doc file (binary bytes) to .docx using LibreOffice.
+    Returns the .docx file bytes.
+    """
+    try:
+        logger.info(f'Doc to docx conversion started for {media_file_id} for user : {email}')
+        # Save .doc temporarily
+        with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_doc:
+            tmp_doc.write(doc_bytes)
+            tmp_doc.flush()
+            doc_path = tmp_doc.name
+
+        # Temporary output folder
+        output_dir = tempfile.mkdtemp()
+
+        # Convert to .docx using LibreOffice headless
+        subprocess.run([
+            "soffice", "--headless", "--convert-to", "docx",
+            "--outdir", output_dir, doc_path
+        ], check=True)
+
+        # Read converted file
+        docx_path = os.path.join(output_dir, os.path.basename(doc_path).replace(".doc", ".docx"))
+        with open(docx_path, "rb") as f:
+            docx_bytes = f.read()
+
+        # Cleanup
+        os.remove(doc_path)
+        os.remove(docx_path)
+        os.rmdir(output_dir)
+        logger.info(f'Doc to docx conversion completed for {media_file_id} for user : {email}')
+        
+
+        return docx_bytes
+    except Exception as e:
+        logger.error(f'Exception while converting doc file docx as {e}')
+
+

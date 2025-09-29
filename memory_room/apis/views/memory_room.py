@@ -45,8 +45,8 @@ from memory_room.apis.serializers.memory_room import (
     MemoryRoomMediaFileDescriptionUpdateSerializer
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
-
-from memory_room.utils import determine_download_chunk_size
+from memory_room.crypto_utils import  verify_signature
+from memory_room.utils import determine_download_chunk_size,convert_doc_to_docx_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -610,49 +610,107 @@ class ServeMedia(SecuredView):
     Securely serve decrypted media from S3 via Django.
     """
 
-    def get(self, request, s3_key):
+    def get(self, request, s3_key, media_file_id):
         user  = self.get_current_user(request)
         if user is None:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
-        
         try:
             exp = request.GET.get("exp")
             sig = request.GET.get("sig")
-            s3_storage_id = user.s3_storage_id
-            s3_key = f'{s3_storage_id}/{s3_key}'
-
+            
             if not exp or not sig:
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
             if int(exp) < int(time.time()):
                 return Response(status=status.HTTP_404_NOT_FOUND)
-
-            expected_sig = base64.urlsafe_b64encode(
-                hmac.new(SECRET, f"{s3_key}:{exp}".encode(), hashlib.sha256).digest()
-            ).decode().rstrip("=")
-
-            if not hmac.compare_digest(sig, expected_sig):
+            
+            media_file =  get_object_or_404(MemoryRoomMediaFile, id = media_file_id, user = user)
+            
+            #  signature-verification
+            if not verify_signature(media_file.s3_key, exp, sig):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             
             # caching here
-            cache_key = (s3_key)
+            cache_key = media_file.s3_key
+            content_type_cache_key = cache.get(f'{cache_key}_content_type')
             file_bytes = cache.get(cache_key)
-            content_type = cache.get(f'{cache_key}_type')
-            
+            content_type = cache.get(content_type_cache_key)
             if not file_bytes:
-                file_bytes,content_type = decrypt_and_get_image(str(s3_key))
-                
-                # store in cache
-                cache.set(cache_key, file_bytes, timeout=60*5)  
-                cache.set(f'{cache_key}_type', content_type, timeout=60*5)  
-
-            response = HttpResponse(file_bytes, content_type=content_type)
-            frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # # Build CSP header
-            response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-            response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
-            return response
+                try:
+                    file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
+                except Exception as e:
+                    logger.error(f'Exception while getting media file from s3 s3-key: {media_file.s3_key} for user {user.email}')
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+                else:
+                    # store in cache
+                    cache.set(cache_key, file_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                    cache.set(content_type_cache_key, content_type, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                    
+            if file_bytes and content_type:
+                if media_file.s3_key.lower().endswith(".doc"): # .doc to .docx conversion here
+                    try:
+                        docx_bytes_cache_key = f'{media_file.id}_docx_preview'
+                        docx_bytes = cache.get(docx_bytes_cache_key)
+                        
+                        if not docx_bytes:
+                            docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+                            cache.set(docx_bytes_cache_key, docx_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                            
+                        response = HttpResponse(
+                            docx_bytes,
+                            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                        )
+                        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                        response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                        response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}"'
+                        return response
+                    except Exception as e:
+                        logger.error(f'Exception while generating docx for doc files as {e}')
+                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                else:
+                    response = HttpResponse(file_bytes, content_type=content_type)
+                    frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # # Build CSP header
+                    response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                    response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
+                    return response
         except Exception as e:
+            logger.warning(f'Exception while serving media file as s3-key: {s3_key} user: {user.email}')
             return Response(status=status.HTTP_404_NOT_FOUND)
+            
+                
+                
+        #     if media_file.s3_key.lower().endswith(".doc"):
+        #         try:
+        #             print(f'\n---doc conversion called---')
+                    
+        #             docx_bytes_cache_key = f'{media_file.id}_docx_preview'
+        #             docx_bytes = cache.get(docx_bytes_cache_key)
+                    
+        #             if not docx_bytes:
+        #                 docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+        #                 cache.set(docx_bytes_cache_key, docx_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                        
+        #             response = HttpResponse(
+        #                 docx_bytes,
+        #                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        #             )
+        #             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+        #             response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+        #             response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}"'
+        #             print(f'\n---doc conversion completed--- {media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}')
+        #             return response
+                    
+        #         except Exception as e:
+        #             logger.error(f'Exception while generating docx for doc files as {e}')
+        #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        #     else:
+        #         response = HttpResponse(file_bytes, content_type=content_type)
+        #         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # # Build CSP header
+        #         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+        #         response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
+        #         return response
+        # except Exception as e:
+        #     return Response(status=status.HTTP_404_NOT_FOUND)
             
             
 

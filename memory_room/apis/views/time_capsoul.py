@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import time
 from django.http import HttpResponseForbidden, HttpResponseRedirect,Http404
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView,NewSecuredView
@@ -761,6 +761,15 @@ class ServeTimeCapSoulMedia(SecuredView):
         exp = request.GET.get("exp")
         sig = request.GET.get("sig")
         user = self.get_current_user(request)
+        if not exp or not sig:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if int(exp) < int(time.time()):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+       
+        #  signature-verification
+        if not verify_signature(media_file.s3_key, exp, sig):
+            return Response(status=status.HTTP_404_NOT_FOUND)
         
         if user is None:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
@@ -780,23 +789,10 @@ class ServeTimeCapSoulMedia(SecuredView):
             if not capsoul_recipients:
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
-            # recipients_data = list(capsoul_recipients.recipients.values_list("email", flat=True))
-            # if user.email not in recipients_data:
-            #     return Response(status=status.HTTP_404_NOT_FOUND)
         except Exception:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        if not exp or not sig:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-
-        if int(exp) < int(time.time()):
-            return Response(status=status.HTTP_404_NOT_FOUND)
-       
-        #  signature-verification
-        if not verify_signature(media_file.s3_key, exp, sig):
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        
-        cache_key = (media_file.s3_key)
+        cache_key = media_file.s3_key
         file_bytes = cache.get(cache_key)
         content_type = cache.get(f'{cache_key}_type')
         if not file_bytes:
@@ -808,19 +804,42 @@ class ServeTimeCapSoulMedia(SecuredView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             else:
                 # caching here
-                if not file_bytes:
-                    file_bytes,content_type = decrypt_and_get_image(str(s3_key))
-                    
-                    # store in cache
-                    cache.set(cache_key, file_bytes, timeout=60*60)  
-                    cache.set(f'{cache_key}_type', content_type, timeout=60*60)  
+                cache.set(cache_key, file_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                cache.set(f'{cache_key}_type', content_type, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
 
-        response = HttpResponse(file_bytes, content_type=content_type)
-        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # # Build CSP header
-        response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-        # response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".enc", "")}"'
-        response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1]}"'
-        return response
+                
+        if media_file.s3_key.lower().endswith(".doc"):
+            try:
+                print(f'\n---doc conversion called---')
+                
+                docx_bytes_cache_key = f'{media_file.id}_docx_preview'
+                docx_bytes = cache.get(docx_bytes_cache_key)
+                
+                if not docx_bytes:
+                    docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                    
+                response = HttpResponse(
+                    docx_bytes,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}"'
+                return response
+                
+            except Exception as e:
+                logger.error(f'Exception while generating docx for doc files as {e}')
+                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        else:
+            # 🔹 All other files
+            response = HttpResponse(file_bytes, content_type=content_type)
+            frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+            response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+            response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1]}"'
+            return response
+
+
 
 class TimeCapSoulMediaFileDownloadView(SecuredView):
     def get(self, request, timecapsoul_id, media_file_id):

@@ -160,19 +160,18 @@ USE_TZ = True
 STATIC_URL = '/static/'
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 # STATIC_ROOT = os.path.join(BASE_DIR, 'static')
-MEDIA_URL = '/media/'
+
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 AWS_S3_REGION_NAME = AWS_SECRET['AWS_S3_REGION_NAME']
 AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
 MEDIA_FILES_BUCKET = "yurayi-media"
-DECRYPT_LINK_TTL_SECONDS = 300  # 5 minutes
+DECRYPT_LINK_TTL_SECONDS = 60*60*24  # 1 day minutes
 DECRYPT_LINK_SECRET = "12345678901234567890123456789012"  # for JWT signing
 if ENVIRONMENT_TYPE == 'PROD':
     STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
     STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
     AWS_STORAGE_BUCKET_NAME = AWS_SECRET['AWS_STORAGE_BUCKET_NAME']
-    AWS_S3_REGION_NAME = AWS_SECRET['AWS_S3_REGION_NAME']
     AWS_S3_CUSTOM_DOMAIN = f'{AWS_STORAGE_BUCKET_NAME}.s3.amazonaws.com'
     AWS_S3_URL_PROTOCOL = 'https'
     AWS_KMS_KEY_ID = AWS_SECRET['KMS_ARN']
@@ -183,7 +182,10 @@ if ENVIRONMENT_TYPE == 'PROD':
     DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
     MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
 else:
+    MEDIA_URL = '/media/'
     STATICFILES_DIRS = [BASE_DIR / "static"]
+    AWS_STORAGE_BUCKET_NAME = "time-capsoul-files"
+    
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 

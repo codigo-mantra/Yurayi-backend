@@ -9,7 +9,7 @@ from memory_room.models import (
     MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, generate_signature
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file
 from django.core.files.base import ContentFile
 
@@ -336,6 +336,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             )
         except Exception as e:
             print(f'[Upload Error] {e}')
+            logger.error(f'File upload failed for {user.email} memory-room id: {memory_room.id} file-type: {file_type} file-size: {validated_data['file_size']}')
             if progress_callback:
                 progress_callback(-1, f"Upload failed: {str(e)}")
             raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
@@ -363,12 +364,12 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                     validated_data['thumbnail_url'] = asset.s3_url
                     validated_data['thumbnail_key'] = asset.s3_key
 
-            elif file_type == 'image':
-                image_file = ImageFile(ContentFile(decrypted_bytes, name=file.name))
-                asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
-                validated_data['cover_image'] = asset
-                validated_data['thumbnail_url'] = asset.s3_url
-                validated_data['thumbnail_key'] = asset.s3_key
+            # elif file_type == 'image':
+            #     image_file = ImageFile(ContentFile(decrypted_bytes, name=file.name))
+            #     asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
+            #     validated_data['cover_image'] = asset
+            #     validated_data['thumbnail_url'] = asset.s3_url
+            #     validated_data['thumbnail_key'] = asset.s3_key
 
         except Exception as e:
             print(f'[Thumbnail Error] {e}')
@@ -401,16 +402,51 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
         read_only_fields = ['id', 'user',  'file_url', 'cover_image', 'file_title']
 
 
+    # def get_file_url(self, obj):
+    #     import time, base64, hmac, hashlib
+
+    #     exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS  
+    #     raw = f"{obj.s3_key}:{exp}"
+    #     sig = base64.urlsafe_b64encode(
+    #         hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
+    #     ).decode().rstrip("=")
+    #     # if obj.s3_key.lower().endswith(".doc"):
+    #     #     {obj.s3_key.split("/")[-1].replace(".doc", ".docx")}
+
+    #     return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
+    
     def get_file_url(self, obj):
-        import time, base64, hmac, hashlib
+        import time
+        exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS 
+        s3_key = obj.s3_key 
+        sig = generate_signature(s3_key, exp)
 
-        exp = int(time.time()) + 60*5  # 5 minutes expiry
-        raw = f"{obj.s3_key}:{exp}"
-        sig = base64.urlsafe_b64encode(
-            hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
-        ).decode().rstrip("=")
+        served_key = s3_key[37:]
+        if served_key.lower().endswith(".doc"):
+            served_key = served_key[:-4] + ".docx"  # change extension
+        
+        return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{served_key}?exp={exp}&sig={sig}"
+        
 
-        return f"/api/v0/memory-rooms/api/media/serve/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
+    
+    # def get_file_url(self, obj):
+    #     import time, base64, hmac, hashlib
+
+    #     exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS 
+    #     raw = f"{obj.s3_key}:{exp}"
+    #     sig = base64.urlsafe_b64encode(
+    #         hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
+    #     ).decode().rstrip("=")
+
+    #     served_key = obj.s3_key[37:]
+    #     if served_key.lower().endswith(".doc"):
+    #         served_key = served_key[:-4] + ".docx"  # change only extension
+    #         print(f'yes extention changed : {served_key}')
+    #     return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{served_key}?exp={exp}&sig={sig}"
+        
+
+        # return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{served_key}?exp={exp}&sig={sig}"
+
         
     
     def get_file_name(self,path: str):
