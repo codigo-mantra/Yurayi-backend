@@ -631,8 +631,8 @@ class ServeMedia(SecuredView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             
             # caching here
-            cache_key = media_file.s3_key
-            content_type_cache_key = cache.get(f'{cache_key}_content_type')
+            cache_key = str(media_file.s3_key)
+            content_type_cache_key = f'{cache_key}_content_type'
             file_bytes = cache.get(cache_key)
             content_type = cache.get(content_type_cache_key)
             if not file_bytes:
@@ -643,8 +643,8 @@ class ServeMedia(SecuredView):
                     return Response(status=status.HTTP_404_NOT_FOUND)
                 else:
                     # store in cache
-                    cache.set(cache_key, file_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
-                    cache.set(content_type_cache_key, content_type, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                    cache.set(cache_key, file_bytes, timeout=0)  
+                    cache.set(content_type_cache_key, content_type, timeout=0)  
                     
             if file_bytes and content_type:
                 if media_file.s3_key.lower().endswith(".doc"): # .doc to .docx conversion here
@@ -654,7 +654,7 @@ class ServeMedia(SecuredView):
                         
                         if not docx_bytes:
                             docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-                            cache.set(docx_bytes_cache_key, docx_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                            cache.set(docx_bytes_cache_key, docx_bytes, timeout=0)  
                             
                         response = HttpResponse(
                             docx_bytes,

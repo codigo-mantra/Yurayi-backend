@@ -174,7 +174,6 @@ class RegistrationSerializer(serializers.ModelSerializer):
     device_name = serializers.CharField(required=False, allow_blank=True)
     
     # user location info
-    ip_address = serializers.CharField(required=False, allow_blank=True)
     city = serializers.CharField(required=False, allow_blank=True)
     country = serializers.CharField(required=False, allow_blank=True)
     latitude = serializers.CharField(required=False, allow_blank=True)
@@ -182,7 +181,7 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'confirm_password','device_name', 'city', 'country', 'latitude', 'longitude', 'ip_address']
+        fields = ['email', 'password', 'confirm_password','device_name', 'city', 'country', 'latitude', 'longitude']
 
     def generate_unique_username(self, first_name, last_name):
         base_username = f"{first_name.lower()}.{last_name.lower()}" if first_name and last_name else "user"
@@ -230,7 +229,6 @@ class RegistrationSerializer(serializers.ModelSerializer):
         validated_data.pop("country", None)
         validated_data.pop("latitude", None)
         validated_data.pop("longitude", None)
-        validated_data.pop("ip_address", None)
         validated_data.pop("device_name",None)
 
         email = validated_data.get("email")

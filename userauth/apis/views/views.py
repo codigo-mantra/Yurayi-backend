@@ -201,7 +201,6 @@ class RegistrationView(APIView):
         country = serializer.validated_data.get('country')
         latitude = serializer.validated_data.get('latitude')
         longitude = serializer.validated_data.get('longitude')
-        ip_address = serializer.validated_data.get('ip_address')
         device_name = serializer.validated_data.get('device_name')
         logger.info(f'RegistrationView is called  requested data is valid and  user location received')
         
@@ -222,8 +221,7 @@ class RegistrationView(APIView):
             
         # Extract IP and User-Agent
         ua = (request.META.get("HTTP_USER_AGENT") or None)
-        if not ip_address:
-            ip_address = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
+        ip_address = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
 
         # Assign unique placeholders if missing
         if not ua:

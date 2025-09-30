@@ -767,9 +767,7 @@ class ServeTimeCapSoulMedia(SecuredView):
         if int(exp) < int(time.time()):
             return Response(status=status.HTTP_404_NOT_FOUND)
        
-        #  signature-verification
-        if not verify_signature(media_file.s3_key, exp, sig):
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        
         
         if user is None:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
@@ -783,6 +781,10 @@ class ServeTimeCapSoulMedia(SecuredView):
             except Exception as e:
                 return Response(status=status.HTTP_404_NOT_FOUND)
             else:
+                #  signature-verification
+                if not verify_signature(media_file.s3_key, exp, sig):
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+                
                 time_capsoul = media_file.time_capsoul
                 
             capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul=time_capsoul, email = user.email).first()
@@ -804,8 +806,8 @@ class ServeTimeCapSoulMedia(SecuredView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             else:
                 # caching here
-                cache.set(cache_key, file_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
-                cache.set(f'{cache_key}_type', content_type, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                cache.set(cache_key, file_bytes, timeout=0)  
+                cache.set(f'{cache_key}_type', content_type, timeout=0)  
 
                 
         if media_file.s3_key.lower().endswith(".doc"):
@@ -817,7 +819,7 @@ class ServeTimeCapSoulMedia(SecuredView):
                 
                 if not docx_bytes:
                     docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
+                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=0)  
                     
                 response = HttpResponse(
                     docx_bytes,
