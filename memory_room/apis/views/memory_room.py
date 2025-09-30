@@ -458,21 +458,25 @@ class MediaFileDownloadView(SecuredView):
             memory_room=memory_room
         )
 
-        file_name = media_file.title
+        # file_name = media_file.title
+        file_name  = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}'
         
         # caching here
-        cache_key = (media_file.s3_key)
-        file_bytes = cache.get(cache_key)
-        content_type = cache.get(f'{cache_key}_type')
+        bytes_cache_key = str(media_file.s3_key)
+        file_bytes = cache.get(bytes_cache_key)
         
-        if not file_bytes:
-            file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
-            
-            # store in cache
-            cache.set(cache_key, file_bytes, timeout=120)  
-            cache.set(f'{cache_key}_type', content_type, timeout=120)  
-
-
+        content_type_cache_key = f'{bytes_cache_key}_type'
+        content_type = cache.get(content_type_cache_key)
+        
+        if not file_bytes or  not content_type:
+            try:
+                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
+            except Exception as e:
+                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                # caching here
+                cache.set(bytes_cache_key, file_bytes, timeout=None)  
+                cache.set(content_type_cache_key, content_type, timeout=None)
 
         try:
             file_size = len(file_bytes)
@@ -631,20 +635,23 @@ class ServeMedia(SecuredView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             
             # caching here
-            cache_key = str(media_file.s3_key)
-            content_type_cache_key = f'{cache_key}_content_type'
-            file_bytes = cache.get(cache_key)
+            bytes_cache_key = str(media_file.s3_key)
+            file_bytes = cache.get(bytes_cache_key)
+            
+            content_type_cache_key = f'{bytes_cache_key}_type'
             content_type = cache.get(content_type_cache_key)
-            if not file_bytes:
+            
+            if not file_bytes or  not content_type:
                 try:
-                    file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
+                    file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
                 except Exception as e:
-                    logger.error(f'Exception while getting media file from s3 s3-key: {media_file.s3_key} for user {user.email}')
-                    return Response(status=status.HTTP_404_NOT_FOUND)
+                    logger.error(f'Exception while serving media file to user: {user.email} room media-id: {media_file.id} as \n error message: {e}')
+                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 else:
-                    # store in cache
-                    cache.set(cache_key, file_bytes, timeout=0)  
-                    cache.set(content_type_cache_key, content_type, timeout=0)  
+                    # caching here
+                    cache.set(bytes_cache_key, file_bytes, timeout=None)  
+                    cache.set(content_type_cache_key, content_type, timeout=None)
+
                     
             if file_bytes and content_type:
                 if media_file.s3_key.lower().endswith(".doc"): # .doc to .docx conversion here

@@ -418,6 +418,7 @@ def convert_doc_to_docx_bytes(doc_bytes: bytes, media_file_id=None, email=None) 
     Returns the .docx file bytes.
     """
     try:
+        print(f'\n---doc conversion called---')
         logger.info(f'Doc to docx conversion started for {media_file_id} for user : {email}')
         # Save .doc temporarily
         with tempfile.NamedTemporaryFile(suffix=".doc", delete=False) as tmp_doc:
@@ -443,6 +444,7 @@ def convert_doc_to_docx_bytes(doc_bytes: bytes, media_file_id=None, email=None) 
         os.remove(doc_path)
         os.remove(docx_path)
         os.rmdir(output_dir)
+        print(f'\n---doc conversion called---')
         logger.info(f'Doc to docx conversion completed for {media_file_id} for user : {email}')
         
 

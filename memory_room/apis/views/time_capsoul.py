@@ -794,10 +794,13 @@ class ServeTimeCapSoulMedia(SecuredView):
         except Exception:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        cache_key = media_file.s3_key
-        file_bytes = cache.get(cache_key)
-        content_type = cache.get(f'{cache_key}_type')
-        if not file_bytes:
+        bytes_cache_key = media_file.s3_key
+        file_bytes = cache.get(bytes_cache_key)
+        
+        content_type_cache_key = f'{bytes_cache_key}_type'
+        content_type = cache.get(content_type_cache_key)
+        
+        if not file_bytes or  not content_type:
             try:
                 file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
             except Exception as e:
@@ -806,20 +809,19 @@ class ServeTimeCapSoulMedia(SecuredView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             else:
                 # caching here
-                cache.set(cache_key, file_bytes, timeout=0)  
-                cache.set(f'{cache_key}_type', content_type, timeout=0)  
+                cache.set(bytes_cache_key, file_bytes, timeout=None)  
+                cache.set(content_type_cache_key, content_type, timeout=None)
 
                 
         if media_file.s3_key.lower().endswith(".doc"):
             try:
-                print(f'\n---doc conversion called---')
                 
-                docx_bytes_cache_key = f'{media_file.id}_docx_preview'
+                docx_bytes_cache_key = f'{bytes_cache_key}_docx_preview'
                 docx_bytes = cache.get(docx_bytes_cache_key)
                 
                 if not docx_bytes:
                     docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=0)  
+                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=None)  
                     
                 response = HttpResponse(
                     docx_bytes,
@@ -870,44 +872,63 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
                     if user.email not in recipients_data:
                         return Response(status=status.HTTP_404_NOT_FOUND)
                     
-        file_name = media_file.s3_key.split('/')[-1]
-        try:
-            file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
-        except Exception as e:
-            file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
-        except Exception as e:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        try:
-            file_size = len(file_bytes)
-            chunk_size = determine_download_chunk_size(file_size)
-            file_stream = io.BytesIO(file_bytes)
+        # file_name = media_file.s3_key.split('/')[-1]
+        file_name  = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}'
+        print(f'\nfile-name: {file_name}  {media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}')
+        
+        bytes_cache_key = str(media_file.s3_key)
+        file_bytes = cache.get(bytes_cache_key)
+        
+        content_type_cache_key = f'{bytes_cache_key}_type'
+        content_type = cache.get(content_type_cache_key)
+        
+        if not file_bytes or  not content_type:
+            try:
+                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
+            except Exception as e:
+                file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
+            except Exception as e:
+                logger.error(f'Exception while serving media file to user: {user.email} capsoul media-id: {media_file.id} as \n error message: {e}')
+                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                # caching here
+                cache.set(bytes_cache_key, file_bytes, timeout=None)  
+                cache.set(content_type_cache_key, content_type, timeout=None)
+        
+        if file_bytes and content_type:
+            try:
+                file_size = len(file_bytes)
+                chunk_size = determine_download_chunk_size(file_size)
+                file_stream = io.BytesIO(file_bytes)
 
-            mime_type = (
-                content_type
-                or mimetypes.guess_type(file_name)[0]
-                or 'application/octet-stream'
-            )
+                mime_type = (
+                    content_type
+                    or mimetypes.guess_type(file_name)[0]
+                    or 'application/octet-stream'
+                )
 
-            def file_iterator():
-                while True:
-                    chunk = file_stream.read(chunk_size)
-                    if not chunk:
-                        break
-                    yield chunk
+                def file_iterator():
+                    while True:
+                        chunk = file_stream.read(chunk_size)
+                        if not chunk:
+                            break
+                        yield chunk
 
-            response = StreamingHttpResponse(
-                streaming_content=file_iterator(),
-                content_type=mime_type
-            )
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
-            response['Content-Length'] = str(file_size)
-            response['Accept-Ranges'] = 'bytes'
-            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response['Access-Control-Expose-Headers'] = 'Content-Length, Content-Disposition'
-            return response
+                response = StreamingHttpResponse(
+                    streaming_content=file_iterator(),
+                    content_type=mime_type
+                )
+                response['Content-Disposition'] = f'attachment; filename="{file_name}"'
+                response['Content-Length'] = str(file_size)
+                response['Accept-Ranges'] = 'bytes'
+                response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+                response['Access-Control-Expose-Headers'] = 'Content-Length, Content-Disposition'
+                return response
 
-        except ClientError as e:
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            except ClientError as e:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+        else:
+            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
 class TaggedCapsoulTracker(SecuredView):
