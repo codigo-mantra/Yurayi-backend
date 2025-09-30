@@ -16,6 +16,12 @@ class LoginSerializer(serializers.Serializer):
     identifier = serializers.CharField()
     password = serializers.CharField(write_only=True)
     device_name = serializers.CharField(required=False, allow_blank=True)
+    # user location info
+    city = serializers.CharField(required=False, allow_blank=True)
+    country = serializers.CharField(required=False, allow_blank=True)
+    latitude = serializers.CharField(required=False, allow_blank=True)
+    longitude = serializers.CharField(required=False, allow_blank=True)
+
 
 
 

@@ -98,6 +98,10 @@ class GoogleAuthView(APIView):
             context={'request': request, 'view': self}
         )
         serializer.is_valid(raise_exception=True)
+        city = serializer.validated_data.get('city')
+        country = serializer.validated_data.get('country')
+        latitude = serializer.validated_data.get('latitude')
+        longitude = serializer.validated_data.get('longitude')
 
         sociallogin = serializer.save()
         user = sociallogin.user
@@ -122,8 +126,6 @@ class GoogleAuthView(APIView):
             }
         )
 
-        
-        
         # Track device/session
         device_name = ''
         # Extract IP and User-Agent
@@ -135,7 +137,34 @@ class GoogleAuthView(APIView):
             ua = f"custom-ua-{uuid.uuid4()}"
         if not ip:
             ip = f"custom-ip-{uuid.uuid4()}"
-        session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
+        # session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
+        
+        try:
+            session = Session.objects.filter(
+                user=user,
+                revoked = False,
+                user_agent=ua,
+                ip_address=ip,
+                name = device_name,
+                city = city, 
+                country = country,
+                latitude = latitude,
+                longitude = longitude
+            ).first()
+            if session is None:
+                session = Session.objects.create(
+                    user=user,
+                    user_agent=ua,
+                    name = device_name,
+                    ip_address=ip,
+                    city = city, 
+                    country = country,
+                    latitude = latitude,
+                    longitude = longitude
+                )
+                logger.info(f'New Session create for user {user.email}')
+        except Exception as e:
+            logger.error(f'Exception while creating user sesion as {e} for user: {user.email}')
 
         access = create_access_jwt_for_user(user, session_id=session.id)
         refresh_value = _gen_refresh_value()
@@ -298,6 +327,10 @@ class LoginView(APIView):
         
         identifier = serializer.validated_data.get('identifier')
         password = serializer.validated_data.get('password')
+        city = serializer.validated_data.get('city')
+        country = serializer.validated_data.get('country')
+        latitude = serializer.validated_data.get('latitude')
+        longitude = serializer.validated_data.get('longitude')
         device_name = serializer.validated_data.get('device_name')
 
 
@@ -332,10 +365,38 @@ class LoginView(APIView):
             ua = f"custom-ua-{uuid.uuid4()}"
         if not ip:
             ip = f"custom-ip-{uuid.uuid4()}"
-       
+        match = re.search(r"\((.*?)\)", ua)
+        if match:
+            os_info = match.group(1).split(";")[0].strip()
+            device_name = os_info
+        
+        try:
+            session = Session.objects.filter(
+                user=user,
+                revoked = False,
+                user_agent=ua,
+                ip_address=ip,
+                name = device_name,
+                city = city, 
+                country = country,
+                latitude = latitude,
+                longitude = longitude
+            ).first()
+            if session is None:
+                session = Session.objects.create(
+                    user=user,
+                    user_agent=ua,
+                    name = device_name,
+                    ip_address=ip,
+                    city = city, 
+                    country = country,
+                    latitude = latitude,
+                    longitude = longitude
+                )
+                logger.info(f'New Session create for user {user.email}')
+        except Exception as e:
+            logger.error(f'Exception while creating user sesion as {e} for user: {user.email}')
             
-        session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
-
         access = create_access_jwt_for_user(user, session_id=session.id)
         refresh_value = _gen_refresh_value()
         from django.utils import timezone 

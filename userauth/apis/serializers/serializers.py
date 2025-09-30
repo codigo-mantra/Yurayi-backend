@@ -78,6 +78,12 @@ User = get_user_model()
 
 class GoogleAccessTokenSerializer(serializers.Serializer):
     access_token = serializers.CharField()
+    # user location info
+    city = serializers.CharField(required=False, allow_blank=True)
+    country = serializers.CharField(required=False, allow_blank=True)
+    latitude = serializers.CharField(required=False, allow_blank=True)
+    longitude = serializers.CharField(required=False, allow_blank=True)
+
 
     def validate(self, attrs):
         access_token = attrs.get("access_token")
