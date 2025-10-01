@@ -3,6 +3,9 @@ from rest_framework import serializers
 from userauth.models import Assets
 from memory_room.models import MemoryRoom, TimeCapSoul, CustomMemoryRoomTemplate, CustomTimeCapSoulTemplate,MemoryRoomDetail
 from django.conf import settings
+import logging
+logger = logging.getLogger(__name__)
+
 
 class AssetSerializer(serializers.ModelSerializer):
     image_url = serializers.SerializerMethodField()
@@ -34,11 +37,10 @@ class MemoryRoomSerializer(serializers.ModelSerializer):
         fields = ['id', 'total_files', 'room_template', 'created_at', 'updated_at']
     
     def get_total_files(self, obj):
-        # Access related MemoryRoomDetail
         try:
-            detail = obj.details  
-            return detail.media_files.count()
-        except MemoryRoomDetail.DoesNotExist:
+            return obj.memory_media_files.filter(is_deleted=False).count()
+        except Exception as e:
+            logger.error(f'Exception while calculating files count for memory-room {obj.id} error as : {e}')
             return 0
 
 

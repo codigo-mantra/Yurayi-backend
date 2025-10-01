@@ -224,13 +224,10 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
 
     def get_total_files(self, obj):
         try:
-            detail = obj.details
-            return detail.media_files.count()
-        except TimeCapSoulDetail.DoesNotExist:
+            return obj.timecapsoul_media_files.filter(is_deleted=False).count()
+        except Exception as e:
             return 0
-        except AttributeError:
-            return 0
-
+        
 
     def get_status(self, obj):
         if obj.status == 'sealed':

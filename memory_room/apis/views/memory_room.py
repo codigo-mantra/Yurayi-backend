@@ -749,7 +749,7 @@ def create_duplicate_room(room:MemoryRoom):
     logger.info(f'Room duplication creation started for user: {room.user.email} room-id: {room.id}')
     try:
         duplicate_capsoul = MemoryRoom.objects.filter(room_duplicate = room, is_deleted = False)
-        capsoul_duplication_number = f'({1 + duplicate_capsoul.count()})'
+        capsoul_duplication_number = f' ({1 + duplicate_capsoul.count()})'
         # create duplicate room here
         created_at = timezone.localtime(timezone.now())
         old_room_template = room.room_template
@@ -775,7 +775,12 @@ def create_duplicate_room(room:MemoryRoom):
     else:
         try:
             # now create duplicate media files here
-            media_files = MemoryRoomMediaFile.objects.filter(user = room.user, memory_room = room, is_deleted =False)
+            # media_files = MemoryRoomMediaFile.objects.filter(user = room.user, memory_room = room, is_deleted =False)
+            media_files = MemoryRoomMediaFile.objects.filter(
+                user=room.user,
+                memory_room=room,
+                is_deleted=False
+            )  # reverse by primary key (latest first)
             
             for media in media_files:
                 try:

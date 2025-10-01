@@ -92,7 +92,7 @@ def user_storage_calculator():
         else:
             for capsoul in user_capsoul:
                 file_size = None
-                current_storage_in_mb = parse_storage_size('')[0]
+                current_storage_in_mb = parse_storage_size('')[0] # initially 0MB 
                 
                 try:
                     media_files = capsoul.timecapsoul_media_files.all()
@@ -105,12 +105,10 @@ def user_storage_calculator():
                 except Exception as e:
                     pass
                 else:
-                    detail = capsoul.details
-                    detail.occupied_storage = str(current_storage_in_mb) + ' MB'
-                    detail.save()
+                    capsoul.occupied_storage = str(current_storage_in_mb) + ' MB'
+                    capsoul.save()
                     user_mapper.current_storage =  str(current_storage_in_mb +  parse_storage_size(user_mapper.current_storage)[0]) + ' MB'
                     user_mapper.save()
-                    
                     print(f'\n ----Capsoul: {capsoul.capsoul_template.name} is: current_storage_in_mb {current_storage_in_mb} -------')
                 
                     

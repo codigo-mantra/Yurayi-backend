@@ -355,6 +355,10 @@ class TimeCapSoul(BaseModel):
         related_name="capsoul_duplicates",
         verbose_name="Time Capsoul Duplicate"
     )
+    is_locked  = models.BooleanField(default=False)
+    unlock_date = models.DateTimeField(verbose_name="Unlock Date", blank=True, null=True)
+    occupied_storage = models.CharField(blank=True, null=True, help_text="Storage used timecap-soul", max_length=255)
+
     
 
 

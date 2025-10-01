@@ -77,7 +77,7 @@ class TimeCapSoulDefaultTemplateAPI(SecuredView):
         if not data:
             default_templates = TimeCapSoulTemplateDefault.objects.filter(is_deleted = False)
             data = TimeCapSoulTemplateDefaultReadOnlySerializer(default_templates, many=True).data
-            cache.set(cache_key, data, timeout=60*10) # 10 minutes cached  
+            cache.set(cache_key, data, timeout=None) 
             
         return Response(data)
 
@@ -1063,7 +1063,7 @@ def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul):
     logger.info(f'Timecapsoul duplication creation started for user: {time_capsoul.user.email} capsoul-id: {time_capsoul.id}')
     try:
         duplicate_capsoul = TimeCapSoul.objects.filter(room_duplicate = time_capsoul, is_deleted = False)
-        capsoul_duplication_number = f'({1 + duplicate_capsoul.count()})'
+        capsoul_duplication_number = f' ({1 + duplicate_capsoul.count()})'
         
         # create duplicate room here
         created_at = timezone.localtime(timezone.now())
@@ -1089,7 +1089,12 @@ def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul):
     else:
         try:
             # now create duplicate media files here
-            media_files = TimeCapSoulMediaFile.objects.filter(user = time_capsoul.user, time_capsoul = time_capsoul, is_deleted =False)
+            # media_files = TimeCapSoulMediaFile.objects.filter(user = time_capsoul.user, time_capsoul = time_capsoul, is_deleted =False)
+            media_files = TimeCapSoulMediaFile.objects.filter(
+                user=time_capsoul.user,
+                time_capsoul=time_capsoul,
+                is_deleted=False
+            )   # reverse by primary key (latest first)
             
             for media in media_files:
                 try:

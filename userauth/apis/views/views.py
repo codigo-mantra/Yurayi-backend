@@ -138,6 +138,10 @@ class GoogleAuthView(APIView):
         if not ip:
             ip = f"custom-ip-{uuid.uuid4()}"
         # session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
+        match = re.search(r"\((.*?)\)", ua)
+        if match:
+            os_info = match.group(1).split(";")[0].strip()
+            device_name = os_info
         
         try:
             session = Session.objects.filter(
@@ -257,6 +261,11 @@ class RegistrationView(APIView):
             ua = f"custom-ua-{uuid.uuid4()}"
         if not ip_address:
             ip_address = f"custom-ip-{uuid.uuid4()}"
+            
+        match = re.search(r"\((.*?)\)", ua)
+        if match:
+            os_info = match.group(1).split(";")[0].strip()
+            device_name = os_info
             
         session = Session.objects.create(
             user=user,

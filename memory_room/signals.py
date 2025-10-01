@@ -37,50 +37,57 @@ def create_user_mapper(sender, instance, created, **kwargs):
 
 
 @receiver(post_save, sender=TimeCapSoulMediaFile)
-def attach_media_to_timecapsoul_detail(sender, instance, created, **kwargs):
+def update_user_storage(sender, instance, created, **kwargs):
     if created and instance.time_capsoul:
         try:
-            detail = TimeCapSoulDetail.objects.get(time_capsoul=instance.time_capsoul)
-            detail.media_files.add(instance)
+            parsed_fle_size = parse_storage_size(instance.file_size)[0]
+            
             user_mapper = instance.user.user_mapper.first()
             if user_mapper: 
-                user_mapper.current_storage =  str( parse_storage_size(instance.file_size)[0] +  parse_storage_size(user_mapper.current_storage)[0]) + ' MB'
+                user_mapper.current_storage =  str( parsed_fle_size +  parse_storage_size(user_mapper.current_storage)[0]) + ' GB'
                 user_mapper.save()
+            
+            #  now update capsoul storage here
+            capsoul = instance.time_capsoul
+            capsoul.occupied_storage = str(parse_storage_size(capsoul.occupied_storage)[0] + parsed_fle_size)+ ' GB'
+            capsoul.save()
+            
             # clear cache
             stored_cached_data = f'user_storage_id_{instance.user.s3_storage_id}'
             if stored_cached_data:
                 cache.delete(stored_cached_data)
             
-        except TimeCapSoulDetail.DoesNotExist:
-            # Optionally create the detail if it doesn't exist
-            detail = TimeCapSoulDetail.objects.create(time_capsoul=instance.time_capsoul, )
-            detail.media_files.add(instance)
-
+        except Exception as e:
+            logger.error(f'Exception while updating user storage as: {instance.user.email} media-id: {instance.id} as {e}')
+            
+            
 
 @receiver(post_save, sender=MemoryRoomMediaFile)
-def attach_memory_room_media__files_detail(sender, instance, created, **kwargs):
+def update_user_storage_on_media_creation(sender, instance, created, **kwargs):
     if created and instance.memory_room:
         try:
-            detail = MemoryRoomDetail.objects.get(memory_room=instance.memory_room)
-            detail.media_files.add(instance)
+            # detail = MemoryRoomDetail.objects.get(memory_room=instance.memory_room)
+            # detail.media_files.add(instance)
             user_mapper = instance.user.user_mapper.first()
+            parsed_file_size = parse_storage_size(instance.file_size)[0]
 
             if user_mapper: 
-                user_mapper.current_storage =  str( parse_storage_size(instance.file_size)[0] +  parse_storage_size(user_mapper.current_storage)[0]) + ' MB'
+                # total usage
+                user_mapper.current_storage =  str( parsed_file_size +  parse_storage_size(user_mapper.current_storage)[0]) + ' GB'
                 user_mapper.save()
+                
+                #  now update memory room storage here
+                room = instance.memory_room
+                room.occupied_storage = str(parse_storage_size(room.occupied_storage)[0] + parsed_file_size) + + ' GB'
+                room.save()
+                
             
             # clear cache
             stored_cached_data = f'user_storage_id_{instance.user.s3_storage_id}'
             if stored_cached_data:
                 cache.delete(stored_cached_data)
-                
-        except MemoryRoomDetail.DoesNotExist:
-            # Optionally create the detail if it doesn't exist
-            detail = MemoryRoomDetail.objects.create(memory_room=instance.memory_room, )
-            detail.media_files.add(instance)
-        else:
-            logger.info('Memory room media file attached to detail')
-            pass
+        except Exception as e:
+            logger.error(f'Exception while updating user storage as: {instance.user.email} media-id: {instance.id}  as {e}')
 
 
 @receiver(post_delete, sender=TimeCapSoul)

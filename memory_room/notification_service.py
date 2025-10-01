@@ -65,7 +65,7 @@ class NotificationService:
             title = notification_data['title']
             message = notification_data['message']
 
-            notification = Notification.objects.create(
+            notification, created = Notification.objects.get_or_create(
                 user=user,
                 category=category,
                 category_type=category_type,
