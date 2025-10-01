@@ -10,6 +10,7 @@ from django.http import StreamingHttpResponse, Http404,HttpResponse, JsonRespons
 from memory_room.utils import determine_download_chunk_size
 from memory_room.utils import parse_storage_size, to_mb, to_gb
 from memory_room.views import parse_storage_size as parse_into_mbs
+from memory_room.signals import update_user_storage
 
 logger = logging.getLogger(__name__)
 from rest_framework.pagination import PageNumberPagination
@@ -256,11 +257,11 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 )
                 replica_template.slug = generate_unique_slug(replica_template)
                 replica_instance = TimeCapSoul.objects.create(
-                                                        user = user,
-                                                        capsoul_template=replica_template,
-                                                        status = 'created',
-                                                        capsoul_replica_refrence = time_capsoul,
-                                                        created_at = created_at
+                    user = user,
+                    capsoul_template=replica_template,
+                    status = 'created',
+                    capsoul_replica_refrence = time_capsoul,
+                    created_at = created_at
                 )
         
         if replica_instance:
@@ -339,6 +340,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                     if serializer.is_valid():
                         media_file = serializer.save()
+                        update_user_storage(
+                            user=user,
+                            media_id=media_file.id,
+                            file_size=media_file.file_size,
+                            cache_key=f'user_storage_id_{user.id}',
+                            operation_type='addition'
+                        )
                         update_file_progress(file_index, 100, 'Upload completed successfully', 'success')
 
                         return {
@@ -570,10 +578,17 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         user = self.get_current_user(request)
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
         time_capsoul  = media_file.time_capsoul
-        if time_capsoul.status == 'created':
+        if time_capsoul.status != 'unlocked':
             # media_file.delete()
             media_file.is_deleted = True
             media_file.save()
+            update_user_storage(
+                user=user,
+                media_id=media_file.id,
+                file_size=media_file.file_size,
+                cache_key=f'user_storage_id_{user.id}',
+                operation_type='remove'
+            )
             return Response({'message': 'Time Capsoul media deleted successfully'})
         return Response({'message': 'Soory Time capsoul media files cant be deleted'})
 
@@ -988,7 +1003,8 @@ class UserStorageTracker(SecuredView):
     def get(self, request, format=None):
         user = self.get_current_user(request)
         logger.info(f"UserStorageTracker  called {user.email}")
-        user_tracker_cache_key = f'user_storage_id_{user.s3_storage_id}'
+        # user_tracker_cache_key = f'user_storage_id_{user.s3_storage_id}'
+        user_tracker_cache_key= f'user_storage_id_{user.id}'
         user_storage_data = cache.get(user_tracker_cache_key)
         if not user_storage_data:
             try:
@@ -1077,6 +1093,7 @@ class UserStorageTracker(SecuredView):
                 user_storage_data['current_used_storage'] = round(total_space_occupied, 5)
                 user_storage_data['free_storage'] = round(user_storage_limit - total_space_occupied, 5)
                 user_storage_data['storage_usage_percentage'] = round(( total_space_occupied * 100  )/user_storage_limit, 3)
+                cache.set(user_tracker_cache_key, user_storage_data, timeout=None)
                 
             except Exception as e:
                 logger.error(f'Exception occur at UserStorageTracker  while getting storage data for {user.email} error-message: \n {e}')

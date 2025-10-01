@@ -48,7 +48,7 @@ from userauth.apis.serializers.serializers import  (
     CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer,UserAddressSerializer, 
     YurayiPolicySerializer,SessionSerializer
     )
-
+from memory_room.signals import create_user_mapper
 from userauth.serializers import LoginSerializer
 from allauth.account.utils import perform_login
 from memory_room.notification_service import NotificationService
@@ -118,13 +118,15 @@ class GoogleAuthView(APIView):
 
         if is_new_user:
             send_html_email_task.apply_async(
-            kwargs={
-                "subject": 'Welcome to Yurayi',
-                "to_email": user.email,
-                "template_name": 'userauth/registeration_confirmation.html',
-                "context": {'email': user.email},
-            }
-        )
+                kwargs={
+                    "subject": 'Welcome to Yurayi',
+                    "to_email": user.email,
+                    "template_name": 'userauth/registeration_confirmation.html',
+                    "context": {'email': user.email},
+                }
+            )
+            create_user_mapper(user) # create user mapper
+            
 
         # Track device/session
         device_name = ''
@@ -249,6 +251,8 @@ class RegistrationView(APIView):
                 "context": {'email': user.email},
             }
         )
+        create_user_mapper(user) # create user mapper
+        
         logger.info(f'RegistrationView in new user created as {user.email}')
         
             

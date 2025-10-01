@@ -8,15 +8,15 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-@receiver(post_save, sender=User)
-def create_user_mapper(sender, instance, created, **kwargs):
-    if created:
-        mapper = UserMapper.objects.create(
-            user=instance,
-            max_storage_limit='15 GB',     # default value
-            current_storage='0 MB'          # default usage
-        )
-        mapper.save()
+# @receiver(post_save, sender=User)
+# def create_user_mapper(sender, instance, created, **kwargs):
+#     if created:
+#         mapper = UserMapper.objects.create(
+#             user=instance,
+#             max_storage_limit='15 GB',     # default value
+#             current_storage='0 MB'          # default usage
+#         )
+#         mapper.save()
 
 # create memory-room detail
 @receiver(post_save, sender=MemoryRoom)
@@ -36,58 +36,58 @@ def create_user_mapper(sender, instance, created, **kwargs):
 
 
 
-@receiver(post_save, sender=TimeCapSoulMediaFile)
-def update_user_storage(sender, instance, created, **kwargs):
-    if created and instance.time_capsoul:
-        try:
-            parsed_fle_size = parse_storage_size(instance.file_size)[0]
+# @receiver(post_save, sender=TimeCapSoulMediaFile)
+# def update_user_storage(sender, instance, created, **kwargs):
+#     if created and instance.time_capsoul:
+#         try:
+#             parsed_fle_size = parse_storage_size(instance.file_size)[0]
             
-            user_mapper = instance.user.user_mapper.first()
-            if user_mapper: 
-                user_mapper.current_storage =  str( parsed_fle_size +  parse_storage_size(user_mapper.current_storage)[0]) + ' GB'
-                user_mapper.save()
+#             user_mapper = instance.user.user_mapper.first()
+#             if user_mapper: 
+#                 user_mapper.current_storage =  str( parsed_fle_size +  parse_storage_size(user_mapper.current_storage)[0]) + ' GB'
+#                 user_mapper.save()
             
-            #  now update capsoul storage here
-            capsoul = instance.time_capsoul
-            capsoul.occupied_storage = str(parse_storage_size(capsoul.occupied_storage)[0] + parsed_fle_size)+ ' GB'
-            capsoul.save()
+#             #  now update capsoul storage here
+#             capsoul = instance.time_capsoul
+#             capsoul.occupied_storage = str(parse_storage_size(capsoul.occupied_storage)[0] + parsed_fle_size)+ ' GB'
+#             capsoul.save()
             
-            # clear cache
-            stored_cached_data = f'user_storage_id_{instance.user.s3_storage_id}'
-            if stored_cached_data:
-                cache.delete(stored_cached_data)
+#             # clear cache
+#             stored_cached_data = f'user_storage_id_{instance.user.s3_storage_id}'
+#             if stored_cached_data:
+#                 cache.delete(stored_cached_data)
             
-        except Exception as e:
-            logger.error(f'Exception while updating user storage as: {instance.user.email} media-id: {instance.id} as {e}')
+#         except Exception as e:
+#             logger.error(f'Exception while updating user storage as: {instance.user.email} media-id: {instance.id} as {e}')
             
             
 
-@receiver(post_save, sender=MemoryRoomMediaFile)
-def update_user_storage_on_media_creation(sender, instance, created, **kwargs):
-    if created and instance.memory_room:
-        try:
-            # detail = MemoryRoomDetail.objects.get(memory_room=instance.memory_room)
-            # detail.media_files.add(instance)
-            user_mapper = instance.user.user_mapper.first()
-            parsed_file_size = parse_storage_size(instance.file_size)[0]
+# @receiver(post_save, sender=MemoryRoomMediaFile)
+# def update_user_storage_on_media_creation(sender, instance, created, **kwargs):
+#     if created and instance.memory_room:
+#         try:
+#             # detail = MemoryRoomDetail.objects.get(memory_room=instance.memory_room)
+#             # detail.media_files.add(instance)
+#             user_mapper = instance.user.user_mapper.first()
+#             parsed_file_size = parse_storage_size(instance.file_size)[0]
 
-            if user_mapper: 
-                # total usage
-                user_mapper.current_storage =  str( parsed_file_size +  parse_storage_size(user_mapper.current_storage)[0]) + ' GB'
-                user_mapper.save()
+#             if user_mapper: 
+#                 # total usage
+#                 user_mapper.current_storage =  str( parsed_file_size +  parse_storage_size(user_mapper.current_storage)[0]) + ' GB'
+#                 user_mapper.save()
                 
-                #  now update memory room storage here
-                room = instance.memory_room
-                room.occupied_storage = str(parse_storage_size(room.occupied_storage)[0] + parsed_file_size) + + ' GB'
-                room.save()
+#                 #  now update memory room storage here
+#                 room = instance.memory_room
+#                 room.occupied_storage = str(parse_storage_size(room.occupied_storage)[0] + parsed_file_size) + + ' GB'
+#                 room.save()
                 
             
-            # clear cache
-            stored_cached_data = f'user_storage_id_{instance.user.s3_storage_id}'
-            if stored_cached_data:
-                cache.delete(stored_cached_data)
-        except Exception as e:
-            logger.error(f'Exception while updating user storage as: {instance.user.email} media-id: {instance.id}  as {e}')
+#             # clear cache
+#             stored_cached_data = f'user_storage_id_{instance.user.s3_storage_id}'
+#             if stored_cached_data:
+#                 cache.delete(stored_cached_data)
+#         except Exception as e:
+#             logger.error(f'Exception while updating user storage as: {instance.user.email} media-id: {instance.id}  as {e}')
 
 
 @receiver(post_delete, sender=TimeCapSoul)
@@ -125,3 +125,43 @@ def delete_capsoul_template_cached_data(sender, instance, **kwargs):
     # Clear cached data 
     cache_key = f"time_capsoul_templates"
     cache.delete(cache_key)
+
+
+def create_user_mapper(user):
+    try:
+        mapper,created = UserMapper.objects.create(
+            user=user,
+            max_storage_limit='15 GB',     
+            current_storage='0 GB'          
+        )
+        mapper.save()
+        logger.info(f'new user mapper created for {user.email}')
+    except Exception as e:
+        logger.error(f'Exception while creating profile for {user.email} as error-message: {e}')
+
+
+def update_user_storage(user, media_id, file_size, cache_key, operation_type):
+    
+    try:
+        parsed_file_size, _ = parse_storage_size(file_size)  
+        user_mapper = user.user_mapper.first()
+        if user_mapper: 
+            current_size, _ = parse_storage_size(user_mapper.current_storage)
+
+            if operation_type == 'addition':
+                updated_size = current_size + parsed_file_size
+
+            else:
+                updated_size = max(0, current_size - parsed_file_size)  # prevent negative
+
+            user_mapper.current_storage = f"{updated_size} GB"
+            user_mapper.save()
+            logger.info(f'User storage updated successfully for user: {user.email} option type: {operation_type} updated storage: {user_mapper.current_storage}' )
+            
+            if cache_key:
+                cache.delete(cache_key)
+                logger.info(f'User storage cached data cleared for user: {user.email}')
+    except Exception as e:
+        logger.error(f'Exception while updating user storage for user: {user.email} media-file id: {media_id} error-message: {e}')
+        
+        

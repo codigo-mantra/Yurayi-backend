@@ -4,7 +4,7 @@ import json
 import time
 import mimetypes
 from rest_framework import serializers
-
+from memory_room.signals import update_user_storage
 from botocore.exceptions import ClientError
 from django.conf import settings
 from django.http import StreamingHttpResponse, Http404, JsonResponse
@@ -297,6 +297,13 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
                     if serializer.is_valid():
                         media_file = serializer.save()
+                        update_user_storage(
+                            user=user,
+                            media_id=media_file.id,
+                            file_size=media_file.file_size,
+                            cache_key=f'user_storage_id_{user.id}',
+                            operation_type='addition'
+                        )
                         update_file_progress(file_index, 100, 'Upload completed successfully', 'success')
                         
                         return {
@@ -427,6 +434,13 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         )
         media_file.is_deleted = True
         media_file.save()
+        update_user_storage(
+            user=user,
+            media_id=media_file.id,
+            file_size=media_file.file_size,
+            cache_key=f'user_storage_id_{user.id}',
+            operation_type='remove'
+        )
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
 class UpdateMediaFileDescriptionView(SecuredView):
