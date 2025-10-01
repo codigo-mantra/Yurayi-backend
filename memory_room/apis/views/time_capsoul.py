@@ -25,7 +25,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import time
 from django.http import HttpResponseForbidden, HttpResponseRedirect,Http404
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView,NewSecuredView
@@ -836,12 +836,41 @@ class ServeTimeCapSoulMedia(SecuredView):
                 logger.error(f'Exception while generating docx for doc files as {e}')
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
-            # 🔹 All other files
-            response = HttpResponse(file_bytes, content_type=content_type)
-            frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-            response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-            response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1]}"'
-            return response
+            if content_type in ["image/heic", "image/heif"]:
+                file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+                response = HttpResponse(file_bytes, content_type="image/jpeg")
+                response["Content-Disposition"] = (
+                    f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
+                )
+                return response
+            
+            elif media_file.s3_key.lower().endswith(".mkv"):
+                cache_key = f'{bytes_cache_key}_mp4'
+                mp4_bytes = cache.get(cache_key)
+                if not mp4_bytes:
+                    try:
+                        mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
+                        content_type = "video/mp4"
+                        cache.set(cache_key, mp4_bytes, timeout=None)
+                    except Exception as e:
+                        logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
+                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                download_name = media_file.s3_key.split("/")[-1]
+                download_name = download_name.replace(".mkv", ".mp4")
+                response = HttpResponse(mp4_bytes, content_type=content_type)
+                frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                response["Content-Disposition"] = f'inline; filename="{download_name}"'
+                return response
+
+            else:
+                # 🔹 All other files
+                response = HttpResponse(file_bytes, content_type=content_type)
+                frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1]}"'
+                return response
 
 
 

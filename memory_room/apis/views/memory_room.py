@@ -51,6 +51,7 @@ from memory_room.utils import determine_download_chunk_size,convert_doc_to_docx_
 logger = logging.getLogger(__name__)
 
 from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file
+from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes
 
 class MemoryRoomCoverView(SecuredView):
     """
@@ -675,11 +676,38 @@ class ServeMedia(SecuredView):
                         logger.error(f'Exception while generating docx for doc files as {e}')
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 else:
-                    response = HttpResponse(file_bytes, content_type=content_type)
-                    frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # # Build CSP header
-                    response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-                    response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
-                    return response
+                    if content_type in ["image/heic", "image/heif"]:
+                        file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+                        response = HttpResponse(file_bytes, content_type="image/jpeg")
+                        response["Content-Disposition"] = (
+                            f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
+                        )
+                        return response
+                    elif media_file.s3_key.lower().endswith(".mkv"):
+                        cache_key = f'{bytes_cache_key}_mp4'
+                        mp4_bytes = cache.get(cache_key)
+                        if not mp4_bytes:
+                            try:
+                                mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
+                                content_type = "video/mp4"
+                                cache.set(cache_key, mp4_bytes, timeout=None)
+                            except Exception as e:
+                                logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
+                                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                        download_name = media_file.s3_key.split("/")[-1]
+                        download_name = download_name.replace(".mkv", ".mp4")
+                        response = HttpResponse(mp4_bytes, content_type=content_type)
+                        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                        response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                        response["Content-Disposition"] = f'inline; filename="{download_name}"'
+                        return response
+                    else:
+                        response = HttpResponse(file_bytes, content_type=content_type)
+                        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # 
+                        response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                        response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
+                        return response
         except Exception as e:
             logger.warning(f'Exception while serving media file as s3-key: {s3_key} user: {user.email}')
             return Response(status=status.HTTP_404_NOT_FOUND)

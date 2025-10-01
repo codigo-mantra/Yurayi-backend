@@ -444,7 +444,7 @@ def convert_doc_to_docx_bytes(doc_bytes: bytes, media_file_id=None, email=None) 
         os.remove(doc_path)
         os.remove(docx_path)
         os.rmdir(output_dir)
-        print(f'\n---doc conversion called---')
+        print(f'\n---doc conversion completed---')
         logger.info(f'Doc to docx conversion completed for {media_file_id} for user : {email}')
         
 
@@ -453,3 +453,72 @@ def convert_doc_to_docx_bytes(doc_bytes: bytes, media_file_id=None, email=None) 
         logger.error(f'Exception while converting doc file docx as {e}')
 
 
+from pillow_heif import register_heif_opener
+from PIL import Image
+import io
+
+register_heif_opener()
+
+def convert_heic_to_jpeg_bytes(file_bytes):
+    image = Image.open(io.BytesIO(file_bytes))
+    output = io.BytesIO()
+    image.convert("RGB").save(output, format="JPEG", quality=90)
+    return output.getvalue(), "image/jpeg"
+
+import subprocess
+import io
+
+import subprocess
+import io
+import tempfile
+import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+def convert_mkv_to_mp4_bytes(file_bytes):
+    """
+    Convert MKV video bytes to MP4 (container rewrap) using ffmpeg.
+    Returns (mp4_bytes, content_type) or raises Exception if conversion fails.
+    """
+    input_path = None
+    output_path = None
+
+    try:
+        # Create temporary files
+        with tempfile.NamedTemporaryFile(suffix=".mkv", delete=False) as tmp_in:
+            tmp_in.write(file_bytes)
+            input_path = tmp_in.name
+
+        output_path = input_path.replace(".mkv", ".mp4")
+
+        # Run ffmpeg to rewrap MKV -> MP4 without re-encoding
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", input_path, "-c", "copy", output_path],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True
+        )
+
+        # Read back converted file
+        with open(output_path, "rb") as f:
+            converted_bytes = f.read()
+
+        logger.info(f"MKV to MP4 conversion successful: {len(converted_bytes)} bytes")
+        return converted_bytes, "video/mp4"
+
+    except subprocess.CalledProcessError as e:
+        logger.error(f"ffmpeg conversion failed: {e.stderr.decode(errors='ignore')}")
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error in MKV conversion: {e}")
+        raise
+    finally:
+        # Cleanup temp files
+        try:
+            if input_path and os.path.exists(input_path):
+                os.remove(input_path)
+            if output_path and os.path.exists(output_path):
+                os.remove(output_path)
+        except Exception as cleanup_err:
+            logger.warning(f"Failed to clean up temp files: {cleanup_err}")
