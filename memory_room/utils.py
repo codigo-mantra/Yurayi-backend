@@ -522,3 +522,64 @@ def convert_mkv_to_mp4_bytes(file_bytes):
                 os.remove(output_path)
         except Exception as cleanup_err:
             logger.warning(f"Failed to clean up temp files: {cleanup_err}")
+
+
+import re
+
+def convert_file_size(size_str, target_unit="MB"):
+    """
+    Convert a file size string (e.g. '28.42 MB') into the given target format.
+    
+    Args:
+        size_str (str): The input size, e.g. '28.42 MB'
+        target_unit (str): One of 'KB', 'MB', 'GB', 'TB'
+    
+    Returns:
+        str: Converted size string in requested format, rounded to 2 decimals.
+    """
+    try:
+        if not size_str or not str(size_str).strip():
+            return f"0 {target_unit.upper()}"
+        
+        match = re.match(r"(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)", str(size_str).strip(), re.IGNORECASE)
+        if not match:
+            return f"0 {target_unit.upper()}"
+        
+        value, unit = match.groups()
+        value = float(value)
+        unit = unit.upper()
+        target_unit = target_unit.upper()
+
+        # Step 1: Convert everything to GB
+        if unit == "KB":
+            value_gb = value / (1024 * 1024)
+        elif unit == "MB":
+            value_gb = value / 1024
+        elif unit == "GB":
+            value_gb = value
+        elif unit == "TB":
+            value_gb = value * 1024
+        else:
+            return f"0 {target_unit}"
+
+        # Step 2: Convert GB → target unit
+        if target_unit == "KB":
+            final_value = value_gb * 1024 * 1024
+        elif target_unit == "MB":
+            final_value = value_gb * 1024
+        elif target_unit == "GB":
+            final_value = value_gb
+        elif target_unit == "TB":
+            final_value = value_gb / 1024
+        else:
+            return f"0 {target_unit}"
+
+        # Format: avoid trailing ".0"
+        final_value = round(final_value, 2)
+        if final_value.is_integer():
+            final_value = int(final_value)
+
+        return final_value,target_unit
+
+    except Exception:
+        return f"0 {target_unit.upper()}"

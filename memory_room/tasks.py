@@ -8,7 +8,9 @@ from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 import logging
 logger = logging.getLogger(__name__)
+from memory_room.utils import convert_file_size
 
+from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoulMediaFile
 
 from memory_room.models import TimeCapSoulDetail, TimeCapSoulRecipient, TimeCapSoul
 from memory_room.notification_service import NotificationService
@@ -167,8 +169,49 @@ def capsoul_notification_handler():
             print('--- capsoul_memory_one_year_ago called ---')
             capsoul_memory_one_year_ago.apply_async((capsoul.id,), eta=unlock_date)
 
+@shared_task
+def update_memory_room_occupied_storage(media_file_id, option_type):
+    is_updated = False
     
-   
+    try:
+        media_file = MemoryRoomMediaFile.objects.get(id = media_file_id)
+    except MemoryRoomMediaFile.DoesNotExist:
+        logger.error(f'Exception while updating memory room storage for media file id: {media_file_id}')
+    else:
+        room = media_file.memory_room
+        file_size_in_kb = convert_file_size(media_file.file_size, 'KB')[0]
+        current_occupied_storage_in_kb = convert_file_size(room.occupied_storage, 'KB')[0]
+        
+        
+        if option_type == 'addition':
+            updated_storage = current_occupied_storage_in_kb + file_size_in_kb
+        else:
+            updated_storage = max(0, current_occupied_storage_in_kb - file_size_in_kb)
+        room.occupied_storage = f'{updated_storage} KB'
+        room.save()
+        is_updated = True
+    finally:
+        return is_updated
+        
+        
+@shared_task
+def update_time_capsoul_occupied_storage(media_file_id, option_type):
+    is_updated = False
     
-    
-    
+    try:
+        media_file = TimeCapSoulMediaFile.objects.get(id = media_file_id)
+    except TimeCapSoulMediaFile.DoesNotExist:
+        logger.error(f'Exception while updating time-capsoul room storage for media file id: {media_file_id}')
+    else:
+        capsoul = media_file.time_capsoul
+        file_size_in_kb = convert_file_size(media_file.file_size, 'KB')[0]
+        current_occupied_storage_in_kb = convert_file_size(capsoul.occupied_storage, 'KB')[0]
+        if option_type == 'addition':
+            updated_storage = current_occupied_storage_in_kb + file_size_in_kb
+        else:
+            updated_storage = max(0, current_occupied_storage_in_kb - file_size_in_kb)
+        capsoul.occupied_storage = f'{updated_storage} KB'
+        capsoul.save()
+        is_updated = True
+    finally:
+        return is_updated

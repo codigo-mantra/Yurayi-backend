@@ -47,11 +47,12 @@ from memory_room.apis.serializers.memory_room import (
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.crypto_utils import  verify_signature
 from memory_room.utils import determine_download_chunk_size,convert_doc_to_docx_bytes
+from memory_room.tasks import update_memory_room_occupied_storage
 
 logger = logging.getLogger(__name__)
 
 from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file
-from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes
+from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_file_size
 
 class MemoryRoomCoverView(SecuredView):
     """
@@ -297,6 +298,9 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
                     if serializer.is_valid():
                         media_file = serializer.save()
+                        update_memory_room_occupied_storage.apply_async(
+                            args=[media_file.id, 'addition'],
+                        )
                         update_user_storage(
                             user=user,
                             media_id=media_file.id,
@@ -434,6 +438,9 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         )
         media_file.is_deleted = True
         media_file.save()
+        update_memory_room_occupied_storage.apply_async( 
+            args=[media_file.id, 'remove'],
+        )
         update_user_storage(
             user=user,
             media_id=media_file.id,
@@ -664,6 +671,7 @@ class ServeMedia(SecuredView):
                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 else:
                     # caching here
+                    print(f'yes file bytes received')
                     cache.set(bytes_cache_key, file_bytes, timeout=None)  
                     cache.set(content_type_cache_key, content_type, timeout=None)
 
@@ -690,9 +698,14 @@ class ServeMedia(SecuredView):
                         logger.error(f'Exception while generating docx for doc files as {e}')
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 else:
-                    if content_type in ["image/heic", "image/heif"]:
-                        file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
-                        response = HttpResponse(file_bytes, content_type="image/jpeg")
+                    if media_file.s3_key.lower().endswith(".heic")  or media_file.s3_key.lower().endswith(".heif"):
+                        jpeg_cache_key = f'{bytes_cache_key}_jpeg'
+                        jpeg_file_bytes = cache.get(jpeg_cache_key)
+                        if not jpeg_file_bytes:
+                            jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+                            cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=None)
+                            
+                        response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
                         response["Content-Disposition"] = (
                             f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
                         )

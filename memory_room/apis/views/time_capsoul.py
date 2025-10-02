@@ -8,9 +8,11 @@ from botocore.exceptions import ClientError
 from django.conf import settings
 from django.http import StreamingHttpResponse, Http404,HttpResponse, JsonResponse, HttpResponseNotFound
 from memory_room.utils import determine_download_chunk_size
-from memory_room.utils import parse_storage_size, to_mb, to_gb
+from memory_room.utils import parse_storage_size, to_mb, to_gb, convert_file_size
 from memory_room.views import parse_storage_size as parse_into_mbs
 from memory_room.signals import update_user_storage
+from memory_room.tasks import update_time_capsoul_occupied_storage
+
 
 logger = logging.getLogger(__name__)
 from rest_framework.pagination import PageNumberPagination
@@ -79,7 +81,7 @@ class TimeCapSoulDefaultTemplateAPI(SecuredView):
             default_templates = TimeCapSoulTemplateDefault.objects.filter(is_deleted = False)
             data = TimeCapSoulTemplateDefaultReadOnlySerializer(default_templates, many=True).data
             cache.set(cache_key, data, timeout=None) 
-            
+        logger.info("TimeCapSoulDefaultTemplateAPI. data served ")
         return Response(data)
 
 class CreateTimeCapSoulView(SecuredView):
@@ -340,6 +342,9 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                     if serializer.is_valid():
                         media_file = serializer.save()
+                        update_time_capsoul_occupied_storage.apply_async( 
+                            args=[media_file.id, 'addition'],
+                        )
                         update_user_storage(
                             user=user,
                             media_id=media_file.id,
@@ -582,6 +587,9 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
             # media_file.delete()
             media_file.is_deleted = True
             media_file.save()
+            update_time_capsoul_occupied_storage.apply_async( 
+                args=[media_file.id, 'remove'],
+            )
             update_user_storage(
                 user=user,
                 media_id=media_file.id,
@@ -851,8 +859,12 @@ class ServeTimeCapSoulMedia(SecuredView):
                 logger.error(f'Exception while generating docx for doc files as {e}')
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
-            if content_type in ["image/heic", "image/heif"]:
-                file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+            if media_file.s3_key.lower().endswith(".heic")  or media_file.s3_key.lower().endswith(".heif"):
+                jpeg_cache_key = f'{bytes_cache_key}_jpeg'
+                jpeg_file_bytes = cache.get(jpeg_cache_key)
+                if not jpeg_file_bytes:
+                    jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+                    cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=None)
                 response = HttpResponse(file_bytes, content_type="image/jpeg")
                 response["Content-Disposition"] = (
                     f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
@@ -1003,7 +1015,6 @@ class UserStorageTracker(SecuredView):
     def get(self, request, format=None):
         user = self.get_current_user(request)
         logger.info(f"UserStorageTracker  called {user.email}")
-        # user_tracker_cache_key = f'user_storage_id_{user.s3_storage_id}'
         user_tracker_cache_key= f'user_storage_id_{user.id}'
         user_storage_data = cache.get(user_tracker_cache_key)
         if not user_storage_data:
@@ -1043,7 +1054,7 @@ class UserStorageTracker(SecuredView):
                 
                 
                 for capsoul in user_capsouls: # time-capsoul files calculations
-                    media_files = capsoul.timecapsoul_media_files.all()
+                    media_files = capsoul.timecapsoul_media_files.filter(is_deleted = False)
                     for media in media_files: 
                         file_size = parse_into_mbs(media.file_size)
                         file_size = to_gb(file_size[0], file_size[-1])
@@ -1062,7 +1073,7 @@ class UserStorageTracker(SecuredView):
                             user_storage_data['documents']['amount'] += file_size
                 
                 for capsoul in memory_room:   # memory-room file calculations
-                    media_files = capsoul.memory_media_files.all()
+                    media_files = capsoul.memory_media_files.filter(is_deleted=False)
                     for media in media_files: 
                         # file_size = parse_into_mbs(media.file_size)[0]
                         file_size = parse_into_mbs(media.file_size)

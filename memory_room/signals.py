@@ -2,7 +2,7 @@ from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import User, UserMapper
 from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica, RecipientsDetail, MemoryRoomMediaFile, MemoryRoomTemplateDefault
-from memory_room.utils import to_mb, parse_storage_size
+from memory_room.utils import to_mb, parse_storage_size,convert_file_size
 from django.core.cache import cache
 import logging
 logger = logging.getLogger(__name__)
@@ -143,18 +143,18 @@ def create_user_mapper(user):
 def update_user_storage(user, media_id, file_size, cache_key, operation_type):
     
     try:
-        parsed_file_size, _ = parse_storage_size(file_size)  
+        file_size_in_kb, _ = convert_file_size(file_size, "KB")  
         user_mapper = user.user_mapper.first()
         if user_mapper: 
-            current_size, _ = parse_storage_size(user_mapper.current_storage)
+            current_storage_occupied, _ = convert_file_size(user_mapper.current_storage, "KB")  
+            
 
             if operation_type == 'addition':
-                updated_size = current_size + parsed_file_size
-
+                updated_size = current_storage_occupied + file_size_in_kb
             else:
-                updated_size = max(0, current_size - parsed_file_size)  # prevent negative
-
-            user_mapper.current_storage = f"{updated_size} GB"
+                updated_size = max(0, current_storage_occupied - file_size_in_kb)  # prevent negative
+                
+            user_mapper.current_storage = f"{updated_size} KB"
             user_mapper.save()
             logger.info(f'User storage updated successfully for user: {user.email} option type: {operation_type} updated storage: {user_mapper.current_storage}' )
             

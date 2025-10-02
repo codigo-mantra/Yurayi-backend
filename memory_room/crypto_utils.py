@@ -24,6 +24,9 @@ kms = boto3.client(
     aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
     aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
 )
+import logging
+logger = logging.getLogger(__name__)
+
 
 def encrypt_and_upload_file(*, key, plaintext_bytes, content_type="application/octet-stream", 
                           file_category=None, progress_callback=None):
@@ -81,13 +84,11 @@ def encrypt_and_upload_file(*, key, plaintext_bytes, content_type="application/o
         if progress_callback:
             progress_callback(100, "Upload completed successfully!")
 
-        # print(f"✅ File uploaded successfully! S3 Key: {key}")
         return obj
         
     except Exception as e:
         if progress_callback:
             progress_callback(-1, f"Upload failed: {str(e)}")
-        logger = logging.getLogger(__name__)
         logger.exception("Encrypt and upload failed")
         raise e
 
@@ -222,28 +223,32 @@ def decrypt_and_get_image(key: str):
         plaintext (bytes): Decrypted file bytes
         content_type (str): Original content type from metadata
     """
-    # 1) Fetch encrypted object
-    obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
-    ciphertext = obj["Body"].read()
+    try:
+        
+        # 1) Fetch encrypted object
+        obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
+        ciphertext = obj["Body"].read()
 
-    # 2) Extract encryption metadata
-    metadata = obj["Metadata"]
-    encrypted_data_key_b64 = metadata["edk"]
-    nonce_b64 = metadata["nonce"]
-    orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
+        # 2) Extract encryption metadata
+        metadata = obj["Metadata"]
+        encrypted_data_key_b64 = metadata["edk"]
+        nonce_b64 = metadata["nonce"]
+        orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
 
-    encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
-    nonce = base64.b64decode(nonce_b64)
+        encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
+        nonce = base64.b64decode(nonce_b64)
 
-    # 3) Decrypt the data key with KMS
-    resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
-    data_key = resp["Plaintext"]
+        # 3) Decrypt the data key with KMS
+        resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
+        data_key = resp["Plaintext"]
 
-    # 4) Decrypt ciphertext with AES-GCM
-    aesgcm = AESGCM(data_key)
-    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        # 4) Decrypt ciphertext with AES-GCM
+        aesgcm = AESGCM(data_key)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
 
-    return plaintext, orig_content_type
+        return plaintext, orig_content_type
+    except Exception as e:
+        logger.error(f'Exception while media decryption as {e}')
 
 
 
