@@ -93,7 +93,7 @@ class CreateTimeCapSoulView(SecuredView):
         """
         Utility method to get a time capsoul owned by the user.
         """
-        return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+        return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user, is_deleted = False)
 
     def post(self, request, format=None):
         logger.info("CreateTimeCapSoulView.post called")
@@ -149,7 +149,7 @@ class TimeCapSoulUpdationView(SecuredView):
     def patch(self, request, time_capsoul_id):
         logger.info("TimeCapSoulUpdationView.patch called")
         user = self.get_current_user(request)
-        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user, is_deleted = False)
         serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True)
         if serializer.is_valid():
             update_time_capsoul = serializer.save()
@@ -545,15 +545,15 @@ class MoveTimeCapSoulMediaFile(SecuredView):
         """Move media file from one TimeCapsoul to another"""
         user = self.get_current_user(request)
 
-        old_time_capsoul = get_object_or_404(TimeCapSoul, id=old_cap_soul_id, user=user)
-        new_time_capsoul = get_object_or_404(TimeCapSoul, id=new_capsoul_id, user=user)
+        old_time_capsoul = get_object_or_404(TimeCapSoul, id=old_cap_soul_id, user=user, is_deleted = False)
+        new_time_capsoul = get_object_or_404(TimeCapSoul, id=new_capsoul_id, user=user, is_deleted = False)
         
         if old_time_capsoul.status == 'created' and new_time_capsoul.status == 'created':
             media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user, time_capsoul=old_time_capsoul)
             # Remove from old TimeCapsoul's related set
-            old_time_capsoul.details.media_files.remove(media_file)
+            # old_time_capsoul.details.media_files.remove(media_file)
             # Add to new TimeCapsoul's related set
-            new_time_capsoul.details.media_files.add(media_file)
+            # new_time_capsoul.details.media_files.add(media_file)
 
             # Update the FK on media file
             media_file.time_capsoul = new_time_capsoul
@@ -573,7 +573,7 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         """
         Utility method to get a time-capsoul owned by the user.
         """
-        return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+        return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user, is_deleted = False)
     
     
 
@@ -604,7 +604,7 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
     def patch(self, request, time_capsoul_id, media_file_id):
         user = self.get_current_user(request)
         # time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
-        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
+        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user, is_deleted = False)
         serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True)
         serializer.is_valid(raise_exception=True)
         update_media_file = serializer.save()
@@ -617,15 +617,16 @@ class TimeCapSoulUnlockView(SecuredView):
     def post(self, request, time_capsoul_id):
         user = self.get_current_user(request)
         try:
-            time_capsoul_detail = TimeCapSoulDetail.objects.get(
-                time_capsoul__id=time_capsoul_id,
-                time_capsoul__user=user
+            time_capsoul = TimeCapSoul.objects.get(
+                id=time_capsoul_id,
+                user=user,
+                is_deleted = False
             )
-        except TimeCapSoulDetail.DoesNotExist:
+        except TimeCapSoul.DoesNotExist:
             return Response({"error": "TimeCapsoul not found."}, status=status.HTTP_404_NOT_FOUND)
 
         serializer = TimeCapsoulUnlockSerializer(
-            instance=time_capsoul_detail,
+            instance=time_capsoul,
             data=request.data,
             partial=True  
         )
@@ -865,7 +866,7 @@ class ServeTimeCapSoulMedia(SecuredView):
                 if not jpeg_file_bytes:
                     jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
                     cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=None)
-                response = HttpResponse(file_bytes, content_type="image/jpeg")
+                response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
                 response["Content-Disposition"] = (
                     f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
                 )
@@ -885,7 +886,7 @@ class ServeTimeCapSoulMedia(SecuredView):
 
                 download_name = media_file.s3_key.split("/")[-1]
                 download_name = download_name.replace(".mkv", ".mp4")
-                response = HttpResponse(mp4_bytes, content_type=content_type)
+                response = HttpResponse(mp4_bytes, content_type="mp4")
                 frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
                 response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
                 response["Content-Disposition"] = f'inline; filename="{download_name}"'

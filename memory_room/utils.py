@@ -10,6 +10,7 @@ import json,io
 import hmac
 import base64
 import hashlib
+from PIL import Image, UnidentifiedImageError
 
 
 from rest_framework import serializers
@@ -100,7 +101,7 @@ def get_file_category(file_name):
 
     extension = os.path.splitext(file_name)[1].lower()
 
-    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic', '.svg', '.ico', '.raw', '.psd'}
+    image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic', '.heif', '.svg', '.ico', '.raw', '.psd'}
     video_extensions = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp', '.mpeg', '.mpg', '.ts', '.m4v'}
     audio_extensions = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', '.aiff', '.m4a', '.opus', '.amr'}
     
@@ -459,11 +460,67 @@ import io
 
 register_heif_opener()
 
-def convert_heic_to_jpeg_bytes(file_bytes):
-    image = Image.open(io.BytesIO(file_bytes))
-    output = io.BytesIO()
-    image.convert("RGB").save(output, format="JPEG", quality=90)
-    return output.getvalue(), "image/jpeg"
+# def convert_heic_to_jpeg_bytes(file_bytes):
+#     image = Image.open(io.BytesIO(file_bytes))
+#     output = io.BytesIO()
+#     image.convert("RGB").save(output, format="JPEG", quality=90)
+#     return output.getvalue(), "image/jpeg"
+
+
+
+def convert_heic_to_jpeg_bytes(file_bytes, quality: int = 95):
+    """
+    Convert HEIC/HEIF image bytes to high-quality JPEG bytes.
+
+    Args:
+        file_bytes (bytes): The HEIC/HEIF file content.
+        quality (int): JPEG output quality (default=95, max=100).
+
+    Returns:
+        tuple: (jpeg_bytes, "image/jpeg")
+
+    Raises:
+        ValueError: If conversion fails or input is invalid.
+    """
+    input_buffer = None
+    output_buffer = None
+
+    try:
+        # Wrap input in memory buffer
+        input_buffer = io.BytesIO(file_bytes)
+
+        try:
+            image = Image.open(input_buffer)
+        except UnidentifiedImageError as e:
+            logger.error(f"[HEIC->JPEG] Unsupported image format: {e}")
+            raise ValueError("Invalid HEIC/HEIF image data") from e
+
+        # Ensure RGB (JPEG doesn’t support alpha/other modes)
+        if image.mode == "RGBA":
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            background.paste(image, mask=image.split()[3])  # handle alpha
+            image = background
+        elif image.mode != "RGB":
+            image = image.convert("RGB")
+
+        # Save as JPEG
+        output_buffer = io.BytesIO()
+        image.save(output_buffer, format="JPEG", quality=quality, optimize=True)
+        jpeg_bytes = output_buffer.getvalue()
+
+        return jpeg_bytes, "image/jpeg"
+
+    except Exception as e:
+        logger.exception(f"[HEIC->JPEG] Conversion failed: {e}")
+        raise ValueError("HEIC to JPEG conversion failed") from e
+
+    finally:
+        # Cleanup buffers to free memory
+        if input_buffer:
+            input_buffer.close()
+        if output_buffer:
+            output_buffer.close()
+
 
 import subprocess
 import io

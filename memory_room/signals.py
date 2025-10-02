@@ -1,7 +1,7 @@
 from django.db.models.signals import post_save, post_delete
 from django.dispatch import receiver
 from .models import User, UserMapper
-from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica, RecipientsDetail, MemoryRoomMediaFile, MemoryRoomTemplateDefault
+from memory_room.models import MemoryRoom, MemoryRoomDetail, TimeCapSoulDetail, TimeCapSoul,TimeCapSoulMediaFile,TimeCapSoulDetail,TimeCapSoulMediaFileReplica, RecipientsDetail, MemoryRoomMediaFile, MemoryRoomTemplateDefault, TimeCapSoulTemplateDefault
 from memory_room.utils import to_mb, parse_storage_size,convert_file_size
 from django.core.cache import cache
 import logging
@@ -19,20 +19,20 @@ logger = logging.getLogger(__name__)
 #         mapper.save()
 
 # create memory-room detail
-@receiver(post_save, sender=MemoryRoom)
-def create_user_mapper(sender, instance, created, **kwargs):
-    if created:
-        MemoryRoomDetail.objects.create(
-            memory_room=instance,
-        )
+# @receiver(post_save, sender=MemoryRoom)
+# def create_user_mapper(sender, instance, created, **kwargs):
+#     if created:
+#         MemoryRoomDetail.objects.create(
+#             memory_room=instance,
+#         )
 
 # create timecapsoul detail
-@receiver(post_save, sender=TimeCapSoul)
-def create_user_mapper(sender, instance, created, **kwargs):
-    if created:
-        TimeCapSoulDetail.objects.create(
-            time_capsoul=instance,
-        )
+# @receiver(post_save, sender=TimeCapSoul)
+# def create_user_mapper(sender, instance, created, **kwargs):
+#     if created:
+#         TimeCapSoulDetail.objects.create(
+#             time_capsoul=instance,
+#         )
 
 
 
@@ -90,27 +90,27 @@ def create_user_mapper(sender, instance, created, **kwargs):
 #             logger.error(f'Exception while updating user storage as: {instance.user.email} media-id: {instance.id}  as {e}')
 
 
-@receiver(post_delete, sender=TimeCapSoul)
-def delete_all_related_timecapsoul_data(sender, instance, **kwargs):
-    """
-    Clean up all data associated with a TimeCapSoul when it's deleted.
-    """
+# @receiver(post_delete, sender=TimeCapSoul)
+# def delete_all_related_timecapsoul_data(sender, instance, **kwargs):
+#     """
+#     Clean up all data associated with a TimeCapSoul when it's deleted.
+#     """
 
-    # Delete TimeCapSoulDetail
-    try:
-        detail = instance.details
-        if detail:
-            # Delete all related media files and their replicas
-            for media_file in detail.media_files.all():
-                try:
-                    if hasattr(media_file, "replica"):
-                        media_file.replica.delete()
-                except TimeCapSoulMediaFileReplica.DoesNotExist:
-                    pass
-                media_file.delete()
-            detail.delete()
-    except TimeCapSoulDetail.DoesNotExist:
-        pass
+#     # Delete TimeCapSoulDetail
+#     try:
+#         detail = instance.details
+#         if detail:
+#             # Delete all related media files and their replicas
+#             for media_file in detail.media_files.all():
+#                 try:
+#                     if hasattr(media_file, "replica"):
+#                         media_file.replica.delete()
+#                 except TimeCapSoulMediaFileReplica.DoesNotExist:
+#                     pass
+#                 media_file.delete()
+#             detail.delete()
+#     except TimeCapSoulDetail.DoesNotExist:
+#         pass
 
 
 @receiver([post_save, post_delete], sender=MemoryRoomTemplateDefault)
@@ -120,7 +120,7 @@ def delete_cached_templated_data(sender, instance, **kwargs):
     cache.delete(cache_key)
 
 
-@receiver([post_save, post_delete], sender=MemoryRoomTemplateDefault)
+@receiver([post_save, post_delete], sender=TimeCapSoulTemplateDefault)
 def delete_capsoul_template_cached_data(sender, instance, **kwargs):
     # Clear cached data 
     cache_key = f"time_capsoul_templates"
@@ -129,7 +129,7 @@ def delete_capsoul_template_cached_data(sender, instance, **kwargs):
 
 def create_user_mapper(user):
     try:
-        mapper,created = UserMapper.objects.create(
+        mapper = UserMapper.objects.create(
             user=user,
             max_storage_limit='15 GB',     
             current_storage='0 GB'          

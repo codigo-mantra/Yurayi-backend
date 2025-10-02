@@ -242,12 +242,9 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         return bool(getattr(obj.capsoul_template, "default_template", False))
 
     def get_unlocked_data(self, obj):
-        details = getattr(obj, 'details', None)
-        if not details:
-            return None
         return {
-            "is_locked": details.is_locked,
-            "unlock_date": details.unlock_date,
+            "is_locked": obj.is_locked,
+            "unlock_date": obj.unlock_date,
         }
 
     def get_name(self, obj):
@@ -304,7 +301,7 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 created_at = timezone.localtime(timezone.now())
                 
                 template = CustomTimeCapSoulTemplate.objects.create(
-                    name = name + '(1)',
+                    name = name + ' (1)',
                     summary = summary,
                     cover_image = cover_image,
                     default_template = time_capsoul.capsoul_template.default_template,
@@ -312,33 +309,33 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 )
                 template.slug = generate_unique_slug(template)
                 replica_instance = TimeCapSoul.objects.create(
-                                                            user = user,
-                                                            capsoul_template=template,
-                                                            status = 'created',
-                                                            capsoul_replica_refrence = time_capsoul,
-                                                            created_at = created_at
-                                                            )
-            else:
+                    user = user,
+                    capsoul_template=template,
+                    status = 'created',
+                    capsoul_replica_refrence = time_capsoul,
+                    created_at = created_at
+                )
                 
-                name = validated_data.get('name', replica_instance.capsoul_template.name)
-                summary = validated_data.get('summary', replica_instance.capsoul_template.summary)
-                cover_image = validated_data.get('cover_image')
+            # else:
+                
+                # name = validated_data.get('name', replica_instance.capsoul_template.name)
+                # summary = validated_data.get('summary', replica_instance.capsoul_template.summary)
+                # cover_image = validated_data.get('cover_image')
 
-                if isinstance(cover_image, int):
-                    cover_image = self.validate_cover_image(cover_image)
+                # if isinstance(cover_image, int):
+                #     cover_image = self.validate_cover_image(cover_image)
                         
-                if cover_image is None:
-                    cover_image = replica_instance.capsoul_template.cover_image
+                # if cover_image is None:
+                #     cover_image = replica_instance.capsoul_template.cover_image
 
-                template = replica_instance.capsoul_template
-                template.name = name
-                template.summary = summary
-                template.cover_image = cover_image
-                template.slug = generate_unique_slug(template)
-                template.save()
-                replica_instance.save()
-                return instance
-
+                # template = replica_instance.capsoul_template
+                # template.name = name
+                # template.summary = summary
+                # template.cover_image = cover_image
+                # template.slug = generate_unique_slug(template)
+                # template.save()
+                # replica_instance.save()
+                # return instance
         else:
             if instance.capsoul_template.default_template is None: # create from scratch
                 template = instance.capsoul_template
@@ -660,7 +657,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 # create custom template for replica
                 template = time_capsoul.capsoul_template
                 template_replica = CustomTimeCapSoulTemplate.objects.create(
-                    name = template.name + '(1)',
+                    name = template.name + ' (1)',
                     summary = template.summary,
                     cover_image = template.cover_image,
                     default_template = time_capsoul.capsoul_template.default_template,
@@ -668,11 +665,12 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 )
                 template_replica.slug = generate_unique_slug(template_replica)
                 time_capsoul_replica = TimeCapSoul.objects.create(
-                                                            user = user,
-                                                            capsoul_template=template_replica,
-                                                            status = 'created',
-                                                            created_at = created_at,
-                                                            capsoul_replica_refrence = time_capsoul)
+                    user = user,
+                    capsoul_template=template_replica,
+                    status = 'created',
+                    created_at = created_at,
+                    capsoul_replica_refrence = time_capsoul
+                )
             
             # now create get or create media-file replica here
             try:
@@ -779,7 +777,7 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
     unlock_date = serializers.DateTimeField(required=True)
 
     class Meta:
-        model = TimeCapSoulDetail
+        model = TimeCapSoul
         fields = ('unlock_date',)
 
     def validate(self, attrs):
@@ -806,19 +804,20 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         # Locking the TimeCapsoul for the first and only time
-        time_capsoul = instance.time_capsoul
+        time_capsoul = instance
         if time_capsoul.status == 'created':
             capsoul_recipients = TimeCapSoulRecipient.objects.filter(
-                time_capsoul=instance.time_capsoul
+                time_capsoul=time_capsoul,
+                is_deleted = False
             )
 
             if  capsoul_recipients.count() < 1:
                 raise serializers.ValidationError({'recipients': 'No recipients added'})
            
             instance.unlock_date = validated_data['unlock_date']
-            time_capsoul.status = 'sealed'
+            instance.status = 'sealed'
             instance.is_locked = True
-            time_capsoul.save()
+            instance.save()
             unlock_time = instance.unlock_date
             from datetime import timedelta
             from django.utils import timezone
