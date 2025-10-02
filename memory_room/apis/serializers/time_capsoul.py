@@ -836,7 +836,7 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             )
             
             # send email here tagged 
-            time_cap_owner = instance.time_capsoul.user.first_name if instance.time_capsoul.user.first_name else instance.time_capsoul.user.email
+            time_cap_owner = time_capsoul.user.first_name if time_capsoul.user.first_name else time_capsoul.user.email
             try:
                 if capsoul_recipients:
                     tagged_recipients = capsoul_recipients.values_list("name", "email")
