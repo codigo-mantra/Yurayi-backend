@@ -7,7 +7,7 @@ from userauth.apis.views.views import (
     LoginView, RegistrationView, LogoutView,
     GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,UserProfileUpdateView,
     CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView,UserAddressListCreateView,UserAddressDetailView, 
-    UserQueriesAPIView, YurayiPolicyView, SessionListAPIView, SessionDeleteAPIView, SessionClearOthersAPIView
+    UserQueriesAPIView, YurayiPolicyView, SessionListAPIView, SessionDeleteAPIView, SessionClearOthersAPIView,RevokeOldUserSession
     
 )
 from rest_framework_simplejwt.views import TokenVerifyView
@@ -15,6 +15,7 @@ from rest_framework_simplejwt.views import TokenVerifyView
 
 
 urlpatterns = [
+    
     path("policies/", YurayiPolicyView.as_view(), name="policy"),
     path('news-letter/subscription/', NewsletterSubscribeAPIView.as_view(), name='newsletter-subscribe'),
     path('contact-us/', ContactUsAPIView.as_view(), name='contact-us'),
@@ -43,6 +44,7 @@ urlpatterns = [
     path('user/addresses/<int:pk>/', UserAddressDetailView.as_view(), name='user-address-detail'),
     
     path("sessions/", SessionListAPIView.as_view(), name="session-list"),
+    path("revoke/session/", RevokeOldUserSession.as_view(), name="revoke_old_session"),
     path("sessions/<uuid:session_id>/", SessionDeleteAPIView.as_view(), name="session-delete"),
     path("sessions/clear-others/", SessionClearOthersAPIView.as_view(), name="session-clear-others"),
 

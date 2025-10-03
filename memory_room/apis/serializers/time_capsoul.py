@@ -79,9 +79,22 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         default = TimeCapSoulTemplateDefault.objects.filter(id=template_id).first()
         if not default:
             raise serializers.ValidationError({'template_id': 'TimeCapsoul template id is invalid'})
+        
+        # Check if user already has time-capsoul with same template name
+        existing_rooms = TimeCapSoul.objects.filter(
+            user=user,
+            capsoul_template__name__istartswith=default.name,
+        )
+
+
+        if existing_rooms.exists():
+            count = existing_rooms.count()
+            capsoul_name = f"{default.name} ({count})"
+        else:
+            capsoul_name = default.name
 
         custom = CustomTimeCapSoulTemplate.objects.create(
-            name=default.name, slug=default.slug, summary=default.summary,
+            name=capsoul_name, slug=default.slug, summary=default.summary,
             cover_image=default.cover_image, default_template=default
         )
         logger.info('Time-capsoul Custom Template created')
@@ -95,9 +108,23 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
             image_asset = Assets.objects.get(id=data['cover_image']) 
         except (Assets.DoesNotExist, Assets.MultipleObjectsReturned):
             raise serializers.ValidationError({'cover_image': 'Cover-image id is invalid'})
+        base_name = data.get('name')
+        
+        
+        # Check if user already has time-capsoul with same template name
+        existing_rooms = TimeCapSoul.objects.filter(
+            user=user,
+            capsoul_template__name__istartswith=base_name
+        )
+
+        if existing_rooms.exists():
+            count = existing_rooms.count()
+            capsoul_name = f"{base_name} ({count + 1})"
+        else:
+            capsoul_name = base_name
 
         custom = CustomTimeCapSoulTemplate.objects.create(
-            name=data['name'], summary=data['summary'],
+            name=capsoul_name, summary=data['summary'],
             cover_image=image_asset, default_template=None
         )
         return TimeCapSoul.objects.create(user=user, capsoul_template=custom)

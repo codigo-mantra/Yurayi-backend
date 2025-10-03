@@ -415,6 +415,42 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
         user.set_password(password)
         user.save()
         return user
+    
+
+
+class RevokeUserSession(serializers.Serializer):
+    uidb64 = serializers.CharField()
+    token = serializers.CharField()
+    session_id = serializers.CharField(write_only=True, min_length=36)
+
+    def validate(self, attrs):
+        uidb64 = attrs.get("uidb64")
+        token = attrs.get("token")
+        session_id = attrs.get("session_id")
+
+        try:
+            uid = force_str(urlsafe_base64_decode(uidb64))
+            user = User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+            raise serializers.ValidationError({"uidb64": "Invalid user identifier."})
+
+        if not default_token_generator.check_token(user, token):
+            raise serializers.ValidationError({"token": "Token expire! or already used."})
+        
+        try:
+            old_session = Session.objects.get(id = session_id, user = user)
+        except Exception as e:
+            raise serializers.ValidationError({
+                'session_id': "Session id is invalid"
+            })
+        else:
+            old_session.revoked = True
+            old_session.save()
+            attrs['user'] = user
+        return attrs
+
+    
+
 class NewsletterSubscriberSerializer(serializers.ModelSerializer):
     class Meta:
         model = NewsletterSubscriber

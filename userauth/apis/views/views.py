@@ -46,7 +46,7 @@ from timecapsoul.utils import send_html_email
 from userauth.apis.serializers.serializers import  (
     RegistrationSerializer, UserProfileUpdateSerializer, GoogleAccessTokenSerializer, ContactUsSerializer,PasswordResetConfirmSerializer,
     CustomPasswordResetSerializer, CustomPasswordResetConfirmSerializer,CustomPasswordChangeSerializer,JWTTokenSerializer,ForgotPasswordSerializer, NewsletterSubscriberSerializer,UserProfileUpdateSerializer,UserAddressSerializer, 
-    YurayiPolicySerializer,SessionSerializer
+    YurayiPolicySerializer,SessionSerializer,RevokeUserSession
     )
 from memory_room.signals import create_user_mapper
 from userauth.serializers import LoginSerializer
@@ -146,7 +146,8 @@ class GoogleAuthView(APIView):
             device_name = os_info
         
         try:
-            session = Session.objects.filter(
+            active_sessions = Session.objects.filter(user = user, revoked = False)
+            previous_session = active_sessions.filter(
                 user=user,
                 revoked = False,
                 user_agent=ua,
@@ -157,10 +158,11 @@ class GoogleAuthView(APIView):
                 latitude = latitude,
                 longitude = longitude
             ).first()
-            if session is None:
-                active_sessions = Session.objects.filter(user = user, revoked = False)
+            if previous_session is None:
                 if active_sessions.count() >5:
-                    raise serializers.ValidationError({'session_error': "Maximium session limit reached"})
+                    raise serializers.ValidationError(
+                        {"session_error": "Maximum session limit reached. Please logout from other devices first."}
+                    )
                 
                 session = Session.objects.create(
                     user=user,
@@ -173,8 +175,12 @@ class GoogleAuthView(APIView):
                     longitude = longitude
                 )
                 logger.info(f'New Session create for user {user.email}')
+                
+            else:
+                session = previous_session
         except Exception as e:
             logger.error(f'Exception while creating user sesion as {e} for user: {user.email}')
+            raise
 
         access = create_access_jwt_for_user(user, session_id=session.id)
         refresh_value = _gen_refresh_value()
@@ -190,7 +196,7 @@ class GoogleAuthView(APIView):
                 "first_name": user.first_name,
                 "last_name": user.last_name,
             },
-            'is_new_user': is_new_user
+            'is_new_user': is_new_user,
             
         })
 
@@ -388,7 +394,8 @@ class LoginView(APIView):
             device_name = os_info
         
         try:
-            session = Session.objects.filter(
+            active_sessions = Session.objects.filter(user = user, revoked = False)
+            previous_session = active_sessions.filter(
                 user=user,
                 revoked = False,
                 user_agent=ua,
@@ -399,10 +406,19 @@ class LoginView(APIView):
                 latitude = latitude,
                 longitude = longitude
             ).first()
-            if session is None:
-                active_sessions = Session.objects.filter(user = user, revoked = False)
-                if active_sessions.count() >5:
-                    raise serializers.ValidationError({'session_error': "Maximium session limit reached"})
+            if previous_session is None:
+                session_count = active_sessions.count() 
+              
+                if session_count > 5:
+                    serializer =  SessionSerializer(active_sessions, many=True)
+                    response = {
+                        'active_session_count': session_count,
+                        'active_sessions': serializer.data,
+                        'uidb64': urlsafe_base64_encode(force_bytes(user.pk)),
+                        'token': default_token_generator.make_token(user),
+                        "session_error": "Maximum session limit reached. Please logout from other devices first."
+                    }
+                    return Response(response)
                 
                 session = Session.objects.create(
                     user=user,
@@ -415,8 +431,12 @@ class LoginView(APIView):
                     longitude = longitude
                 )
                 logger.info(f'New Session create for user {user.email}')
+                
+            else:
+                session = previous_session
         except Exception as e:
             logger.error(f'Exception while creating user sesion as {e} for user: {user.email}')
+            raise
             
         access = create_access_jwt_for_user(user, session_id=session.id)
         refresh_value = _gen_refresh_value()
@@ -1055,3 +1075,84 @@ class SessionClearOthersAPIView(SecuredView):
         count = sessions.update(revoked=True, last_used_at=timezone.now())
         logger.info(f"SessionClearOthersAPIView {count} sessions revoked by {user.email}")
         return Response({"detail": f"{count} sessions revoked (except current)"}, status=status.HTTP_200_OK)
+
+
+class RevokeOldUserSession(APIView):
+    
+    def post(self, request, format=None):
+        try:
+            serializer = RevokeUserSession(data=request.data)
+            if not serializer.is_valid():
+                return Response(serializer.errors)
+            user = serializer.validated_data.get('user')
+            city = serializer.validated_data.get('city')
+            country = serializer.validated_data.get('country')
+            latitude = serializer.validated_data.get('latitude')
+            longitude = serializer.validated_data.get('longitude')
+            device_name = serializer.validated_data.get('device_name')
+            session_id = serializer.validated_data.get('session_id')
+            
+            
+            # Extract IP and User-Agent
+            ua = (request.META.get("HTTP_USER_AGENT") or None)
+            ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR") or None
+            match = re.search(r"\((.*?)\)", ua)
+            if match:
+                os_info = match.group(1).split(";")[0].strip()
+                device_name = os_info
+
+            session = Session.objects.create(
+                user=user,
+                user_agent=ua,
+                name = device_name,
+                ip_address=ip,
+                city = city, 
+                country = country,
+                latitude = latitude,
+                longitude = longitude
+            )
+            access = create_access_jwt_for_user(user, session_id=session.id)
+            refresh_value = _gen_refresh_value()
+            from django.utils import timezone 
+            expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
+            RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+
+            resp = Response({
+                "access": access,
+                "user": {
+                    "username": user.username,
+                    "email": user.email,
+                    "first_name": user.first_name,
+                    "last_name": user.last_name,
+                },
+            })
+
+            resp.set_cookie(
+                settings.REFRESH_COOKIE_NAME,
+                refresh_value,
+                httponly=settings.REFRESH_COOKIE_HTTPONLY,
+                secure=settings.REFRESH_COOKIE_SECURE,
+                samesite=settings.REFRESH_COOKIE_SAMESITE,
+                max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
+                domain=settings.COOKIE_DOMAIN,
+                path=settings.REFRESH_COOKIE_PATH,
+            )
+
+            #  Set access cookie
+            resp.set_cookie(
+                settings.ACCESS_COOKIE_NAME,
+                access,
+                httponly=settings.ACCESS_COOKIE_HTTPONLY,
+                secure=settings.ACCESS_COOKIE_SECURE,
+                samesite=settings.ACCESS_COOKIE_SAMESITE,
+                max_age=settings.ACCESS_TOKEN_LIFETIME,
+                domain=settings.COOKIE_DOMAIN,
+                path=settings.ACCESS_COOKIE_PATH,
+            )
+            logger.info(f"Session logout success for session-id: {session_id} by user: {user.email}")
+            return resp
+            
+        except Exception as e:
+            logger.error(f'Exception while logout user session for session-id: ')
+            return Response(status=status.HTTP_400_BAD_REQUEST)
+        

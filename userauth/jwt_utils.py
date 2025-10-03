@@ -12,8 +12,7 @@ def _now():
 
 def create_access_jwt_for_user(user, session_id):
     now = _now()
-    # exp = now + timedelta(minutes=settings.ACCESS_TOKEN_TTL_MINUTES)
-    exp = now + timedelta(seconds=settings.SESSION_EXPIRE_TIME)
+    exp = now + timedelta(days=7)  
 
     payload = {
         "iss": settings.JWT_ISSUER,
@@ -25,6 +24,7 @@ def create_access_jwt_for_user(user, session_id):
         "jti": str(uuid.uuid4()),
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
 
 def decode_jwt_noverify(token):
     """We verify exp and other checks ourselves in auth class."""
