@@ -921,17 +921,17 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
                 time_capsoul = media_file.time_capsoul
                 
                 if time_capsoul:
-                    capsoul_recipients = RecipientsDetail.objects.filter(time_capsoul=time_capsoul).first()
+                    capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul=time_capsoul, email = user.email).first()
                     if not capsoul_recipients:
                         return Response(status=status.HTTP_404_NOT_FOUND)
 
-                    recipients_data = list(capsoul_recipients.recipients.values_list("email", flat=True))
-                    if user.email not in recipients_data:
-                        return Response(status=status.HTTP_404_NOT_FOUND)
+                    # recipients_data = list(capsoul_recipients.recipients.values_list("email", flat=True))
+                    # if user.email not in recipients_data:
+                    #     return Response(status=status.HTTP_404_NOT_FOUND)
                     
         # file_name = media_file.s3_key.split('/')[-1]
         file_name  = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}'
-        print(f'\nfile-name: {file_name}  {media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}')
+        # print(f'\nfile-name: {file_name}  {media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}')
         
         bytes_cache_key = str(media_file.s3_key)
         file_bytes = cache.get(bytes_cache_key)
