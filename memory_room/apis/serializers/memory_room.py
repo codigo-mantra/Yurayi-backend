@@ -94,9 +94,19 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
         default = MemoryRoomTemplateDefault.objects.filter(id=template_id).first()
         if not default:
             raise serializers.ValidationError({'template_id': 'Invalid ID'})
+        
+        exist =  MemoryRoom.objects.filter(
+            user = user ,
+            room_template__name__contains = default.name
+            )
+        suffix = ' '
+        
+        if exist.count() > 0:
+            suffix = f' {exist.count() }'
+            room_name = f'{default.name}  {suffix}'
 
         custom = CustomMemoryRoomTemplate.objects.create(
-            name=default.name, slug=default.slug, summary=default.summary,
+            name=room_name, slug=default.slug, summary=default.summary,
             cover_image=default.cover_image, default_template=default
         )
         return MemoryRoom.objects.create(user=user, room_template=custom)
@@ -109,11 +119,22 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
             image_asset = Assets.objects.get(id=data['cover_image']) 
         except (Assets.DoesNotExist, Assets.MultipleObjectsReturned):
             raise serializers.ValidationError({'cover_image': 'Cover-image id invalid'})
+        
+        room_name = data['name']
+        existing_room =  MemoryRoom.objects.filter(
+            user = user ,
+            room_template__name__contains = room_name
+            ).first()
+        
+        # if existing_room:
+        #     raise serializers.ValidationError({'title': "Memory room already exists with these name use different "})
+        
 
         custom = CustomMemoryRoomTemplate.objects.create(
-            name=data['name'], summary=data['summary'],
+            name=room_name, summary=data['summary'],
             cover_image=image_asset, default_template=None
         )
+        
         return MemoryRoom.objects.create(user=user, room_template=custom)
 
 

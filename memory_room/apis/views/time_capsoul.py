@@ -199,7 +199,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
             # --- Case 2: Tagged recipient ---
             time_capsoul = self.get__tagged_time_capsoul(time_capsoul_id)
 
-            # if time_capsoul.status != 'unlocked':
+            # if p.status != 'unlocked':
             #     logger.info("Tagged recipient not allowed: capsoul locked")
             #     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
@@ -209,7 +209,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 logger.info("Recipient not found for tagged capsoul")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
             
-            if time_capsoul.details.unlock_date and timezone.now() < time_capsoul.details.unlock_date:
+            if time_capsoul.unlock_date and timezone.now() < time_capsoul.unlock_date:
                 logger.info("Recipient not found for tagged capsoul")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
