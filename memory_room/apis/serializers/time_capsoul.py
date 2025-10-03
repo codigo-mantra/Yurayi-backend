@@ -232,7 +232,7 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
     def get_status(self, obj):
         if obj.status == 'sealed':
             current_datetime = timezone.now()  
-            unlock_date = obj.details.unlock_date
+            unlock_date = obj.unlock_date
             if unlock_date and current_datetime > unlock_date:
                 obj.status = 'unlocked'
                 obj.save()
