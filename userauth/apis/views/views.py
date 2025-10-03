@@ -158,6 +158,10 @@ class GoogleAuthView(APIView):
                 longitude = longitude
             ).first()
             if session is None:
+                active_sessions = Session.objects.filter(user = user, revoked = False)
+                if active_sessions.count() >5:
+                    raise serializers.ValidationError({'session_error': "Maximium session limit reached"})
+                
                 session = Session.objects.create(
                     user=user,
                     user_agent=ua,
@@ -396,6 +400,10 @@ class LoginView(APIView):
                 longitude = longitude
             ).first()
             if session is None:
+                active_sessions = Session.objects.filter(user = user, revoked = False)
+                if active_sessions.count() >5:
+                    raise serializers.ValidationError({'session_error': "Maximium session limit reached"})
+                
                 session = Session.objects.create(
                     user=user,
                     user_agent=ua,
