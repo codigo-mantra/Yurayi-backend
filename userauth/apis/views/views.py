@@ -159,10 +159,18 @@ class GoogleAuthView(APIView):
                 longitude = longitude
             ).first()
             if previous_session is None:
-                if active_sessions.count() >5:
-                    raise serializers.ValidationError(
-                        {"session_error": "Maximum session limit reached. Please logout from other devices first."}
-                    )
+                session_count = active_sessions.count() 
+              
+                if session_count > 5:
+                    serializer =  SessionSerializer(active_sessions, many=True)
+                    response = {
+                        'active_session_count': session_count,
+                        'active_sessions': serializer.data,
+                        'uidb64': urlsafe_base64_encode(force_bytes(user.pk)),
+                        'token': default_token_generator.make_token(user),
+                        "session_error": "Maximum session limit reached. Please logout from other devices first."
+                    }
+                    return Response(response)
                 
                 session = Session.objects.create(
                     user=user,
