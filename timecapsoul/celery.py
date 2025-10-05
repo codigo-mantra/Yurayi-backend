@@ -33,4 +33,8 @@ app.conf.beat_schedule = {
         'task': 'memory_room.tasks.capsoul_notification_handler',  
         'schedule': timedelta(seconds=60*60),  # every hour, at 60 minutes
     },
+    "clear-cache-every-3-hours": {
+        "task": "memory_room.tasks.clear_all_cache",
+        "schedule": crontab(minute=0, hour="*/3"),  # every 3 hours
+    },
 }

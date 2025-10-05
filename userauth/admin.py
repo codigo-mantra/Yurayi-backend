@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
-from .models import User, UserProfile, Assets, ContactUs, NewsletterSubscriber, UserAddress, YurayiPolicy
+from .models import User, UserProfile, Assets, ContactUs, NewsletterSubscriber, UserAddress, YurayiPolicy, Session
 
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
@@ -26,8 +26,9 @@ class UserAdmin(BaseUserAdmin):
 class UserProfileAdmin(admin.ModelAdmin):
     list_display = ('name', 'policy_content')
 
-
-
+@admin.register(Session)
+class SessionAdminModel(admin.ModelAdmin):
+    list_display = ('id', 'name', 'user', 'revoked', 'last_used_at')
 
 @admin.register(UserProfile)
 class UserProfileAdmin(admin.ModelAdmin):

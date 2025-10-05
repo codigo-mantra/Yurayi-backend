@@ -439,6 +439,8 @@ class RevokeUserSession(serializers.Serializer):
         
         try:
             old_session = Session.objects.get(id = session_id, user = user)
+            # refresh_token = RefreshToken.objects.filter(session = old_session).update(revoked=True, last_used_at=timezone.now())
+            
         except Exception as e:
             raise serializers.ValidationError({
                 'session_id': "Session id is invalid"

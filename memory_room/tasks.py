@@ -9,6 +9,7 @@ from dateutil.relativedelta import relativedelta
 import logging
 logger = logging.getLogger(__name__)
 from memory_room.utils import convert_file_size
+from django.core.cache import cache
 
 from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoulMediaFile
 
@@ -215,3 +216,12 @@ def update_time_capsoul_occupied_storage(media_file_id, option_type):
         is_updated = True
     finally:
         return is_updated
+    
+
+@shared_task
+def clear_all_cache():
+    """
+    Clear all cache in the system.
+    """
+    cache.clear()
+    return "Cache cleared successfully."
