@@ -67,7 +67,7 @@ class TimeCapSoulCoverView(SecuredView):
         if not data:
             assets = Assets.objects.filter(asset_types='Time CapSoul Cover', is_deleted = False).order_by('-created_at')
             data = AssetSerializer(assets, many=True).data
-            cache.set(cache_key, data, timeout=60*10) # 10 minutes cached 
+            cache.set(cache_key, data, timeout=60*60) # 10 minutes cached 
         logger.info(f"TimeCapSoulCoverView.get data: served from cache")
             
         return Response(data)
@@ -80,7 +80,7 @@ class TimeCapSoulDefaultTemplateAPI(SecuredView):
         if not data:
             default_templates = TimeCapSoulTemplateDefault.objects.filter(is_deleted = False)
             data = TimeCapSoulTemplateDefaultReadOnlySerializer(default_templates, many=True).data
-            cache.set(cache_key, data, timeout=None) 
+            cache.set(cache_key, data, timeout=60*60) 
         logger.info("TimeCapSoulDefaultTemplateAPI. data served ")
         return Response(data)
 
@@ -833,8 +833,8 @@ class ServeTimeCapSoulMedia(SecuredView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             else:
                 # caching here
-                cache.set(bytes_cache_key, file_bytes, timeout=None)  
-                cache.set(content_type_cache_key, content_type, timeout=None)
+                cache.set(bytes_cache_key, file_bytes, timeout=60*60*2)  
+                cache.set(content_type_cache_key, content_type, timeout=60*60)
 
                 
         if media_file.s3_key.lower().endswith(".doc"):
@@ -845,7 +845,7 @@ class ServeTimeCapSoulMedia(SecuredView):
                 
                 if not docx_bytes:
                     docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=None)  
+                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=60*60*2)  
                     
                 response = HttpResponse(
                     docx_bytes,
@@ -865,7 +865,7 @@ class ServeTimeCapSoulMedia(SecuredView):
                 jpeg_file_bytes = cache.get(jpeg_cache_key)
                 if not jpeg_file_bytes:
                     jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
-                    cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=None)
+                    cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=60*60*2)
                 response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
                 response["Content-Disposition"] = (
                     f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
@@ -879,7 +879,7 @@ class ServeTimeCapSoulMedia(SecuredView):
                     try:
                         mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
                         content_type = "video/mp4"
-                        cache.set(cache_key, mp4_bytes, timeout=None)
+                        cache.set(cache_key, mp4_bytes, timeout=60*60*2)
                     except Exception as e:
                         logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
@@ -949,8 +949,8 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             else:
                 # caching here
-                cache.set(bytes_cache_key, file_bytes, timeout=None)  
-                cache.set(content_type_cache_key, content_type, timeout=None)
+                cache.set(bytes_cache_key, file_bytes, timeout=60*60*2)  
+                cache.set(content_type_cache_key, content_type, timeout=60*60*2)
         
         if file_bytes and content_type:
             try:
@@ -1105,7 +1105,7 @@ class UserStorageTracker(SecuredView):
                 user_storage_data['current_used_storage'] = round(total_space_occupied, 5)
                 user_storage_data['free_storage'] = round(user_storage_limit - total_space_occupied, 5)
                 user_storage_data['storage_usage_percentage'] = round(( total_space_occupied * 100  )/user_storage_limit, 3)
-                cache.set(user_tracker_cache_key, user_storage_data, timeout=None)
+                cache.set(user_tracker_cache_key, user_storage_data, timeout=60*60*2)
                 
             except Exception as e:
                 logger.error(f'Exception occur at UserStorageTracker  while getting storage data for {user.email} error-message: \n {e}')

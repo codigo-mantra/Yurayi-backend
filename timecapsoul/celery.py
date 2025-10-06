@@ -35,6 +35,6 @@ app.conf.beat_schedule = {
     },
     "clear-cache-every-3-hours": {
         "task": "memory_room.tasks.clear_all_cache",
-        "schedule": crontab(minute=0, hour="*/3"),  # every 3 hours
+        "schedule": crontab(minute=0, hour="*/1"),  # every 3 hours
     },
 }

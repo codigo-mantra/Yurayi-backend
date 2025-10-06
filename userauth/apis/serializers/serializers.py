@@ -327,33 +327,42 @@ class CustomPasswordResetConfirmSerializer(PasswordResetConfirmSerializer):
         return user
 
 class CustomPasswordChangeSerializer(serializers.Serializer):
-    old_password = serializers.CharField(required=True, write_only=True)
+    old_password = serializers.CharField(required=False, write_only=True)
     new_password1 = serializers.CharField(required=True, write_only=True)
     new_password2 = serializers.CharField(required=True, write_only=True)
 
-    def validate_old_password(self, value):
-        if not value:
-            raise serializers.ValidationError('Old Password is required')
-        user = self.context.get('user')
-        if not user.check_password(value):
-            raise serializers.ValidationError("Your current password is incorrect.")
-        return value
 
     def validate(self, data):
-        # Check new passwords match
-        if data["new_password1"] != data["new_password2"]:
-            raise serializers.ValidationError("The new passwords do not match.")
+        user = self.context.get('user')
+        is_password_set = getattr(user, 'is_password_set', False)
 
-        # Prevent new password same as old password
-        if data["old_password"] == data["new_password1"]:
-            raise serializers.ValidationError("The new password cannot be the same as the old password.")
-        
+        old_password = data.get("old_password")
+        new_password1 = data.get("new_password1")
+        new_password2 = data.get("new_password2")
+
+        # 1️⃣ Validate old password only if user has one set
+        if is_password_set:
+            if not old_password:
+                raise serializers.ValidationError({"old_password": "Old password is required."})
+            if not user.check_password(old_password):
+                raise serializers.ValidationError({"old_password": "Your current password is incorrect."})
+        else:
+            old_password = None
+
+        # Ensure new passwords match
+        if new_password1 != new_password2:
+            raise serializers.ValidationError({"new_password2": "The new passwords do not match."})
+
+        # Prevent new password same as old password (only if old_password exists)
+        if old_password and old_password == new_password1:
+            raise serializers.ValidationError({"new_password1": "The new password cannot be the same as the old password."})
+
+        #  Validate new password strength using your custom validator
         try:
             validator = CustomPasswordValidator()
-            validator.validate(password=data["new_password1"])
+            validator.validate(password=new_password1)
         except DjangoValidationError as e:
-            raise serializers.ValidationError({'new_password1': f'{e.message}'})
-
+            raise serializers.ValidationError({"new_password1": e.message})
 
         return data
 

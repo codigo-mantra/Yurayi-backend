@@ -125,7 +125,11 @@ class GoogleAuthView(APIView):
                     "context": {'email': user.email},
                 }
             )
-            create_user_mapper(user) # create user mapper
+            create_user_mapper(user) # create user mapper 
+        
+        is_password_set = user.has_usable_password()
+        if is_password_set:
+            raise serializers.ValidationError({'password': 'Password is already set. Please login with your password.'})
             
 
         # Track device/session
@@ -205,6 +209,8 @@ class GoogleAuthView(APIView):
                 "last_name": user.last_name,
             },
             'is_new_user': is_new_user,
+            'is_password_set': is_password_set,
+            
             
         })
 
@@ -454,6 +460,7 @@ class LoginView(APIView):
 
         resp = Response({
             "access": access,
+            'is_password_set': True,
             "user": {
                 "username": user.username,
                 "email": user.email,
