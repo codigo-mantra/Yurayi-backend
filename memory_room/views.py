@@ -77,6 +77,7 @@ def to_mb(value, unit):
 def user_storage_calculator():
     
     all_users = User.objects.all()
+    # all_users = User.objects.filter(email = 'wojaro52232390@bllibl.com')
     for user in all_users:
         user_mapper = user.user_mapper.first() 
 
@@ -86,7 +87,13 @@ def user_storage_calculator():
             user_mapper.save()
                 
         try:
-            user_capsoul =  TimeCapSoul.objects.filter(user = user, is_deleted = False)
+            # user_capsoul =  TimeCapSoul.objects.filter(user = user, is_deleted = False).exclude(room_duplicate__isnull=True)
+            user_capsoul = TimeCapSoul.objects.filter(
+                user=user, 
+                is_deleted=False,
+                room_duplicate__isnull=True
+            )
+
         except Exception as e:
             pass
         else:
@@ -95,7 +102,7 @@ def user_storage_calculator():
                 current_storage_in_mb = parse_storage_size('')[0] # initially 0MB 
                 
                 try:
-                    media_files = capsoul.timecapsoul_media_files.all()
+                    media_files = capsoul.timecapsoul_media_files.filter(is_deleted = False)
                     for media in media_files: 
                         file_size = parse_storage_size(media.file_size)[0]
                         current_storage_in_mb += file_size
@@ -116,7 +123,7 @@ def user_storage_calculator():
         
         # memory-room
         try:
-            memory_rooms =  MemoryRoom.objects.filter(user = user, is_deleted = False)
+            memory_rooms =  MemoryRoom.objects.filter(user = user, is_deleted = False).exclude(room_duplicate__isnull=True)
         except Exception as e:
             pass
         else:
@@ -125,7 +132,7 @@ def user_storage_calculator():
                 current_storage_in_mb = parse_storage_size('')[0]
                 
                 try:
-                    media_files = capsoul.memory_media_files.all()
+                    media_files = capsoul.memory_media_files.filter(is_deleted = False)
                     for media in media_files: 
                         file_size = parse_storage_size(media.file_size)[0]
                         current_storage_in_mb += file_size
@@ -141,7 +148,8 @@ def user_storage_calculator():
                     user_mapper.save()
                     
                     print(f'\n ---- Room: {capsoul.room_template.name} is: current_storage_in_mb  {current_storage_in_mb} -------')
-        
+        print(f'\n ---- User: {user.email} is: current_storage_in_mb  {user_mapper.current_storage} -------')
+        print(f'\n ---- User: {user.email} is: max_storage_limit  {user_mapper.max_storage_limit} -------')
 
 from userauth.models import User
 
@@ -153,7 +161,8 @@ def testing_view(request):
     # email = 'krishnayadavpb07@gmail.com'
     # email = "jaswinder.codigo@gmail.com"
     # email = "krishnayadav.codigomantra@gmail.com"
-    email = "gaheme9246@cnguopin.com"
+    # email = "gaheme9246@cnguopin.com"
+    email = 'wojaro52232390@bllibl.com'
     # email2 = 'jasvir.codigo@gmail.com'
     import uuid
     from userauth.models import User
@@ -162,7 +171,8 @@ def testing_view(request):
     # for user in all_user:
     #     user.set_password('Test@1234')
     #     user.save()
-    user_storage_calculator()
+    # user_storage_calculator()
+
 
     
     # send_html_email_task.apply_async(

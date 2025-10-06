@@ -161,7 +161,7 @@ class GoogleAuthView(APIView):
             if previous_session is None:
                 session_count = active_sessions.count() 
               
-                if session_count > 5:
+                if session_count >= 5:
                     serializer =  SessionSerializer(active_sessions, many=True)
                     response = {
                         'active_session_count': session_count,
@@ -417,7 +417,7 @@ class LoginView(APIView):
             if previous_session is None:
                 session_count = active_sessions.count() 
               
-                if session_count > 5:
+                if session_count >= 5:
                     serializer =  SessionSerializer(active_sessions, many=True)
                     response = {
                         'active_session_count': session_count,
@@ -899,7 +899,7 @@ class UserProfileUpdateView(SecuredView):
 
     def get(self, request):
         logger.info("UserProfileUpdateView.get called")
-        user = self.current_user
+        user = self.get_current_user(request)
         if user is None:
             raise NotAuthenticated()
         serializer = UserProfileUpdateSerializer(user)
@@ -907,7 +907,7 @@ class UserProfileUpdateView(SecuredView):
 
     def patch(self, request):
         logger.info("UserProfileUpdateView.patch called")
-        user = self.current_user
+        user = self.get_current_user(request)
         if user is None:
             raise NotAuthenticated()
         serializer = UserProfileUpdateSerializer(user, data=request.data, partial=True)
