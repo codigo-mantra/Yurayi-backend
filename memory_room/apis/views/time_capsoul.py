@@ -122,6 +122,15 @@ class CreateTimeCapSoulView(SecuredView):
                 recipient_detail__is_capsoul_deleted=False
             ).exclude(user = user)
             
+            tagged_time_capsouls_replica = TimeCapSoul.objects.filter(
+                user=user,
+                capsoul_replica_refrence__in=tagged_time_capsouls,
+                is_deleted = False
+            )
+            if tagged_time_capsouls and tagged_time_capsouls_replica:
+                tagged_time_capsouls = tagged_time_capsouls.union(tagged_time_capsouls_replica)
+            
+            
         except TimeCapSoulRecipient.DoesNotExist:
             tagged_time_capsouls = None
 
@@ -149,8 +158,8 @@ class TimeCapSoulUpdationView(SecuredView):
     def patch(self, request, time_capsoul_id):
         logger.info("TimeCapSoulUpdationView.patch called")
         user = self.get_current_user(request)
-        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user, is_deleted = False)
-        serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, is_deleted = False)
+        serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True, context={'is_owner': True if time_capsoul.user == user else False, 'current_user': user})
         if serializer.is_valid():
             update_time_capsoul = serializer.save()
             return Response(TimeCapSoulSerializer(update_time_capsoul, context={'user': user}).data)
@@ -193,11 +202,12 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
         # if user is Owner of the time-capsoul 
         try:
-            time_capsoul = TimeCapSoul.objects.get(id=time_capsoul_id, user=user, is_deleted = False)
+            time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id,is_deleted = False)
+            # time_capsoul = TimeCapSoul.objects.get(id=time_capsoul_id, user=user, is_deleted = False)
+            
 
         except TimeCapSoul.DoesNotExist:
             # --- Case 2: Tagged recipient ---
-            time_capsoul = self.get__tagged_time_capsoul(time_capsoul_id)
 
             # if p.status != 'unlocked':
             #     logger.info("Tagged recipient not allowed: capsoul locked")
@@ -213,19 +223,30 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 logger.info("Recipient not found for tagged capsoul")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-
             media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
 
         else:
-            # If owner, also include replica parent files (excluding already linked ones)
-            media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
+            if time_capsoul.user == user:
+                # If owner, also include replica parent files (excluding already linked ones)
+                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
 
-            if time_capsoul.capsoul_replica_refrence:
-                parent_files = TimeCapSoulMediaFile.objects.filter(
-                    time_capsoul=time_capsoul.capsoul_replica_refrence
-                )
-                used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
-                media_files = media_files | parent_files.exclude(id__in=used_ids)
+                if time_capsoul.capsoul_replica_refrence:
+                    parent_files = TimeCapSoulMediaFile.objects.filter(
+                        time_capsoul=time_capsoul.capsoul_replica_refrence
+                    )
+                    used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
+                    media_files = media_files | parent_files.exclude(id__in=used_ids)
+            else:
+                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
+                if not recipient:
+                    logger.info("Recipient not found for tagged capsoul")
+                    return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+                
+                if time_capsoul.unlock_date and timezone.now() < time_capsoul.unlock_date:
+                    logger.info("Recipient not found for tagged capsoul")
+                    return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+
+                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
 
         serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files.distinct(), many=True)
         return Response({"media_files": serializer.data})
@@ -604,8 +625,8 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
     def patch(self, request, time_capsoul_id, media_file_id):
         user = self.get_current_user(request)
         # time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
-        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user, is_deleted = False)
-        serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True)
+        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id,is_deleted = False)
+        serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True, context={'is_owner': True if media_file.user == user else False, 'current_user': user})
         serializer.is_valid(raise_exception=True)
         update_media_file = serializer.save()
         return Response(TimeCapSoulMediaFileReadOnlySerializer(update_media_file).data)
@@ -833,7 +854,7 @@ class ServeTimeCapSoulMedia(SecuredView):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             else:
                 # caching here
-                cache.set(bytes_cache_key, file_bytes, timeout=60*60*2)  
+                cache.set(bytes_cache_key, file_bytes, timeout=60*60)  
                 cache.set(content_type_cache_key, content_type, timeout=60*60)
 
                 

@@ -18,6 +18,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+s3 = boto3.client(
+        's3',
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+        region_name=settings.AWS_S3_REGION_NAME
+    )
+
 def generate_signature(s3_key: str, exp: int) -> str:
     """
     Generate base64-encoded HMAC signature for s3_key and expiry.
@@ -640,3 +647,38 @@ def convert_file_size(size_str, target_unit="MB"):
 
     except Exception:
         return f"0 {target_unit.upper()}"
+
+import boto3
+from botocore.exceptions import ClientError
+
+def delete_s3_file(s3_key: str, bucket_name: str = 'yurayi-media') -> bool:
+    """
+    Delete a file from S3 using its key.
+    
+    Args:
+        s3_key (str): The S3 object key (e.g., 'media/uploads/file.jpg')
+        bucket_name (str, optional): S3 bucket name. 
+            Defaults to settings.AWS_STORAGE_BUCKET_NAME.
+    
+    Returns:
+        bool: True if deleted successfully, False otherwise.
+    """
+    bucket = bucket_name or getattr(settings, "AWS_STORAGE_BUCKET_NAME", None)
+    if not bucket:
+        print("Error: S3 bucket name not configured.")
+        return False
+
+    try:
+        s3.delete_object(Bucket=bucket, Key=s3_key)
+        print(f"Deleted {s3_key} from {bucket}")
+        return True
+    except ClientError as e:
+        error_code = e.response.get("Error", {}).get("Code", "")
+        if error_code == "NoSuchKey":
+            print(f"File not found in S3: {s3_key}")
+        else:
+            print(f"Failed to delete {s3_key}: {e}")
+        return False
+    except Exception as e:
+        print(f"Unexpected error deleting {s3_key}: {e}")
+        return False

@@ -2,10 +2,10 @@ from django.shortcuts import render
 from django.http import HttpResponse
 from allauth.socialaccount.models import SocialAccount
 from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoul, RecipientsDetail, TimeCapSoulDetail,TimeCapSoulMediaFile
-from memory_room.utils import get_readable_file_size_from_bytes
+from memory_room.utils import get_readable_file_size_from_bytes, delete_s3_file
 from timecapsoul.utils import send_html_email
 from userauth.tasks import send_html_email_task
-
+from userauth.models import User
 import logging
 logger = logging.getLogger(__name__)
 
@@ -158,15 +158,16 @@ def testing_view(request):
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
     # email = 'krishnayadav.codigomantra@gmail.com'
-    # email = 'krishnayadavpb07@gmail.com'
+    email = 'krishnayadavpb07@gmail.com'
     # email = "jaswinder.codigo@gmail.com"
     # email = "krishnayadav.codigomantra@gmail.com"
     # email = "gaheme9246@cnguopin.com"
-    email = 'wojaro52232390@bllibl.com'
+    # email = 'wojaro52232390@bllibl.com'
     # email2 = 'jasvir.codigo@gmail.com'
-    import uuid
-    from userauth.models import User
+    # import uuid
+    # from userauth.models import User
     # user = User.objects.get(email = email)
+    # user.delete()
     # all_user = User.objects.all()
     # for user in all_user:
     #     user.set_password('Test@1234')
@@ -267,6 +268,13 @@ def testing_view(request):
 
     try:
         is_testing = True
+        # s3_key = "cd077fe0-5508-4f13-86b8-31e7cb0f2384/time-capsoul-files/tattoo-gallery-6.jpg"
+        # res = delete_s3_file(s3_key)
+        # if res == True:
+        #     print("File deleted successfully")
+        # else:
+        #     print("File deletion failed")
+
         # if is_testing:
         #     user = User.objects.get(email = email)
         #     is_deletion = False
@@ -322,3 +330,107 @@ def testing_view(request):
         
     # })
     return render(request, 'userauth/time_capsoul_tagged.html')
+
+
+
+
+import boto3
+from botocore.exceptions import NoCredentialsError, ClientError
+from django.conf import settings
+
+
+def upload_file_to_s3(file_obj, file_name, content_type=None):
+    """
+    Uploads a file object to S3.
+
+    Args:
+        file_obj: UploadedFile object (Django InMemoryUploadedFile or File)
+        file_name: Path/name to store in S3 (e.g. 'uploads/myfile.pdf')
+        content_type: Optional MIME type
+
+    Returns:
+        dict: { success: bool, url: str | None, error: str | None }
+    """
+    AWS_STORAGE_BUCKET_NAME = "time-capsoul-files"
+    
+    try:
+        s3_client = boto3.client(
+            's3',
+            aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
+            aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+            region_name=settings.AWS_S3_REGION_NAME,
+        )
+
+        extra_args = {'ContentType': content_type} if content_type else {}
+
+        s3_client.upload_fileobj(
+            Fileobj=file_obj,
+            Bucket=AWS_STORAGE_BUCKET_NAME,
+            Key=file_name,
+            ExtraArgs=extra_args,
+        )
+
+        file_url = f"https://{AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{file_name}"
+
+        return {"success": True, "url": file_url, "error": None}
+
+    except NoCredentialsError:
+        return {"success": False, "url": None, "error": "AWS credentials not found."}
+
+    except ClientError as e:
+        error_msg = e.response.get("Error", {}).get("Message", str(e))
+        return {"success": False, "url": None, "error": f"S3 Client error: {error_msg}"}
+
+    except Exception as e:
+        return {"success": False, "url": None, "error": f"Unexpected error: {str(e)}"}
+
+from django.views import View
+from django.http import JsonResponse
+from django.shortcuts import render
+
+class S3FileUploadView(View):
+    """
+    View to handle file uploads to S3 with proper exception handling.
+    Supports:
+      - GET: Render upload form
+      - POST: Upload file to S3 and return JSON response
+    """
+
+    template_name = "upload.html"
+
+    def get(self, request, *args, **kwargs):
+        """
+        Render a simple file upload form.
+        """
+        return render(request, self.template_name)
+
+    def post(self, request, *args, **kwargs):
+        """
+        Handle file upload to S3 with error handling.
+        """
+        try:
+            uploaded_file = request.FILES.get("file")
+            if not uploaded_file:
+                return JsonResponse(
+                    {"success": False, "error": "No file provided."},
+                    status=400
+                )
+
+            file_name = f"media/{uploaded_file.name}"
+
+            result = upload_file_to_s3(
+                uploaded_file,
+                file_name,
+                content_type=uploaded_file.content_type,
+            )
+
+            if not result["success"]:
+                return JsonResponse(result, status=500)
+
+            return JsonResponse(result, status=200)
+
+        except Exception as e:
+            return JsonResponse(
+                {"success": False, "error": f"Unhandled exception: {str(e)}"},
+                status=500,
+            )

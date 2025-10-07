@@ -461,3 +461,281 @@ def generate_signature(s3_key: str, exp: str) -> str:
 def verify_signature(s3_key: str, exp: str, sig: str) -> bool:
     expected = generate_signature(s3_key, exp)
     return hmac.compare_digest(sig, expected)
+
+
+import os
+import io
+import base64
+import boto3
+from botocore.config import Config
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+# Assume kms is already configured
+# from your existing code: kms = boto3.client('kms')
+
+# ------------------------ Helper Functions ------------------------
+
+def _single_encrypt_upload(s3_client, plaintext_bytes, key, aesgcm, nonce,
+                           data_key_encrypted, content_type, file_category,
+                           progress_callback, processed_bytes, total_size):
+    """Encrypt small files in-memory and upload in a single part with progress callback"""
+    
+    ciphertext = aesgcm.encrypt(nonce, plaintext_bytes, associated_data=None)
+    uploaded_bytes = 0
+
+    class ProgressTracker:
+        def __init__(self, callback):
+            self.callback = callback
+            self.uploaded = 0
+
+        def __call__(self, bytes_transferred):
+            self.uploaded = bytes_transferred
+            if self.callback:
+                current = processed_bytes + (self.uploaded / total_size) * 0.7 * total_size
+                self.callback(min(int((current / total_size) * 100), 99), "Uploading to S3...")
+
+    tracker = ProgressTracker(progress_callback)
+    fileobj = io.BytesIO(ciphertext)
+
+    s3_client.upload_fileobj(
+        Fileobj=fileobj,
+        Bucket='yurayi-media',
+        Key=key,
+        ExtraArgs={
+            "ContentType": content_type,
+            "Metadata": {
+                "edk": base64.b64encode(data_key_encrypted).decode(),
+                "nonce": base64.b64encode(nonce).decode(),
+                "orig-content-type": content_type,
+            }
+        },
+        Callback=tracker
+    )
+
+    return {"Key": key, "Bucket": "yurayi-media"}
+
+
+def _multipart_encrypt_upload(s3_client, plaintext_bytes, key, aesgcm, nonce,
+                              data_key_encrypted, content_type, file_category,
+                              progress_callback, processed_bytes, total_size):
+    """Encrypt large files chunk-wise and upload using S3 multipart upload"""
+    
+    response = s3_client.create_multipart_upload(
+        Bucket='yurayi-media',
+        Key=key,
+        ContentType=content_type,
+        Metadata={
+            "edk": base64.b64encode(data_key_encrypted).decode(),
+            "nonce": base64.b64encode(nonce).decode(),
+            "orig-content-type": content_type,
+        }
+    )
+    upload_id = response['UploadId']
+
+    try:
+        chunk_size = max(5 * 1024 * 1024, total_size // 100)  # at least 5MB per part
+        parts = []
+        uploaded_bytes = 0
+
+        for part_number, i in enumerate(range(0, total_size, chunk_size), start=1):
+            plaintext_chunk = plaintext_bytes[i:i+chunk_size]
+            ciphertext_chunk = aesgcm.encrypt(nonce, plaintext_chunk, associated_data=None)
+
+            resp = s3_client.upload_part(
+                Bucket='yurayi-media',
+                Key=key,
+                PartNumber=part_number,
+                UploadId=upload_id,
+                Body=ciphertext_chunk
+            )
+            parts.append({'ETag': resp['ETag'], 'PartNumber': part_number})
+
+            uploaded_bytes += len(plaintext_chunk)
+            if progress_callback:
+                current_progress = processed_bytes + (uploaded_bytes / total_size) * 0.7 * total_size
+                progress_callback(min(int((current_progress / total_size) * 100), 99),
+                                  f"Uploading part {part_number}...")
+
+        obj = s3_client.complete_multipart_upload(
+            Bucket='yurayi-media',
+            Key=key,
+            UploadId=upload_id,
+            MultipartUpload={'Parts': parts}
+        )
+
+        return obj
+
+    except Exception:
+        s3_client.abort_multipart_upload(Bucket='yurayi-media', Key=key, UploadId=upload_id)
+        if progress_callback:
+            progress_callback(-1, "Multipart upload failed")
+        raise
+
+
+def encrypt_and_upload_file_chunked(*, key, plaintext_bytes, content_type="application/octet-stream",
+                                    file_category=None, progress_callback=None):
+    """
+    Encrypts and uploads a file to S3 in chunks using AES-GCM with KMS data key.
+    Progress callback reports percentage and status message.
+    """
+
+    try:
+        total_size = len(plaintext_bytes)
+        processed_bytes = 0
+
+        if progress_callback:
+            progress_callback(0, "Starting encryption...")
+
+        # 1) Generate KMS data key
+        resp = kms.generate_data_key(KeyId='843da3bb-9a57-4d9f-a8ab-879a6109f460', KeySpec="AES_256")
+        data_key_plain = resp["Plaintext"]
+        data_key_encrypted = resp["CiphertextBlob"]
+
+        processed_bytes += total_size * 0.05  # 5% for key generation
+        if progress_callback:
+            progress_callback(int((processed_bytes / total_size) * 100), "Encrypting file in chunks...")
+
+        # 2) Setup AES-GCM
+        aesgcm = AESGCM(data_key_plain)
+        nonce = os.urandom(12)  # 12-byte nonce for GCM
+
+        # 3) Configure S3 client
+        s3_client = boto3.client('s3', config=Config(retries={'max_attempts':3, 'mode':'adaptive'}, max_pool_connections=50))
+
+        # 4) Decide upload type
+        if total_size > 100 * 1024 * 1024:  # multipart for >100MB
+            obj = _multipart_encrypt_upload(s3_client, plaintext_bytes, key, aesgcm, nonce,
+                                            data_key_encrypted, content_type, file_category,
+                                            progress_callback, processed_bytes, total_size)
+        else:
+            obj = _single_encrypt_upload(s3_client, plaintext_bytes, key, aesgcm, nonce,
+                                         data_key_encrypted, content_type, file_category,
+                                         progress_callback, processed_bytes, total_size)
+
+        if progress_callback:
+            progress_callback(100, "Upload completed successfully!")
+
+        return obj
+
+    except Exception:
+        if progress_callback:
+            progress_callback(-1, "Upload failed")
+        raise
+
+def upload_encrypted_file_chunked(*, key, encrypted_bytes, content_type="application/octet-stream",
+                                   data_key_encrypted, nonce, file_category=None,
+                                   progress_callback=None):
+    """
+    Upload an already encrypted file to S3 in chunks with progress tracking.
+    Supports both single-part and multipart upload based on size.
+    """
+
+    try:
+        total_size = len(encrypted_bytes)
+        uploaded_bytes = 0
+
+        if progress_callback:
+            progress_callback(0, "Starting upload...")
+
+        s3_client = boto3.client('s3', config=Config(
+            retries={'max_attempts': 3, 'mode': 'adaptive'},
+            max_pool_connections=50
+        ))
+
+        # -------------------- Multipart Upload --------------------
+        if total_size > 100 * 1024 * 1024:  # >100MB -> multipart
+            response = s3_client.create_multipart_upload(
+                Bucket='yurayi-media',
+                Key=key,
+                ContentType=content_type,
+                Metadata={
+                    "edk": base64.b64encode(data_key_encrypted).decode(),
+                    "nonce": base64.b64encode(nonce).decode(),
+                    "orig-content-type": content_type,
+                    "file-category": file_category or ""
+                }
+            )
+            upload_id = response['UploadId']
+            try:
+                chunk_size = max(5 * 1024 * 1024, total_size // 100)
+                parts = []
+
+                for part_number, i in enumerate(range(0, total_size, chunk_size), start=1):
+                    chunk = encrypted_bytes[i:i + chunk_size]
+
+                    resp = s3_client.upload_part(
+                        Bucket='yurayi-media',
+                        Key=key,
+                        PartNumber=part_number,
+                        UploadId=upload_id,
+                        Body=chunk
+                    )
+                    parts.append({'ETag': resp['ETag'], 'PartNumber': part_number})
+
+                    uploaded_bytes += len(chunk)
+                    if progress_callback:
+                        percentage = int((uploaded_bytes / total_size) * 100)
+                        progress_callback(min(percentage, 99), f"Uploading part {part_number}...")
+
+                obj = s3_client.complete_multipart_upload(
+                    Bucket='yurayi-media',
+                    Key=key,
+                    UploadId=upload_id,
+                    MultipartUpload={'Parts': parts}
+                )
+
+            except Exception:
+                s3_client.abort_multipart_upload(
+                    Bucket='yurayi-media',
+                    Key=key,
+                    UploadId=upload_id
+                )
+                if progress_callback:
+                    progress_callback(-1, "Multipart upload failed")
+                raise
+
+        # -------------------- Single-part Upload --------------------
+        else:
+            class ProgressTracker:
+                def __init__(self, callback):
+                    self.callback = callback
+                    self.uploaded = 0
+
+                def __call__(self, bytes_transferred):
+                    self.uploaded = bytes_transferred
+                    if self.callback:
+                        percentage = int((self.uploaded / total_size) * 100)
+                        self.callback(min(percentage, 99), "Uploading to S3...")
+
+            tracker = ProgressTracker(progress_callback)
+
+            # Wrap file bytes in a BytesIO for chunked upload
+            fileobj = io.BytesIO(encrypted_bytes)
+
+            s3_client.upload_fileobj(
+                Fileobj=fileobj,
+                Bucket='yurayi-media',
+                Key=key,
+                ExtraArgs={
+                    "ContentType": content_type,
+                    "Metadata": {
+                        "edk": base64.b64encode(data_key_encrypted).decode(),
+                        "nonce": base64.b64encode(nonce).decode(),
+                        "orig-content-type": content_type,
+                        "file-category": file_category or ""
+                    }
+                },
+                Callback=tracker
+            )
+
+            obj = {"Key": key, "Bucket": "yurayi-media"}
+
+        if progress_callback:
+            progress_callback(100, "Upload completed successfully!")
+
+        return obj
+
+    except Exception:
+        if progress_callback:
+            progress_callback(-1, "Upload failed")
+        raise
