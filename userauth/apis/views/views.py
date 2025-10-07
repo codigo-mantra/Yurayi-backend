@@ -104,7 +104,12 @@ class GoogleAuthView(APIView):
         
         user = result["user"]
         is_new_user = result["is_new_user"]
-        is_password_set = result['is_password_set']
+        user_password = user.password
+        is_password_set = False
+        if user_password != '' or user_password is None:
+            is_password_set = True
+
+
         city = serializer.validated_data.get('city')
         country = serializer.validated_data.get('country')
         latitude = serializer.validated_data.get('latitude')
