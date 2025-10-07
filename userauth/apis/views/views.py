@@ -98,13 +98,20 @@ class GoogleAuthView(APIView):
             context={'request': request, 'view': self}
         )
         serializer.is_valid(raise_exception=True)
+        result = serializer.save()
+        logger.info("GoogleAuthView.post is valid")
+        
+        
+        user = result["user"]
+        is_new_user = result["is_new_user"]
+        is_password_set = result['is_password_set']
         city = serializer.validated_data.get('city')
         country = serializer.validated_data.get('country')
         latitude = serializer.validated_data.get('latitude')
         longitude = serializer.validated_data.get('longitude')
 
-        sociallogin = serializer.save()
-        user = sociallogin.user
+        # sociallogin = serializer.save()
+        # user = sociallogin.user
 
         if not user.is_active:
             raise serializers.ValidationError("This account is inactive.")
@@ -126,8 +133,8 @@ class GoogleAuthView(APIView):
                 }
             )
             create_user_mapper(user) # create user mapper 
+            
         
-        is_password_set = user.has_usable_password()
         if is_password_set:
             raise serializers.ValidationError({'password': 'Password is already set. Please login with your password.'})
             
@@ -236,7 +243,7 @@ class GoogleAuthView(APIView):
             domain=settings.COOKIE_DOMAIN,
             path=settings.ACCESS_COOKIE_PATH,
         )
-
+        logger.info(f"User successfully login via google auth user email: {user.email}")
         return resp
 
     

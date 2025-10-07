@@ -10,7 +10,7 @@ from django.contrib.auth.forms import PasswordResetForm
 from userauth.models import User, NewsletterSubscriber
 from django.core.exceptions import ValidationError
 from allauth.socialaccount.providers.google.provider import GoogleProvider
-from allauth.socialaccount.models import SocialApp, SocialAccount, SocialLogin
+from allauth.socialaccount.models import SocialApp, SocialAccount, SocialLogin, EmailAddress
 
 
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -73,8 +73,105 @@ from allauth.socialaccount.providers.google.provider import GoogleProvider
 from allauth.socialaccount.models import SocialLogin
 from django.contrib.auth import get_user_model
 import requests
+from allauth.socialaccount.helpers import complete_social_login
+
 
 User = get_user_model()
+
+# class GoogleAccessTokenSerializer(serializers.Serializer):
+#     access_token = serializers.CharField()
+#     # user location info
+#     city = serializers.CharField(required=False, allow_blank=True)
+#     country = serializers.CharField(required=False, allow_blank=True)
+#     latitude = serializers.CharField(required=False, allow_blank=True)
+#     longitude = serializers.CharField(required=False, allow_blank=True)
+
+
+#     def validate(self, attrs):
+#         access_token = attrs.get("access_token")
+#         if not access_token:
+#             raise serializers.ValidationError("access_token is required")
+#         return attrs
+
+#     def generate_unique_username(self, first_name):
+#         base_username = f"{first_name.lower()}" if first_name else "user"
+#         username = base_username
+#         counter = 1
+#         while User.objects.filter(username=username).exists():
+#             username = f"{base_username}{counter}"
+#             counter += 1
+#         return username
+
+#     def create(self, validated_data):
+#         request = self.context.get("request")
+#         access_token = validated_data.get("access_token")
+
+#         # Fetch user info using access_token
+#         user_info_response = requests.get(
+#             "https://www.googleapis.com/oauth2/v3/userinfo",
+#             headers={"Authorization": f"Bearer {access_token}"}
+#         )
+#         if not user_info_response.ok:
+#             raise serializers.ValidationError("Failed to fetch user info from Google")
+
+#         user_info = user_info_response.json()
+#         email = user_info['email'].lower().strip()
+#         uid = user_info.get("sub")
+#         first_name = user_info.get("given_name", email).replace(" ", "")
+#         last_name = user_info.get("family_name", "").replace(" ", "")
+#         username = self.generate_unique_username(first_name=first_name)
+
+#         # Try to get or create the user
+#         try:
+#             user = User.objects.get(email=email)
+#             is_new_user = False
+#         except User.DoesNotExist:
+#             user = User.objects.create(
+#                 email=email,
+#                 username=username,
+#                 first_name=first_name,
+#                 last_name=last_name
+#             )
+#             user.last_login = None
+#             user.save()
+#             is_new_user = True
+#             user.set_unusable_password()
+
+#         # Create SocialAccount object (not saved to DB)
+#         account,user_created = SocialAccount.objects.get_or_create(
+#             user=user,
+#             uid=uid,
+#             provider=GoogleProvider.id,
+#             extra_data=user_info
+#         )
+#         if is_new_user and not EmailAddress.objects.filter(user=user, email=email).exists():
+#             EmailAddress.objects.create(
+#                 user=user,
+#                 email=email,
+#                 verified=True,
+#                 primary=True
+#             )
+#             try:
+#                 complete_social_login(request, login)
+#             except Exception:
+#                 pass
+
+#         # Create SocialLogin object
+#         login = SocialLogin(user=user, account=account)
+#         login.state = SocialLogin.state_from_request(request)
+#         login.save(request)
+
+#         # (Optional) Complete the allauth pipeline if you want signals etc.
+        
+
+
+#         # Track user status internally (used in view)
+#         self.is_new_user = is_new_user
+#         if self.is_new_user:
+#             user.set_unusable_password()
+#             user.save(update_fields=['password'])
+
+#         return login
 
 class GoogleAccessTokenSerializer(serializers.Serializer):
     access_token = serializers.CharField()
@@ -84,15 +181,13 @@ class GoogleAccessTokenSerializer(serializers.Serializer):
     latitude = serializers.CharField(required=False, allow_blank=True)
     longitude = serializers.CharField(required=False, allow_blank=True)
 
-
     def validate(self, attrs):
-        access_token = attrs.get("access_token")
-        if not access_token:
+        if not attrs.get("access_token"):
             raise serializers.ValidationError("access_token is required")
         return attrs
 
     def generate_unique_username(self, first_name):
-        base_username = f"{first_name.lower()}" if first_name else "user"
+        base_username = first_name.lower() if first_name else "user"
         username = base_username
         counter = 1
         while User.objects.filter(username=username).exists():
@@ -100,56 +195,63 @@ class GoogleAccessTokenSerializer(serializers.Serializer):
             counter += 1
         return username
 
-    def create(self, validated_data):
+    def save(self):
         request = self.context.get("request")
-        access_token = validated_data.get("access_token")
+        access_token = self.validated_data["access_token"]
 
-        # Fetch user info using access_token
-        user_info_response = requests.get(
+        # Fetch Google user info
+        resp = requests.get(
             "https://www.googleapis.com/oauth2/v3/userinfo",
             headers={"Authorization": f"Bearer {access_token}"}
         )
-        if not user_info_response.ok:
+        if not resp.ok:
             raise serializers.ValidationError("Failed to fetch user info from Google")
+        user_info = resp.json()
 
-        user_info = user_info_response.json()
-        email = user_info['email'].lower().strip()
+        email = user_info["email"].lower().strip()
         uid = user_info.get("sub")
         first_name = user_info.get("given_name", email).replace(" ", "")
         last_name = user_info.get("family_name", "").replace(" ", "")
-        username = self.generate_unique_username(first_name=first_name)
+        username = self.generate_unique_username(first_name)
 
-        # Try to get or create the user
-        try:
-            user = User.objects.get(email=email)
-            is_new_user = False
-        except User.DoesNotExist:
-            user = User.objects.create(
-                email=email,
-                username=username,
-                first_name=first_name,
-                last_name=last_name
-            )
-            user.last_login = None
-            user.save()
-            is_new_user = True
+        # --- Create or get User ---
+        user, is_new_user = User.objects.get_or_create(
+            email=email,
+            defaults={
+                "username": username,
+                "first_name": first_name,
+                "last_name": last_name,
+            }
+        )
+        if is_new_user:
+            # Google-only user, no password yet
+            user.set_unusable_password()
+            user.save(update_fields=["password"])
 
-        # Create SocialAccount object (not saved to DB)
-        account = SocialAccount(
+        # --- Create or get SocialAccount ---
+        account, _ = SocialAccount.objects.get_or_create(
             user=user,
             uid=uid,
             provider=GoogleProvider.id,
-            extra_data=user_info
+            defaults={"extra_data": user_info},
         )
 
-        # Create SocialLogin object
-        login = SocialLogin(user=user, account=account)
-        login.state = SocialLogin.state_from_request(request)
+        # --- Create EmailAddress for new user ---
+        if is_new_user and not EmailAddress.objects.filter(user=user, email=email).exists():
+            EmailAddress.objects.create(
+                user=user,
+                email=email,
+                verified=True,
+                primary=True
+            )
 
-        # Track user status internally (used in view)
-        self.is_new_user = is_new_user
-
-        return login
+        # Return just the model info
+        return {
+            "user": user,
+            "is_new_user": is_new_user,
+            "is_password_set": user.has_usable_password(),
+            "social_account": account,
+        }
 
 
 class JWTTokenSerializer(serializers.Serializer):
