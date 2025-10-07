@@ -214,42 +214,77 @@ def _multipart_upload_with_progress(s3_client, ciphertext, key, content_type,
         raise e
 
 
-def decrypt_and_get_image(key: str):
-    """
-    Download, decrypt and return file bytes + content type from S3.
-    Works for all file types (image, video, audio, other).
+# def decrypt_and_get_image(key: str):
+#     """
+#     Download, decrypt and return file bytes + content type from S3.
+#     Works for all file types (image, video, audio, other).
     
-    Returns:
-        plaintext (bytes): Decrypted file bytes
-        content_type (str): Original content type from metadata
-    """
-    try:
+#     Returns:
+#         plaintext (bytes): Decrypted file bytes
+#         content_type (str): Original content type from metadata
+#     """
+#     try:
         
-        # 1) Fetch encrypted object
-        obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
-        ciphertext = obj["Body"].read()
+#         # 1) Fetch encrypted object
+#         obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
+#         ciphertext = obj["Body"].read()
 
-        # 2) Extract encryption metadata
-        metadata = obj["Metadata"]
-        encrypted_data_key_b64 = metadata["edk"]
-        nonce_b64 = metadata["nonce"]
-        orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
+#         # 2) Extract encryption metadata
+#         metadata = obj["Metadata"]
+#         encrypted_data_key_b64 = metadata["edk"]
+#         nonce_b64 = metadata["nonce"]
+#         orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
 
-        encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
-        nonce = base64.b64decode(nonce_b64)
+#         encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
+#         nonce = base64.b64decode(nonce_b64)
 
-        # 3) Decrypt the data key with KMS
-        resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
-        data_key = resp["Plaintext"]
+#         # 3) Decrypt the data key with KMS
+#         resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
+#         data_key = resp["Plaintext"]
 
-        # 4) Decrypt ciphertext with AES-GCM
-        aesgcm = AESGCM(data_key)
-        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+#         # 4) Decrypt ciphertext with AES-GCM
+#         aesgcm = AESGCM(data_key)
+#         plaintext = aesgcm.decrypt(nonce, ciphertext, None)
 
-        return plaintext, orig_content_type
-    except Exception as e:
-        logger.error(f'Exception while media decryption as {e}')
+#         return plaintext, orig_content_type
+#     except Exception as e:
+#         logger.error(f'Exception while media decryption as {e}')
 
+
+import base64
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import boto3
+
+def decrypt_and_get_image(key: str, chunk_size: int = 10 * 1024 * 1024 + 28):
+    """
+    Decrypts a file uploaded via upload_file_to_s3_kms_chunked.
+    """
+    # s3 = boto3.client("s3")
+    # kms = boto3.client("kms")
+
+    obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
+    encrypted_blob = obj["Body"].read()
+    metadata = obj["Metadata"]
+
+    # Decrypt data key from metadata
+    encrypted_data_key = base64.b64decode(metadata["edk"])
+    data_key = kms.decrypt(CiphertextBlob=encrypted_data_key)["Plaintext"]
+    aesgcm = AESGCM(data_key)
+
+    plaintext = bytearray()
+    offset = 0
+
+    while offset < len(encrypted_blob):
+        # Each chunk = nonce (12 bytes) + ciphertext_chunk
+        nonce = encrypted_blob[offset:offset + 12]
+        ciphertext_chunk = encrypted_blob[offset + 12:offset + chunk_size]
+        offset += len(nonce) + len(ciphertext_chunk)
+
+        chunk_plaintext = aesgcm.decrypt(nonce, ciphertext_chunk, None)
+        plaintext.extend(chunk_plaintext)
+
+    content_type = metadata.get("orig-content-type", "application/octet-stream")
+    return bytes(plaintext), content_type
 
 
 def download_and_decrypt_image(*, bucket, key):

@@ -7,6 +7,8 @@ from datetime import datetime, timedelta
 from django.shortcuts import get_object_or_404
 from userauth.models import User
 from django.core.cache import cache
+from memory_room.helpers import upload_file_to_s3_kms
+
 
 from memory_room.tasks import capsoul_almost_unlock,capsoul_unlocked,update_time_capsoul_occupied_storage
 
@@ -456,7 +458,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
         validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
-        s3_key = f"{user.s3_storage_id}/time-capsoul-files/{file.name}"
+        s3_key = f"media/time-capsoul-files/{user.s3_storage_id}/{file.name}"
         s3_key = s3_key.replace(" ", "_")  # remove white spaces
 
         if progress_callback:
@@ -472,12 +474,17 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                         overall_progress = 30 + int((upload_percentage / 100) * 50)
                         progress_callback(min(overall_progress, 80), message)
 
-            upload_media_obj = encrypt_and_upload_file(
+            # upload_media_obj = encrypt_and_upload_file(
+            #     key=s3_key,
+            #     plaintext_bytes=decrypted_bytes,
+            #     content_type=file.content_type,
+            #     file_category=file_type,
+            #     progress_callback=upload_progress_callback
+            # )
+            upload_file_to_s3_kms(
                 key=s3_key,
                 plaintext_bytes=decrypted_bytes,
                 content_type=file.content_type,
-                file_category=file_type,
-                progress_callback=upload_progress_callback
             )
         except Exception as e:
             logger.error('Upload Error')

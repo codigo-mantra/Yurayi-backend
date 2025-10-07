@@ -12,7 +12,7 @@ from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, generate_signature
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file
 from django.core.files.base import ContentFile
-
+from memory_room.helpers import upload_file_to_s3_kms, upload_file_to_s3_kms_chunked
 
 # AWS_KMS_REGION = settings.AWS_KMS_REGION
 # AWS_KMS_KEY_ID = settings.AWS_KMS_KEY_ID
@@ -347,7 +347,9 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
         validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
-        s3_key = f"{user.s3_storage_id}/memory-room-files/{file.name}"
+        s3_key = f"media/memory-room-files/{user.s3_storage_id}/{file.name}"
+        # s3_key = f"media/testFolder/{file.name}"
+
         s3_key = s3_key.replace(" ", "_")
 
         if progress_callback:
@@ -365,11 +367,23 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                         progress_callback(min(overall_progress, 80), message)
 
             # Upload decrypted file with progress tracking
-            upload_media_obj = encrypt_and_upload_file(
+            # upload_media_obj = encrypt_and_upload_file(
+            #     key=s3_key,
+            #     plaintext_bytes=decrypted_bytes,
+            #     content_type=file.content_type,
+            #     file_category=file_type,
+            #     progress_callback=upload_progress_callback
+            # )
+            # upload_file_to_s3_kms(
+            #     key=s3_key,
+            #     plaintext_bytes=decrypted_bytes,
+            #     content_type=file.content_type,
+            # )
+            
+            upload_file_to_s3_kms_chunked(
                 key=s3_key,
                 plaintext_bytes=decrypted_bytes,
                 content_type=file.content_type,
-                file_category=file_type,
                 progress_callback=upload_progress_callback
             )
         except Exception as e:

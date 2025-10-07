@@ -165,8 +165,13 @@ def testing_view(request):
     # email = 'wojaro52232390@bllibl.com'
     # email2 = 'jasvir.codigo@gmail.com'
     # import uuid
-    # from userauth.models import User
-    # user = User.objects.get(email = email)
+    from userauth.models import User
+    user = User.objects.get(email = 'tapendrakaul@gmail.com')
+    is_pasword_set = user.has_usable_password()
+    user_password = user.password
+    if user_password == '' or user_password is None:
+        user.has_usable_password()
+    print(f'\n is_pasword_set: {is_pasword_set}')
     # user.delete()
     # all_user = User.objects.all()
     # for user in all_user:
