@@ -145,6 +145,16 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
             room_name = f"{base_name} ({count})"
         else:
             room_name = base_name
+
+        new_title = base_name
+
+        room_exists = MemoryRoom.objects.filter(
+            user=user,
+            room_template__name__istartswith=new_title
+        ).first()
+        if room_exists:
+            raise serializers.ValidationError({'name': 'You already have a room with this name. Please choose a different name.'})
+            
         
 
         custom = CustomMemoryRoomTemplate.objects.create(
@@ -181,6 +191,16 @@ class MemoryRoomUpdationSerializer(serializers.ModelSerializer):
         Updates related CustomMemoryRoomTemplate fields.
         """
         template = instance.room_template
+        if template.default_template is None:
+            new_title = validated_data.get('name')
+
+            room_exists = MemoryRoom.objects.filter(
+                user=instance.user,
+                room_template__name__istartswith=new_title
+            ).first()
+            if room_exists and room_exists.id != instance.id:
+                raise serializers.ValidationError({'name': 'You already have a room with this name. Please choose a different name.'})
+            
         template.name = validated_data.get('name', template.name)
         template.summary = validated_data.get('summary', template.summary)
         template.cover_image = validated_data.get('cover_image', template.cover_image)
