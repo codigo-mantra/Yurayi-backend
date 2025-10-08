@@ -251,7 +251,7 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         if user:
             if obj.user == user:
                 return True
-        return True
+        return False
 
     def get_total_files(self, obj):
         try:

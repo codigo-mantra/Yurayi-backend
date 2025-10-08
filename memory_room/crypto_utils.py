@@ -4,6 +4,7 @@ Encryption/Decryption utilities for S3 images.
 import base64, os
 import logging
 import boto3
+from rest_framework import status
 from botocore.config import Config
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from django.conf import settings
@@ -214,41 +215,46 @@ def _multipart_upload_with_progress(s3_client, ciphertext, key, content_type,
         raise e
 
 
-# def decrypt_and_get_image(key: str):
-#     """
-#     Download, decrypt and return file bytes + content type from S3.
-#     Works for all file types (image, video, audio, other).
+def get_decrypt_file_bytes(key: str):
+    """
+    Download, decrypt and return file bytes + content type from S3.
+    Works for all file types (image, video, audio, other).
     
-#     Returns:
-#         plaintext (bytes): Decrypted file bytes
-#         content_type (str): Original content type from metadata
-#     """
-#     try:
+    Returns:
+        plaintext (bytes): Decrypted file bytes
+        content_type (str): Original content type from metadata
+    """
+    try:
         
-#         # 1) Fetch encrypted object
-#         obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
-#         ciphertext = obj["Body"].read()
+        # 1) Fetch encrypted object
+        try:
+            obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
+        except Exception as e:
+            logger.error(f'Error fetching object from S3: {e}')
+            return None, None
+        
+        ciphertext = obj["Body"].read()
 
-#         # 2) Extract encryption metadata
-#         metadata = obj["Metadata"]
-#         encrypted_data_key_b64 = metadata["edk"]
-#         nonce_b64 = metadata["nonce"]
-#         orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
+        # 2) Extract encryption metadata
+        metadata = obj["Metadata"]
+        encrypted_data_key_b64 = metadata["edk"]
+        nonce_b64 = metadata["nonce"]
+        orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
 
-#         encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
-#         nonce = base64.b64decode(nonce_b64)
+        encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
+        nonce = base64.b64decode(nonce_b64)
 
-#         # 3) Decrypt the data key with KMS
-#         resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
-#         data_key = resp["Plaintext"]
+        # 3) Decrypt the data key with KMS
+        resp = kms.decrypt(CiphertextBlob=encrypted_data_key)
+        data_key = resp["Plaintext"]
 
-#         # 4) Decrypt ciphertext with AES-GCM
-#         aesgcm = AESGCM(data_key)
-#         plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        # 4) Decrypt ciphertext with AES-GCM
+        aesgcm = AESGCM(data_key)
+        plaintext = aesgcm.decrypt(nonce, ciphertext, None)
 
-#         return plaintext, orig_content_type
-#     except Exception as e:
-#         logger.error(f'Exception while media decryption as {e}')
+        return plaintext, orig_content_type
+    except Exception as e:
+        logger.error(f'Exception while media decryption as {e}')
 
 
 import base64
@@ -262,7 +268,13 @@ def decrypt_and_get_image(key: str, chunk_size: int = 10 * 1024 * 1024 + 28):
     # s3 = boto3.client("s3")
     # kms = boto3.client("kms")
 
-    obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
+    
+    try:
+        obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
+    except Exception as e:
+        logger.error(f'Error fetching object from S3: {e}')
+        return None, None
+    
     encrypted_blob = obj["Body"].read()
     metadata = obj["Metadata"]
 
@@ -289,7 +301,13 @@ def decrypt_and_get_image(key: str, chunk_size: int = 10 * 1024 * 1024 + 28):
 
 def download_and_decrypt_image(*, bucket, key):
     # 1) Get ciphertext + metadata
-    obj = s3.get_object(Bucket=bucket, Key=key)
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=key)
+    except Exception as e:
+        logger.error(f'Error fetching object from S3: {e}')
+        return None, None
+
+    # obj = s3.get_object(Bucket=bucket, Key=key)
     ciphertext = obj["Body"].read()
     md = obj["Metadata"]
     edk_b64 = md["edk"]
@@ -463,7 +481,12 @@ def decrypt_and_replicat_files(key: str):
     Works for all file types (image, video, audio, other).
     """
     # 1) Fetch encrypted object
-    obj = s3.get_object(Bucket='yurayi-media', Key=key)
+    try:
+        obj = s3.get_object(Bucket='yurayi-media', Key=key)
+    except Exception as e:
+        logger.error(f'Error fetching object from S3: {e}')
+        return None, None
+
     encrypted_blob = obj["Body"].read()
 
     # 2) Extract metadata
@@ -774,3 +797,47 @@ def upload_encrypted_file_chunked(*, key, encrypted_bytes, content_type="applica
         if progress_callback:
             progress_callback(-1, "Upload failed")
         raise
+
+
+from django.core.cache import cache
+from rest_framework.response import Response
+from rest_framework import status
+
+def get_media_file_bytes_with_content_type(media_file, user):
+    try:
+        bytes_cache_key = str(media_file.s3_key)
+        file_bytes = cache.get(bytes_cache_key)
+        
+        content_type_cache_key = f'{bytes_cache_key}_type'
+        content_type = cache.get(content_type_cache_key)
+        file_bytes, content_type = None, None
+
+        
+        if not file_bytes or  not content_type:
+            try:
+                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
+
+            except Exception as e:
+                file_bytes, content_type = get_decrypt_file_bytes(str(media_file.s3_key))
+            
+            except Exception as e:
+                file_bytes, content_type = decrypt_and_replicat_files(str(media_file.s3_key))
+            
+            except Exception as e:
+                logger.error(f'Exception while serving media file to user: {user.email} room media-id: {media_file.id} as \n error message: {e}')
+                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                if file_bytes and content_type:
+                    # caching here
+                    print(f'yes file bytes received')
+                    cache.set(bytes_cache_key, file_bytes, timeout=60*60*2)  
+                    cache.set(content_type_cache_key, content_type, timeout=60*60*2)
+        return file_bytes, content_type
+            
+    except Exception as e:
+        logger.error(f'Exception while fetching media file from cache or decrypting: {e}')
+        return None, None
+    
+
+
+

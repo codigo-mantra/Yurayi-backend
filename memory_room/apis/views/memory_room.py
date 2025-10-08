@@ -51,7 +51,7 @@ from memory_room.tasks import update_memory_room_occupied_storage
 
 logger = logging.getLogger(__name__)
 
-from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file
+from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file,get_decrypt_file_bytes,get_media_file_bytes_with_content_type
 from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_file_size
 
 class MemoryRoomCoverView(SecuredView):
@@ -163,8 +163,6 @@ class SetMemoryRoomCoverImageAPIView(SecuredView):
     def post(self, request, memory_room_id, media_file_id):
         user = self.get_current_user(request)
         logger.info(f"SetMemoryRoomCoverImageAPIView.post called by {user.email} room: {memory_room_id} media-id: {media_file_id}")
-        # print(f'Requst received')
-
         user = self.get_current_user(request)
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
         if memory_room.room_template.default_template is None:
@@ -176,7 +174,9 @@ class SetMemoryRoomCoverImageAPIView(SecuredView):
                 from userauth.models import Assets
                 media_s3_key =  str(media_file.s3_key)
                 file_name = media_s3_key.split('/')[-1]
-                file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                if not file_bytes or not content_type:
+                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
                 assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
                 
@@ -484,22 +484,9 @@ class MediaFileDownloadView(SecuredView):
         # file_name = media_file.title
         file_name  = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}'
         
-        # caching here
-        bytes_cache_key = str(media_file.s3_key)
-        file_bytes = cache.get(bytes_cache_key)
-        
-        content_type_cache_key = f'{bytes_cache_key}_type'
-        content_type = cache.get(content_type_cache_key)
-        
-        if not file_bytes or  not content_type:
-            try:
-                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
-            except Exception as e:
-                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            else:
-                # caching here
-                cache.set(bytes_cache_key, file_bytes, timeout=60*60)  
-                cache.set(content_type_cache_key, content_type, timeout=60*60)
+        file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+        if not file_bytes or not content_type:
+            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
         try:
             file_size = len(file_bytes)
@@ -657,26 +644,11 @@ class ServeMedia(SecuredView):
             if not verify_signature(media_file.s3_key, exp, sig):
                 return Response(status=status.HTTP_404_NOT_FOUND)
             
-            # caching here
             bytes_cache_key = str(media_file.s3_key)
-            file_bytes = cache.get(bytes_cache_key)
-            
-            content_type_cache_key = f'{bytes_cache_key}_type'
-            content_type = cache.get(content_type_cache_key)
-            
-            if not file_bytes or  not content_type:
-                try:
-                    file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
-                except Exception as e:
-                    logger.error(f'Exception while serving media file to user: {user.email} room media-id: {media_file.id} as \n error message: {e}')
-                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                else:
-                    # caching here
-                    print(f'yes file bytes received')
-                    cache.set(bytes_cache_key, file_bytes, timeout=60*60*2)  
-                    cache.set(content_type_cache_key, content_type, timeout=60*60*2)
-
-                    
+            file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+            if not file_bytes or not content_type:
+                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        
             if file_bytes and content_type:
                 if media_file.s3_key.lower().endswith(".doc"): # .doc to .docx conversion here
                     try:
@@ -738,45 +710,9 @@ class ServeMedia(SecuredView):
                         return response
         except Exception as e:
             logger.warning(f'Exception while serving media file as s3-key: {s3_key} user: {user.email}')
-            return Response(status=status.HTTP_404_NOT_FOUND)
+            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
                 
-                
-        #     if media_file.s3_key.lower().endswith(".doc"):
-        #         try:
-        #             print(f'\n---doc conversion called---')
-                    
-        #             docx_bytes_cache_key = f'{media_file.id}_docx_preview'
-        #             docx_bytes = cache.get(docx_bytes_cache_key)
-                    
-        #             if not docx_bytes:
-        #                 docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-        #                 cache.set(docx_bytes_cache_key, docx_bytes, timeout=settings.DECRYPT_LINK_TTL_SECONDS)  
-                        
-        #             response = HttpResponse(
-        #                 docx_bytes,
-        #                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        #             )
-        #             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-        #             response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-        #             response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}"'
-        #             print(f'\n---doc conversion completed--- {media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}')
-        #             return response
-                    
-        #         except Exception as e:
-        #             logger.error(f'Exception while generating docx for doc files as {e}')
-        #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        #     else:
-        #         response = HttpResponse(file_bytes, content_type=content_type)
-        #         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # # Build CSP header
-        #         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-        #         response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
-        #         return response
-        # except Exception as e:
-        #     return Response(status=status.HTTP_404_NOT_FOUND)
-            
-            
-
 
 class RefreshMediaURL(SecuredView):
     """

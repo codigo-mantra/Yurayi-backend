@@ -49,7 +49,7 @@ from memory_room.apis.serializers.time_capsoul import (
     TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimeCapSoulMediaFileReadOnlySerializer, TimeCapSoulRecipientSerializer
 )
 from memory_room.apis.serializers.notification import TimeCapSoulRecipientUpdateSerializer
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature,get_media_file_bytes_with_content_type
 
 
 class TimeCapSoulCoverView(SecuredView):
@@ -204,7 +204,6 @@ class TimeCapSoulMediaFilesView(SecuredView):
         try:
             time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id,is_deleted = False)
             # time_capsoul = TimeCapSoul.objects.get(id=time_capsoul_id, user=user, is_deleted = False)
-            
 
         except TimeCapSoul.DoesNotExist:
             # --- Case 2: Tagged recipient ---
@@ -219,9 +218,19 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 logger.info("Recipient not found for tagged capsoul")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
             
-            if time_capsoul.unlock_date and timezone.now() < time_capsoul.unlock_date:
+            # if (time_capsoul.unlock_date and timezone.now()) and (timezone.now() >= time_capsoul.unlock_date):
+            #     logger.info("Recipient not found for tagged capsoul")
+            #     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+
+            current_date = timezone.now()
+            is_unlocked = (
+                bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
+            )
+            # if (time_capsoul.unlock_date and current_date) and (current_date>= time_capsoul.unlock_date):
+            if not is_unlocked:
                 logger.info("Recipient not found for tagged capsoul")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+
 
             media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
 
@@ -242,7 +251,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     logger.info("Recipient not found for tagged capsoul")
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
                 
-                if time_capsoul.unlock_date and timezone.now() < time_capsoul.unlock_date:
+                # if time_capsoul.unlock_date and timezone.now() < time_capsoul.unlock_date:
+                current_date = timezone.now()
+                is_unlocked = (
+                    bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
+                )
+                # if (time_capsoul.unlock_date and current_date) and (current_date>= time_capsoul.unlock_date):
+                if not is_unlocked:
                     logger.info("Recipient not found for tagged capsoul")
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
@@ -806,6 +821,8 @@ class ServeTimeCapSoulMedia(SecuredView):
         exp = request.GET.get("exp")
         sig = request.GET.get("sig")
         user = self.get_current_user(request)
+        from django.utils import timezone
+
         if not exp or not sig:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -835,27 +852,46 @@ class ServeTimeCapSoulMedia(SecuredView):
             capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul=time_capsoul, email = user.email).first()
             if not capsoul_recipients:
                 return Response(status=status.HTTP_404_NOT_FOUND)
+            
+            # if (media_file.time_capsoul.unlock_date and timezone.now()) and (timezone.now() >= time_capsoul.unlock_date):
+            #     logger.info("Recipient not found for tagged capsoul")
+            #     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+
+            current_date = timezone.now()
+            is_unlocked = (
+                bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
+            )
+            # if (time_capsoul.unlock_date and current_date) and (current_date>= time_capsoul.unlock_date):
+            if not is_unlocked:
+                logger.info("Recipient not found for tagged capsoul")
+                return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+
+
 
         except Exception:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
         bytes_cache_key = media_file.s3_key
-        file_bytes = cache.get(bytes_cache_key)
+        # file_bytes = cache.get(bytes_cache_key)
         
-        content_type_cache_key = f'{bytes_cache_key}_type'
-        content_type = cache.get(content_type_cache_key)
+        # content_type_cache_key = f'{bytes_cache_key}_type'
+        # content_type = cache.get(content_type_cache_key)
         
-        if not file_bytes or  not content_type:
-            try:
-                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
-            except Exception as e:
-                file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
-            except Exception as e:
-                return Response(status=status.HTTP_404_NOT_FOUND)
-            else:
-                # caching here
-                cache.set(bytes_cache_key, file_bytes, timeout=60*60)  
-                cache.set(content_type_cache_key, content_type, timeout=60*60)
+        # if not file_bytes or  not content_type:
+        #     try:
+        #         file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
+        #     except Exception as e:
+        #         file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
+        #     except Exception as e:
+        #         return Response(status=status.HTTP_404_NOT_FOUND)
+        #     else:
+        #         # caching here
+        #         cache.set(bytes_cache_key, file_bytes, timeout=60*60)  
+        #         cache.set(content_type_cache_key, content_type, timeout=60*60)
+        
+        file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+        if not file_bytes or not content_type:
+            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
                 
         if media_file.s3_key.lower().endswith(".doc"):
@@ -954,24 +990,28 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
         file_name  = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}'
         # print(f'\nfile-name: {file_name}  {media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}')
         
-        bytes_cache_key = str(media_file.s3_key)
-        file_bytes = cache.get(bytes_cache_key)
+        # bytes_cache_key = str(media_file.s3_key)
+        # file_bytes = cache.get(bytes_cache_key)
         
-        content_type_cache_key = f'{bytes_cache_key}_type'
-        content_type = cache.get(content_type_cache_key)
+        # content_type_cache_key = f'{bytes_cache_key}_type'
+        # content_type = cache.get(content_type_cache_key)
         
-        if not file_bytes or  not content_type:
-            try:
-                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
-            except Exception as e:
-                file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
-            except Exception as e:
-                logger.error(f'Exception while serving media file to user: {user.email} capsoul media-id: {media_file.id} as \n error message: {e}')
-                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            else:
-                # caching here
-                cache.set(bytes_cache_key, file_bytes, timeout=60*60*2)  
-                cache.set(content_type_cache_key, content_type, timeout=60*60*2)
+        # if not file_bytes or  not content_type:
+        #     try:
+        #         file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
+        #     except Exception as e:
+        #         file_bytes, content_type  = decrypt_and_replicat_files(str(media_file.s3_key))
+        #     except Exception as e:
+        #         logger.error(f'Exception while serving media file to user: {user.email} capsoul media-id: {media_file.id} as \n error message: {e}')
+        #         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        #     else:
+        #         # caching here
+        #         cache.set(bytes_cache_key, file_bytes, timeout=60*60*2)  
+        #         cache.set(content_type_cache_key, content_type, timeout=60*60*2)
+
+        file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+        if not file_bytes or not content_type:
+            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         
         if file_bytes and content_type:
             try:
