@@ -2,8 +2,17 @@ import base64, os
 import logging
 import boto3
 from botocore.config import Config
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from django.conf import settings
+import logging
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from memory_room.signals import update_user_storage
+
+from memory_room.models import TimeCapSoul, TimeCapSoulMediaFile,CustomTimeCapSoulTemplate
+from memory_room.tasks import update_time_capsoul_occupied_storage
+from memory_room.crypto_utils import get_media_file_bytes_with_content_type,generate_capsoul_media_s3_key
+
+logger = logging.getLogger(__name__)
+
 
 AWS_KMS_REGION = 'ap-south-1'
 AWS_KMS_KEY_ID = '843da3bb-9a57-4d9f-a8ab-879a6109f460'
@@ -204,3 +213,163 @@ def upload_file_to_s3_kms_chunked(
             del data_key_plain
         except Exception:
             pass
+
+
+def audio_thumbnail_generator(file_name, decrypted_bytes):
+    import os
+    from timecapsoul.utils import MediaThumbnailExtractor
+    try:
+        ext = os.path.splitext(file_name)[1]
+        extractor = MediaThumbnailExtractor(None, ext)
+        thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
+            decrypted_bytes=decrypted_bytes, extension=ext
+        )
+    except Exception as e:
+        logger.exception('Exception while media thumbnail extraction')
+    else:
+        if thumbnail_data:
+            from django.core.files.base import ContentFile
+            from userauth.models import Assets
+
+            image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file_name}.jpg")
+            asset = Assets.objects.create(image=image_file, asset_types='Thubmnail')
+            return asset
+
+
+def create_media(media:TimeCapSoulMediaFile, new_capsoul:TimeCapSoul, current_user,thumbnail):
+    try:
+
+        from django.utils import timezone
+        created_at = timezone.localtime(timezone.now())
+        new_media = TimeCapSoulMediaFile.objects.create(
+            user = current_user,
+            time_capsoul = new_capsoul,
+            thumbnail = thumbnail,
+            media_refrence_replica = None,
+            media_duplicate = media,
+            file = media.file,
+            file_type = media.file_type,
+            title = media.title,
+            description = media.description,
+            file_size = media.file_size,
+            s3_url = media.s3_url,
+            s3_key = media.s3_key,
+            is_cover_image = media.is_cover_image,
+            created_at = created_at
+        )
+        return new_media
+    except Exception as e:
+        logger.error(f'Exception while creating media file duplicate for media: {media.id} and capsoul: {new_capsoul.id} user: {new_capsoul.user.email}')
+        return None
+
+
+def create_duplicate_media_file(media:TimeCapSoulMediaFile, new_capsoul:TimeCapSoul, current_user):
+    is_duplicated = False
+
+    try:
+        try:
+            # here we upload file to s3 and update user storage and create new duplicate file
+            file_bytes, content_type = get_media_file_bytes_with_content_type(media, current_user)
+            if not file_bytes or not content_type:
+                raise Exception('File decryption failed')
+            
+            else:
+                file_name  = f'{media.title.split(".", 1)[0].replace(" ", "_")}.{media.s3_key.split(".")[-1]}' # get file name 
+                s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
+                
+                upload_file_to_s3_kms(
+                    key=s3_key,
+                    plaintext_bytes=file_bytes,
+                    content_type=content_type,
+                )
+                thumbnail = None 
+                if media.file_type == 'audio': # generate thumbnail for audio file
+                    thumbnail = audio_thumbnail_generator(file_name=file_name, decrypted_bytes=file_bytes)
+                    
+                new_media = create_media(media=media, new_capsoul=new_capsoul, current_user=current_user, thumbnail=thumbnail) # create media file in db
+                if new_media:
+                    update_time_capsoul_occupied_storage.apply_async( # update capsoul storage
+                        args=[new_media.id, 'addition'],
+                    )
+                    update_user_storage( # update user storage
+                        user=current_user,
+                        media_id=new_media.id,
+                        file_size=new_media.file_size,
+                        cache_key=f'user_storage_id_{current_user.id}',
+                        operation_type='addition'
+                    )
+                    is_duplicated = True
+        except Exception as e:
+            logger.error(f'Exception while uploading duplicate media file to s3 for media id: {media.id} user: {current_user.email} error-message: {e}')
+            return None
+    except Exception as e:
+        logger.error(f'Exception while creating media file duplicate for media: {media.id} and capsoul: {new_capsoul.id} user: {new_capsoul.user.email}')
+        return None
+    finally:
+        return is_duplicated
+
+
+def create_duplicate_capsoul(time_capsoul:TimeCapSoul, capsoul_duplication_number:str, current_user:str):   
+    try:
+        # create duplicate room here
+        from django.utils import timezone
+        created_at = timezone.localtime(timezone.now())
+        old_capsoul_template = time_capsoul.capsoul_template
+        new_custom_template  =  CustomTimeCapSoulTemplate.objects.create(
+            name= old_capsoul_template.name + capsoul_duplication_number,
+            slug = old_capsoul_template,
+            summary = old_capsoul_template.summary,
+            cover_image = old_capsoul_template.cover_image,
+            default_template = old_capsoul_template.default_template,
+            created_at = created_at
+        )
+        
+        new_capsoul = TimeCapSoul.objects.create(
+            user = current_user,
+            capsoul_template = new_custom_template,
+            room_duplicate = time_capsoul,
+            created_at = created_at
+        )
+        return new_capsoul
+    except Exception as e:
+        logger.error(f'Exception while create duplicate capsoul for {current_user.email} capsoul id: {time_capsoul.id}')
+        return None
+
+
+def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul, current_user):
+    new_capsoul = None
+    logger.info(f'Timecapsoul duplication creation started for user: {time_capsoul.user.email} capsoul-id: {time_capsoul.id}')
+    try:
+        duplicate_capsoul = TimeCapSoul.objects.filter(room_duplicate = time_capsoul, is_deleted = False, user = current_user)
+        capsoul_duplication_number = f' ({1 + duplicate_capsoul.count()})'
+        new_capsoul = create_duplicate_capsoul(time_capsoul, capsoul_duplication_number, current_user)
+    except Exception as e:
+        logger.error(f'Exception while create duplicate capsoul for {current_user.email} capsoul id: {time_capsoul.id}')
+    else:
+            try:
+                # now create duplicate media files here
+                media_files = TimeCapSoulMediaFile.objects.filter(
+                    time_capsoul=time_capsoul,
+                    is_deleted=False,
+                    media_duplicate__isnull=True
+                )
+                old_media_count = media_files.count()   
+                new_media_count = 0
+                
+                for media in media_files:
+                    try:
+                        new_media = create_duplicate_media_file(media, new_capsoul, current_user)
+                    except Exception as e:
+                        logger.error(f'Exception while creating media file duplicate for media: {media.id} and capsoul: {time_capsoul.id} user: {time_capsoul.user.email}')
+                    else:
+                        new_media_count += 1 
+                        pass
+            except Exception as e:
+                logger.error(f'Exception while creating room media duplica for {time_capsoul.id}')
+            finally:
+                print(f'\n old media count: {old_media_count} new media count: {new_media_count}')
+                logger.info(f'Timecapsoul duplication completed for user: {time_capsoul.user.email} capsoul-id: {time_capsoul.id} duplicate-capsoul-id: {new_capsoul.id} old-media-count: {old_media_count} new-media-count: {new_media_count}')
+            
+            return new_capsoul
+    
+    

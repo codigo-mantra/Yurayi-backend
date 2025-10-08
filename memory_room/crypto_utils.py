@@ -815,18 +815,16 @@ def get_media_file_bytes_with_content_type(media_file, user):
         
         if not file_bytes or  not content_type:
             try:
-                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
-
-            except Exception as e:
                 file_bytes, content_type = get_decrypt_file_bytes(str(media_file.s3_key))
-            
+            except Exception as e:
+                file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
             except Exception as e:
                 file_bytes, content_type = decrypt_and_replicat_files(str(media_file.s3_key))
             
             except Exception as e:
                 logger.error(f'Exception while serving media file to user: {user.email} room media-id: {media_file.id} as \n error message: {e}')
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            else:
+            finally:
                 if file_bytes and content_type:
                     # caching here
                     print(f'yes file bytes received')
@@ -835,9 +833,16 @@ def get_media_file_bytes_with_content_type(media_file, user):
         return file_bytes, content_type
             
     except Exception as e:
-        logger.error(f'Exception while fetching media file from cache or decrypting: {e}')
+        logger.error(f'Exception while fetching media file from cache or decrypting: {e} s3-key: {media_file.s3_key} for user: {user.email}')
         return None, None
-    
 
 
+def generate_capsoul_media_s3_key(filename, user_storage, time_capsoul_id):
+    s3_key = f'media/time-capsoul-files/{user_storage}/capsoul-id:{time_capsoul_id}/{filename}'.replace(" ", "_")
+    return s3_key
+
+
+def generate_room_media_s3_key(filename, user_storage, room_id):
+    s3_key = f'media/memory-room-files/{user_storage}/room-id:{room_id}/{filename}'.replace(" ", "_")
+    return s3_key
 

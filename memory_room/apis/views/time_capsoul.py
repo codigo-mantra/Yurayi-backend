@@ -12,7 +12,8 @@ from memory_room.utils import parse_storage_size, to_mb, to_gb, convert_file_siz
 from memory_room.views import parse_storage_size as parse_into_mbs
 from memory_room.signals import update_user_storage
 from memory_room.tasks import update_time_capsoul_occupied_storage
-
+from timecapsoul.utils import MediaThumbnailExtractor
+from memory_room.helpers import upload_file_to_s3_kms,create_duplicate_time_capsoul
 
 logger = logging.getLogger(__name__)
 from rest_framework.pagination import PageNumberPagination
@@ -49,7 +50,7 @@ from memory_room.apis.serializers.time_capsoul import (
     TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimeCapSoulMediaFileReadOnlySerializer, TimeCapSoulRecipientSerializer
 )
 from memory_room.apis.serializers.notification import TimeCapSoulRecipientUpdateSerializer
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature,get_media_file_bytes_with_content_type
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature,get_media_file_bytes_with_content_type,encrypt_and_upload_file_chunked,generate_capsoul_media_s3_key
 
 
 class TimeCapSoulCoverView(SecuredView):
@@ -205,35 +206,9 @@ class TimeCapSoulMediaFilesView(SecuredView):
             time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id,is_deleted = False)
             # time_capsoul = TimeCapSoul.objects.get(id=time_capsoul_id, user=user, is_deleted = False)
 
-        except TimeCapSoul.DoesNotExist:
-            # --- Case 2: Tagged recipient ---
-
-            # if p.status != 'unlocked':
-            #     logger.info("Tagged recipient not allowed: capsoul locked")
-            #     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
-
-           
-            recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
-            if not recipient:
-                logger.info("Recipient not found for tagged capsoul")
-                return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
-            
-            # if (time_capsoul.unlock_date and timezone.now()) and (timezone.now() >= time_capsoul.unlock_date):
-            #     logger.info("Recipient not found for tagged capsoul")
-            #     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
-
-            current_date = timezone.now()
-            is_unlocked = (
-                bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
-            )
-            # if (time_capsoul.unlock_date and current_date) and (current_date>= time_capsoul.unlock_date):
-            if not is_unlocked:
-                logger.info("Recipient not found for tagged capsoul")
-                return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
-
-
-            media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
-
+        except Exception as e:
+            logger.error(f"Error fetching time_capsoul: {e} for user {user.email}")
+            return Response({"media_files": []}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
             if time_capsoul.user == user:
                 # If owner, also include replica parent files (excluding already linked ones)
@@ -261,7 +236,16 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     logger.info("Recipient not found for tagged capsoul")
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
+                parent_files_id = (
+                    [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                    if recipient.parent_media_refrences else []
+                )
+
+                media_files = TimeCapSoulMediaFile.objects.filter(
+                    time_capsoul=time_capsoul,
+                    is_deleted=False
+                ).exclude(id__in=parent_files_id)
+
 
         serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files.distinct(), many=True)
         return Response({"media_files": serializer.data})
@@ -279,7 +263,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         if time_capsoul.status == 'unlocked':
             # create  replica here
             try:
-                replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul)
+                replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul, user = user)
             except TimeCapSoul.DoesNotExist as e:
                 # create custom template for replica
                 from django.utils import timezone
@@ -828,8 +812,6 @@ class ServeTimeCapSoulMedia(SecuredView):
 
         if int(exp) < int(time.time()):
             return Response(status=status.HTTP_404_NOT_FOUND)
-       
-        
         
         if user is None:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
@@ -1287,75 +1269,7 @@ class UserStorageTracker(SecuredView):
         return Response(user_storage_data)
 
 
-def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul):
-    from django.utils import timezone
-    new_capsoul = None
-    logger.info(f'Timecapsoul duplication creation started for user: {time_capsoul.user.email} capsoul-id: {time_capsoul.id}')
-    try:
-        duplicate_capsoul = TimeCapSoul.objects.filter(room_duplicate = time_capsoul, is_deleted = False)
-        capsoul_duplication_number = f' ({1 + duplicate_capsoul.count()})'
-        
-        # create duplicate room here
-        created_at = timezone.localtime(timezone.now())
-        old_capsoul_template = time_capsoul.capsoul_template
-        new_custom_template  =  CustomTimeCapSoulTemplate.objects.create(
-            name= old_capsoul_template.name + capsoul_duplication_number,
-            slug = old_capsoul_template,
-            summary = old_capsoul_template.summary,
-            cover_image = old_capsoul_template.cover_image,
-            default_template = old_capsoul_template.default_template,
-            created_at = created_at
-        )
-        
-        new_capsoul = TimeCapSoul.objects.create(
-            user = time_capsoul.user,
-            capsoul_template = new_custom_template,
-            room_duplicate = time_capsoul,
-            created_at = created_at
-        )
-        
-    except Exception as e:
-        logger.error(f'Exception while create duplicate capsoul for {time_capsoul.user.email} capsoul id: {time_capsoul.id}')
-    else:
-        try:
-            # now create duplicate media files here
-            # media_files = TimeCapSoulMediaFile.objects.filter(user = time_capsoul.user, time_capsoul = time_capsoul, is_deleted =False)
-            media_files = TimeCapSoulMediaFile.objects.filter(
-                user=time_capsoul.user,
-                time_capsoul=time_capsoul,
-                is_deleted=False
-            )   # reverse by primary key (latest first)
-            
-            for media in media_files:
-                try:
-                    new_media = TimeCapSoulMediaFile.objects.create(
-                        user = media.user,
-                        time_capsoul = new_capsoul,
-                        thumbnail = media.thumbnail,
-                        media_refrence_replica = None,
-                        media_duplicate = media,
-                        file = media.file,
-                        file_type = media.file_type,
-                        title = media.title,
-                        description = media.description,
-                        file_size = media.file_size,
-                        s3_url = media.s3_url,
-                        s3_key = media.s3_key,
-                        is_cover_image = media.is_cover_image,
-                        
-                        created_at = created_at
-                    )
-                except Exception as e:
-                    logger.error(f'Exception while creating media file duplicate for media: {media.id} and capsoul: {time_capsoul.id} user: {time_capsoul.user.email}')
-            
-            logger.info(f'Capsoul duplication creation completed for user: {time_capsoul.user.email} room-id: {time_capsoul.id}')
-        
-        except Exception as e:
-            logger.error(f'Exception while creating room media duplica for {time_capsoul.id}')
-        
-        return new_capsoul
-    
-    
+
   
       
 class TimeCapsoulDuplicationApiView(SecuredView):
@@ -1363,12 +1277,26 @@ class TimeCapsoulDuplicationApiView(SecuredView):
     def post(self, request, time_capsoul_id, format=None):
         user  = self.get_current_user(request)
         logger.info(f'TimeCapsoulDuplicationApiView is called by {user.email} capsoul-id: {time_capsoul_id}')
-        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
-        if time_capsoul.status == 'created': 
-            duplicate_room = create_duplicate_time_capsoul(time_capsoul)
-            serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
-            logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response({'message': "Only timecapsoul with status crafted can create duplicates"})
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        print(f'\n user storage id: {user.s3_storage_id}')
+        if user != time_capsoul.user:
+            if time_capsoul.status == 'unlocked':
+                is_recipient = TimeCapSoulRecipient.objects.filter(email = user.email).first()
+                if not is_recipient:
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+                duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
+                serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
+                logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+            else:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+        else:
+            if time_capsoul.status != 'unlocked': 
+                duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
+                serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
+                logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
+                return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response({'message': "Only timecapsoul with status crafted or sealed can create duplicates"})
         
         

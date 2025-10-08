@@ -9,9 +9,8 @@ from userauth.models import User
 from django.core.cache import cache
 from memory_room.helpers import upload_file_to_s3_kms
 
-
-from memory_room.tasks import capsoul_almost_unlock,capsoul_unlocked,update_time_capsoul_occupied_storage
-
+from memory_room.signals import update_user_storage
+from memory_room.tasks import capsoul_almost_unlock,capsoul_unlocked,update_parent_media_refrences_task
 
 
 from django.core.files.images import ImageFile 
@@ -22,8 +21,7 @@ from memory_room.models import (
     TimeCapSoulMediaFile,TimeCapSoulDetail, TimeCapSoulMediaFileReplica, TimeCapSoulReplica,
     )
 from timecapsoul.utils import send_html_email
-from memory_room.crypto_utils import generate_signature
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,save_and_upload_decrypted_file, encrypt_and_upload_file_no_iv, encrypt_and_upload_file_chunked,upload_encrypted_file_chunked
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,save_and_upload_decrypted_file, encrypt_and_upload_file_no_iv, encrypt_and_upload_file_chunked,upload_encrypted_file_chunked,get_media_file_bytes_with_content_type,generate_signature,generate_capsoul_media_s3_key
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, S3FileHandler
 
 from userauth.tasks import send_html_email_task
@@ -475,8 +473,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
         validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
-        s3_key = f"media/time-capsoul-files/{user.s3_storage_id}/{file.name}"
-        s3_key = s3_key.replace(" ", "_")  # remove white spaces
+        s3_key = generate_capsoul_media_s3_key(file.name, user.s3_storage_id, time_capsoul.id)
 
         if progress_callback:
             progress_callback(30, "Preparing for upload...")
@@ -543,6 +540,10 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             progress_callback(95, "Finalizing...")
 
         instance = super().create(validated_data)
+
+        # here update recipent media ids
+        update_parent_media_refrences_task.apply_async(instance.id)
+
 
         if progress_callback:
             progress_callback(100, "File processed successfully!")
@@ -637,35 +638,36 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
             # now create get or create media-file replica here
             if current_user != media_file.user :
                 try:
-                    media_file_replica = TimeCapSoulMediaFile.objects.get(time_capsoul=time_capsoul_replica, media_refrence_replica = instance)
+                    media_file_replica = TimeCapSoulMediaFile.objects.get(time_capsoul=time_capsoul_replica, media_refrence_replica = instance, user = current_user)
                 except TimeCapSoulMediaFile.DoesNotExist:
                     try:
                         # upload in s3 and update recipients storage
-                        bytes_cache_key = media_file.s3_key
-                        file_bytes = cache.get(bytes_cache_key)
+                        # bytes_cache_key = media_file.s3_key
+                        # file_bytes = cache.get(bytes_cache_key)
                         
-                        content_type_cache_key = f'{bytes_cache_key}_type'
-                        content_type = cache.get(content_type_cache_key)
+                        # content_type_cache_key = f'{bytes_cache_key}_type'
+                        # content_type = cache.get(content_type_cache_key)
+                        # if not file_bytes or not content_type:
+                        #     file_bytes,content_type = decrypt_and_get_image(media_s3_key)
+                        #     # caching here
+                        #     cache.set(bytes_cache_key, file_bytes, timeout=60*60)  
+                        #     cache.set(content_type_cache_key, content_type, timeout=60*60)
+
+                        file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
                         if not file_bytes or not content_type:
-                            file_bytes,content_type = decrypt_and_get_image(media_s3_key)
-                            # caching here
-                            cache.set(bytes_cache_key, file_bytes, timeout=60*60)  
-                            cache.set(content_type_cache_key, content_type, timeout=60*60)
+                            raise Exception('File decryption failed')
                         
                         else:
                             # upload into s3 bucket 
                             file_name  = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}'
-                            s3_key = f"{current_user.s3_storage_id}/time-capsoul-files/{file_name}"
+                            s3_key = f"media/time-capsoul-files/{current_user.s3_storage_id}/{file_name}"
                             s3_key = s3_key.replace(" ", "_")  # remove white spaces
                             res = encrypt_and_upload_file_chunked(
                                 file_bytes = file_bytes,
                                 content_type=  content_type,
                                 key= s3_key
                             )
-                            # update user storage here
-                            update_time_capsoul_occupied_storage.apply_async( 
-                                args=[media_file.id, 'addition'],
-                            )
+                            
                         
                             title = validated_data.get('title', instance.title)
                             description = validated_data.get('description', instance.description)
@@ -698,13 +700,14 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                                 thumbnail = media_file.thumbnail,
                                 is_cover_image = is_cover,
                                 created_at = created_at
-                )
+                            )
+                            return media_file_replica
                     except Exception as e:
                         pass
             else:
                 
                 try:
-                    media_file_replica = TimeCapSoulMediaFile.objects.get(time_capsoul=time_capsoul_replica, media_refrence_replica = instance)
+                    media_file_replica = TimeCapSoulMediaFile.objects.get(time_capsoul=time_capsoul_replica, media_refrence_replica = instance , user= user)
                 except TimeCapSoulMediaFile.DoesNotExist:
                     is_cover_image = False
                     title = validated_data.get('title', instance.title)
@@ -868,13 +871,16 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             # send email here tagged 
             time_cap_owner = time_capsoul.user.first_name if time_capsoul.user.first_name else time_capsoul.user.email
             try:
+                # capsoul_media_files = time_capsoul.timecapsoul_media_files.filter(is_deleted=False)
+                media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
+
                 if capsoul_recipients:
                     tagged_recipients = capsoul_recipients.values_list("name", "email")
 
                     
-                    for recipient in tagged_recipients:
-                        person_name = recipient[0]
-                        person_email = recipient[-1]
+                    for recipient in capsoul_recipients:
+                        person_name = recipient.name
+                        person_email = recipient.email
                         
                         # create notification at invited for tagged user if exists
                         try:

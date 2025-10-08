@@ -10,6 +10,8 @@ import logging
 logger = logging.getLogger(__name__)
 from memory_room.utils import convert_file_size
 from django.core.cache import cache
+from django.db import close_old_connections
+
 
 from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoulMediaFile
 
@@ -192,6 +194,7 @@ def update_memory_room_occupied_storage(media_file_id, option_type):
         room.save()
         is_updated = True
     finally:
+        close_old_connections()
         return is_updated
         
         
@@ -215,7 +218,9 @@ def update_time_capsoul_occupied_storage(media_file_id, option_type):
         capsoul.save()
         is_updated = True
     finally:
+        # close_old_connections()
         return is_updated
+    
     
 
 @shared_task
@@ -225,3 +230,20 @@ def clear_all_cache():
     """
     cache.clear()
     return "Cache cleared successfully."
+
+@shared_task
+def update_parent_media_refrences_task(media_id):
+    try:
+        media_file = TimeCapSoulMediaFile.objects.get(id=media_id)
+    except TimeCapSoulMediaFile.DoesNotExist:
+        logger.error(f"Media file with id {media_id} does not exist.")
+        close_old_connections()
+
+        return False
+    else:
+        time_capsoul = media_file.time_capsoul
+        recipients = TimeCapSoulRecipient.objects.filter(time_capsoul=time_capsoul, is_deleted=False)
+        media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
+        recipients.update(parent_media_refrences=media_ids)
+        close_old_connections()
+        return True
