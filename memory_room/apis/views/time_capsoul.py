@@ -1072,107 +1072,218 @@ class TaggedCapsoulTracker(SecuredView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-class UserStorageTracker(SecuredView):
+# class UserStorageTracker(SecuredView):
     
+#     def get(self, request, format=None):
+#         user = self.get_current_user(request)
+#         logger.info(f"UserStorageTracker  called {user.email}")
+#         user_tracker_cache_key= f'user_storage_id_{user.id}'
+#         user_storage_data = cache.get(user_tracker_cache_key)
+#         if not user_storage_data:
+#             try:
+#                 user_mapper = user.user_mapper.first() 
+#                 total_space_occupied = 0
+#                 user_storage_limit = parse_into_mbs(user_mapper.max_storage_limit)
+#                 user_storage_limit = to_gb(user_storage_limit[0], user_storage_limit[-1])
+                
+                
+#                 user_storage_data= {
+#                     'user_storage_limit': user_storage_limit,
+#                     'free_storage': 0,
+#                     'current_used_storage': 0,
+#                     'storage_usage_percentage': 0,
+#                     'images': {
+#                         'percentge': 0,
+#                         'amount': 0
+#                     },
+#                     'videos': {
+#                         'percentge': 0,
+#                         'amount': 0
+#                     },
+#                     'documents': {
+#                         'percentge': 0,
+#                         'amount': 0
+#                     },
+#                     'audio': {
+#                         'percentge': 0,
+#                         'amount': 0
+#                     },
+#                 }
+                
+#                 user_capsouls = TimeCapSoul.objects.filter(user = user, is_deleted = False)
+#                 memory_room = MemoryRoom.objects.filter(user= user, is_deleted = False)
+#                 logger.info(f"UserStorageTracker  storage callculation started {user.email}")
+                
+                
+#                 for capsoul in user_capsouls: # time-capsoul files calculations
+#                     media_files = capsoul.timecapsoul_media_files.filter(is_deleted = False)
+#                     for media in media_files: 
+#                         file_size = parse_into_mbs(media.file_size)
+#                         file_size = to_gb(file_size[0], file_size[-1])
+#                         total_space_occupied += file_size
+                        
+#                         if media.file_type == 'image':
+#                             user_storage_data['images']['amount'] += file_size
+                            
+#                         elif media.file_type == 'video':
+#                             user_storage_data['videos']['amount'] += file_size
+                        
+#                         elif media.file_type == 'audio':
+#                             user_storage_data['audio']['amount'] += file_size
+                            
+#                         else:
+#                             user_storage_data['documents']['amount'] += file_size
+                
+#                 for capsoul in memory_room:   # memory-room file calculations
+#                     media_files = capsoul.memory_media_files.filter(is_deleted=False)
+#                     for media in media_files: 
+#                         # file_size = parse_into_mbs(media.file_size)[0]
+#                         file_size = parse_into_mbs(media.file_size)
+#                         file_size = to_gb(file_size[0], file_size[-1])
+                        
+                        
+#                         total_space_occupied += file_size
+                        
+#                         if media.file_type == 'image':
+#                             user_storage_data['images']['amount'] += file_size
+                            
+#                         elif media.file_type == 'video':
+#                             user_storage_data['videos']['amount'] += file_size
+                        
+#                         elif media.file_type == 'audio':
+#                             user_storage_data['audio']['amount'] += file_size
+                            
+#                         else:
+#                             user_storage_data['documents']['amount'] += file_size
+                            
+#                 logger.info(f"UserStorageTracker  storage callculation completed {user.email}")
+                
+#                 user_storage_data['images']['percentge'] = round((user_storage_data['images']['amount']*100)/user_storage_limit, 3)
+#                 user_storage_data['videos']['percentge'] = round((user_storage_data['videos']['amount']*100)/user_storage_limit, 3)
+#                 user_storage_data['documents']['percentge'] = round((user_storage_data['documents']['amount']*100)/user_storage_limit, 3)
+#                 user_storage_data['audio']['percentge'] = round((user_storage_data['audio']['amount']*100)/user_storage_limit, 3)
+                
+#                 user_storage_data['current_used_storage'] = round(total_space_occupied, 5)
+#                 user_storage_data['free_storage'] = round(user_storage_limit - total_space_occupied, 5)
+#                 user_storage_data['storage_usage_percentage'] = round(( total_space_occupied * 100  )/user_storage_limit, 3)
+#                 cache.set(user_tracker_cache_key, user_storage_data, timeout=60*60*2)
+                
+#             except Exception as e:
+#                 logger.error(f'Exception occur at UserStorageTracker  while getting storage data for {user.email} error-message: \n {e}')
+                
+            
+#         logger.info(f"UserStorageTracker  data served {user.email}")
+#         return Response(user_storage_data)
+
+class UserStorageTracker(SecuredView):
+
     def get(self, request, format=None):
         user = self.get_current_user(request)
-        logger.info(f"UserStorageTracker  called {user.email}")
-        user_tracker_cache_key= f'user_storage_id_{user.id}'
-        user_storage_data = cache.get(user_tracker_cache_key)
+        logger.info(f"UserStorageTracker called {user.email}")
+
+        cache_key = f'user_storage_id_{user.id}'
+        user_storage_data = cache.get(cache_key)
+
         if not user_storage_data:
             try:
-                user_mapper = user.user_mapper.first() 
-                total_space_occupied = 0
-                user_storage_limit = parse_into_mbs(user_mapper.max_storage_limit)
-                user_storage_limit = to_gb(user_storage_limit[0], user_storage_limit[-1])
-                
-                
-                user_storage_data= {
-                    'user_storage_limit': user_storage_limit,
+                total_space_occupied_kb = 0.0
+                user_storage_limit_gb = 15
+                user_storage_limit_kb = convert_file_size(f'{user_storage_limit_gb} GB', target_unit='KB')[0]
+
+                user_storage_data = {
+                    'user_storage_limit': user_storage_limit_gb,  # GB
                     'free_storage': 0,
                     'current_used_storage': 0,
                     'storage_usage_percentage': 0,
-                    'images': {
-                        'percentge': 0,
-                        'amount': 0
-                    },
-                    'videos': {
-                        'percentge': 0,
-                        'amount': 0
-                    },
-                    'documents': {
-                        'percentge': 0,
-                        'amount': 0
-                    },
-                    'audio': {
-                        'percentge': 0,
-                        'amount': 0
-                    },
+                    'images': {'percentge': 0, 'amount': 0},
+                    'videos': {'percentge': 0, 'amount': 0},
+                    'documents': {'percentge': 0, 'amount': 0},
+                    'audio': {'percentge': 0, 'amount': 0},
                 }
-                
-                user_capsouls = TimeCapSoul.objects.filter(user = user, is_deleted = False)
-                memory_room = MemoryRoom.objects.filter(user= user, is_deleted = False)
-                logger.info(f"UserStorageTracker  storage callculation started {user.email}")
-                
-                
-                for capsoul in user_capsouls: # time-capsoul files calculations
-                    media_files = capsoul.timecapsoul_media_files.filter(is_deleted = False)
-                    for media in media_files: 
-                        file_size = parse_into_mbs(media.file_size)
-                        file_size = to_gb(file_size[0], file_size[-1])
-                        total_space_occupied += file_size
-                        
-                        if media.file_type == 'image':
-                            user_storage_data['images']['amount'] += file_size
-                            
-                        elif media.file_type == 'video':
-                            user_storage_data['videos']['amount'] += file_size
-                        
-                        elif media.file_type == 'audio':
-                            user_storage_data['audio']['amount'] += file_size
-                            
+
+                user_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted=False, room_duplicate__isnull=True)
+                memory_rooms = MemoryRoom.objects.filter(user=user, is_deleted=False, room_duplicate__isnull=True)
+
+                logger.info(f"UserStorageTracker storage calculation started for {user.email}")
+
+                # ---- Calculate TimeCapsouls storage ----
+                for capsoul in user_capsouls:
+                    media_files = capsoul.timecapsoul_media_files.filter(is_deleted=False)
+                    for media in media_files:
+                        try:
+                            file_size_kb = convert_file_size(media.file_size, target_unit='KB')[0]
+                            if file_size_kb < 0:
+                                file_size_kb = 0
+                        except Exception:
+                            file_size_kb = 0
+
+                        total_space_occupied_kb += file_size_kb
+                        file_type = (media.file_type or '').lower()
+
+                        if file_type == 'image':
+                            user_storage_data['images']['amount'] += file_size_kb
+                        elif file_type == 'video':
+                            user_storage_data['videos']['amount'] += file_size_kb
+                        elif file_type == 'audio':
+                            user_storage_data['audio']['amount'] += file_size_kb
                         else:
-                            user_storage_data['documents']['amount'] += file_size
-                
-                for capsoul in memory_room:   # memory-room file calculations
-                    media_files = capsoul.memory_media_files.filter(is_deleted=False)
-                    for media in media_files: 
-                        # file_size = parse_into_mbs(media.file_size)[0]
-                        file_size = parse_into_mbs(media.file_size)
-                        file_size = to_gb(file_size[0], file_size[-1])
-                        
-                        
-                        total_space_occupied += file_size
-                        
-                        if media.file_type == 'image':
-                            user_storage_data['images']['amount'] += file_size
-                            
-                        elif media.file_type == 'video':
-                            user_storage_data['videos']['amount'] += file_size
-                        
-                        elif media.file_type == 'audio':
-                            user_storage_data['audio']['amount'] += file_size
-                            
+                            user_storage_data['documents']['amount'] += file_size_kb
+
+                # ---- Calculate Memory Room storage ----
+                for room in memory_rooms:
+                    media_files = room.memory_media_files.filter(is_deleted=False)
+                    for media in media_files:
+                        try:
+                            file_size_kb = convert_file_size(media.file_size, target_unit='KB')[0]
+                            if file_size_kb < 0:
+                                file_size_kb = 0
+                        except Exception:
+                            file_size_kb = 0
+
+                        total_space_occupied_kb += file_size_kb
+                        file_type = (media.file_type or '').lower()
+
+                        if file_type == 'image':
+                            user_storage_data['images']['amount'] += file_size_kb
+                        elif file_type == 'video':
+                            user_storage_data['videos']['amount'] += file_size_kb
+                        elif file_type == 'audio':
+                            user_storage_data['audio']['amount'] += file_size_kb
                         else:
-                            user_storage_data['documents']['amount'] += file_size
-                            
-                logger.info(f"UserStorageTracker  storage callculation completed {user.email}")
-                
-                user_storage_data['images']['percentge'] = round((user_storage_data['images']['amount']*100)/user_storage_limit, 3)
-                user_storage_data['videos']['percentge'] = round((user_storage_data['videos']['amount']*100)/user_storage_limit, 3)
-                user_storage_data['documents']['percentge'] = round((user_storage_data['documents']['amount']*100)/user_storage_limit, 3)
-                user_storage_data['audio']['percentge'] = round((user_storage_data['audio']['amount']*100)/user_storage_limit, 3)
-                
-                user_storage_data['current_used_storage'] = round(total_space_occupied, 5)
-                user_storage_data['free_storage'] = round(user_storage_limit - total_space_occupied, 5)
-                user_storage_data['storage_usage_percentage'] = round(( total_space_occupied * 100  )/user_storage_limit, 3)
-                cache.set(user_tracker_cache_key, user_storage_data, timeout=60*60*2)
-                
+                            user_storage_data['documents']['amount'] += file_size_kb
+
+                logger.info(f"UserStorageTracker storage calculation completed for {user.email}")
+
+                # ---- Helper for safe percentage ----
+                def safe_percent(part, total):
+                    return round(min(max((part * 100) / total if total > 0 else 0, 0), 100), 3)
+
+                # ---- Convert all KB totals to GB ----
+                KB_IN_GB = 1024 * 1024
+                total_space_occupied_gb = total_space_occupied_kb / KB_IN_GB
+
+                # Convert category-wise to GB
+                for category in ['images', 'videos', 'documents', 'audio']:
+                    kb_amount = user_storage_data[category]['amount']
+                    gb_amount = kb_amount / KB_IN_GB
+                    user_storage_data[category]['amount'] = round(gb_amount, 5)
+                    user_storage_data[category]['percentge'] = safe_percent(kb_amount, user_storage_limit_kb)
+
+                used_gb = round(total_space_occupied_gb, 5)
+                free_gb = max(user_storage_limit_gb - used_gb, 0)
+                usage_percent = safe_percent(total_space_occupied_kb, user_storage_limit_kb)
+
+                user_storage_data['current_used_storage'] = used_gb
+                user_storage_data['free_storage'] = round(free_gb, 5)
+                user_storage_data['storage_usage_percentage'] = usage_percent
+
+                cache.set(cache_key, user_storage_data, timeout=60 * 60 * 2)
+
             except Exception as e:
-                logger.error(f'Exception occur at UserStorageTracker  while getting storage data for {user.email} error-message: \n {e}')
-                
-            
-        logger.info(f"UserStorageTracker  data served {user.email}")
+                logger.error(f'Error in UserStorageTracker for {user.email}: {e}', exc_info=True)
+                return Response({'error': 'Failed to calculate user storage'}, status=500)
+
+        logger.info(f"UserStorageTracker data served {user.email}")
         return Response(user_storage_data)
 
 
