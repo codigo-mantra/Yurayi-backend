@@ -98,6 +98,7 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
         # Check if user already has rooms with same template name
         existing_rooms = MemoryRoom.objects.filter(
             user=user,
+            is_deleted = False,
             room_template__name__istartswith=default.name
         )
 
@@ -119,6 +120,7 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
         # Create memory room using custom template
         return MemoryRoom.objects.create(
             user=user,
+            is_deleted = False,
             room_template=custom
         )
 
@@ -134,31 +136,17 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
         base_name = str(data.get('name')).lower()
         if not base_name:
             raise serializers.ValidationError({'name': 'Room name is required'})
-        
-        existing_rooms = MemoryRoom.objects.filter(
-            user=user,
-            room_template__name__istartswith=base_name
-
-        )
-        if existing_rooms.exists():
-            count = existing_rooms.count()
-            room_name = f"{base_name} ({count})"
-        else:
-            room_name = base_name
-
-        new_title = base_name
 
         room_exists = MemoryRoom.objects.filter(
             user=user,
-            room_template__name__istartswith=new_title
+            is_deleted = False,
+            room_template__name__istartswith=base_name
         ).first()
         if room_exists:
             raise serializers.ValidationError({'name': 'You already have a room with this name. Please choose a different name.'})
-            
-        
 
         custom = CustomMemoryRoomTemplate.objects.create(
-            name=room_name, summary=data['summary'],
+            name=base_name, summary=data['summary'],
             cover_image=image_asset, default_template=None
         )
         
@@ -196,6 +184,7 @@ class MemoryRoomUpdationSerializer(serializers.ModelSerializer):
 
             room_exists = MemoryRoom.objects.filter(
                 user=instance.user,
+                is_deleted = False,
                 room_template__name__istartswith=new_title
             ).first()
             if room_exists and room_exists.id != instance.id:

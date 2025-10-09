@@ -85,6 +85,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         # Check if user already has time-capsoul with same template name
         existing_rooms = TimeCapSoul.objects.filter(
             user=user,
+            is_deleted = False,
             capsoul_template__name__istartswith=default.name,
         )
 
@@ -118,6 +119,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         if new_capsoul_name:
             room_exists = TimeCapSoul.objects.filter(
                 user=user,
+                is_deleted = False,
                 capsoul_template__name__istartswith=new_capsoul_name
             ).first()
             if room_exists :
@@ -333,9 +335,10 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 if new_capsoul_name:
                     room_exists = TimeCapSoul.objects.filter(
                         user=instance.user,
+                        is_deleted = False,
                         capsoul_template__name__istartswith=new_capsoul_name
                     ).first()
-                    if room_exists :
+                    if room_exists and room_exists.id != instance.id:
                         raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
 
                 created_at = timezone.localtime(timezone.now())
@@ -384,6 +387,7 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                     if new_capsoul_name:
                         room_exists = TimeCapSoul.objects.filter(
                             user=instance.user,
+                            is_deleted = False,
                             capsoul_template__name__istartswith=new_capsoul_name
                         ).first()
                         if room_exists and room_exists.id != instance.id:
