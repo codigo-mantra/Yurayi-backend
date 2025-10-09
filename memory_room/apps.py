@@ -9,6 +9,7 @@ class MemoryRoomConfig(AppConfig):
     def ready(self):
         # clear_all_cache.apply_async()
         if not settings.DEBUG:
-            cache.clear()
-            print('\n---cache cleared----')
+            # cache.clear()
+            # print('\n---cache cleared----')
+            pass
         import memory_room.signals 

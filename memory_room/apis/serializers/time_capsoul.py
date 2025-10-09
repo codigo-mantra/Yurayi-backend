@@ -885,6 +885,8 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                     for recipient in capsoul_recipients:
                         person_name = recipient.name
                         person_email = recipient.email
+                        recipient.parent_media_refrences = media_ids
+                        recipient.save()
                         
                         # create notification at invited for tagged user if exists
                         try:
