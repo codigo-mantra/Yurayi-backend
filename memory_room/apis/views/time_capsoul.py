@@ -10,7 +10,7 @@ from django.http import StreamingHttpResponse, Http404,HttpResponse, JsonRespons
 from memory_room.utils import determine_download_chunk_size
 from memory_room.utils import parse_storage_size, to_mb, to_gb, convert_file_size
 from memory_room.views import parse_storage_size as parse_into_mbs
-from memory_room.signals import update_user_storage
+from memory_room.signals import update_user_storage, update_users_storage
 from memory_room.tasks import update_time_capsoul_occupied_storage
 from timecapsoul.utils import MediaThumbnailExtractor
 from memory_room.helpers import upload_file_to_s3_kms,create_duplicate_time_capsoul
@@ -116,7 +116,8 @@ class CreateTimeCapSoulView(SecuredView):
         logger.info("CreateTimeCapSoulView.get list called")
         """Time CapSoul list"""
         user = self.get_current_user(request)
-        time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False)
+        
+        time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False).order_by('-created_at')
         try: # tagged capsoul
             tagged_time_capsouls = TimeCapSoul.objects.filter(
                 recipient_detail__email=user.email,
@@ -167,11 +168,37 @@ class TimeCapSoulUpdationView(SecuredView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
     def delete(self, request, time_capsoul_id):
-        logger.info("TimeCapSoulUpdationView.delete called")
         user = self.get_current_user(request)
-        capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user = user)
-        capsoul.is_deleted = True
-        capsoul.save()
+        logger.info(f"TimeCapSoulUpdationView.delete called by user {user.email} for time_capsoul_id {time_capsoul_id}")
+
+        from django.utils import timezone
+
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        if time_capsoul.user != user:
+            recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
+            if not recipient:
+                logger.info(f"Recipient not found for tagged capsoul")
+                return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+            
+            # if time_capsoul.unlock_date and timezone.now() < time_capsoul.unlock_date:
+            current_date = timezone.now()
+            is_unlocked = (
+                bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
+            )
+            # if (time_capsoul.unlock_date and current_date) and (current_date>= time_capsoul.unlock_date):
+            if not is_unlocked:
+                logger.info("Recipient not found for tagged capsoul")
+                return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+            recipient.is_capsoul_deleted = True 
+            recipient.save()
+            return Response({'message': f'Time Capsoul deleted successfully for {user.email}'})
+        else:
+            if not time_capsoul.is_deleted:
+                is_updated = update_users_storage(
+                    capsoul=time_capsoul
+                )
+                time_capsoul.is_deleted = True
+                time_capsoul.save()
         return Response({'message': "Time capsoul deleted successfully"})
 
 class TimeCapSoulMediaFilesView(SecuredView):
@@ -203,12 +230,10 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
         # if user is Owner of the time-capsoul 
         try:
-            time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id,is_deleted = False)
-            # time_capsoul = TimeCapSoul.objects.get(id=time_capsoul_id, user=user, is_deleted = False)
-
+            time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         except Exception as e:
-            logger.error(f"Error fetching time_capsoul: {e} for user {user.email}")
-            return Response({"media_files": []}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"Error fetching time_capsoul: {e} for user {user.email} for time_capsoul_id {time_capsoul_id}")
+            return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
         else:
             if time_capsoul.user == user:
                 # If owner, also include replica parent files (excluding already linked ones)
@@ -221,9 +246,9 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
                     media_files = media_files | parent_files.exclude(id__in=used_ids)
             else:
-                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
+                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
                 if not recipient:
-                    logger.info("Recipient not found for tagged capsoul")
+                    logger.info(f'User is not owner and recipient not found for tagged capsoul {time_capsoul.id} and user {user.email}')
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
                 
                 # if time_capsoul.unlock_date and timezone.now() < time_capsoul.unlock_date:
@@ -231,9 +256,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 is_unlocked = (
                     bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
                 )
-                # if (time_capsoul.unlock_date and current_date) and (current_date>= time_capsoul.unlock_date):
                 if not is_unlocked:
-                    logger.info("Recipient not found for tagged capsoul")
+                    logger.info(f'User is not owner and capsoul is locked for tagged capsoul {time_capsoul.id} and user {user.email}')
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
                 parent_files_id = (
@@ -363,15 +387,21 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                     if serializer.is_valid():
                         media_file = serializer.save()
-                        update_time_capsoul_occupied_storage.apply_async( 
-                            args=[media_file.id, 'addition'],
-                        )
-                        update_user_storage(
-                            user=user,
-                            media_id=media_file.id,
-                            file_size=media_file.file_size,
-                            cache_key=f'user_storage_id_{user.id}',
-                            operation_type='addition'
+                        # update_time_capsoul_occupied_storage.apply_async( 
+                        #     args=[media_file.id, 'addition'],
+                        # )
+                        
+                        # update_user_storage(
+                        #     user=user,
+                        #     media_id=media_file.id,
+                        #     file_size=media_file.file_size,
+                        #     cache_key=f'user_storage_id_{user.id}',
+                        #     operation_type='addition'
+                        # )
+                        update_users_storage(
+                            operation_type='addition',
+                            media_updation='capsoul',
+                            media_file=media_file
                         )
                         update_file_progress(file_index, 100, 'Upload completed successfully', 'success')
 
@@ -605,21 +635,19 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         user = self.get_current_user(request)
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id)
         if user == media_file.user:
-            if media_file.time_capsoul.status != 'unlocked':
-                media_file.is_deleted = True
-                media_file.save()
-                update_time_capsoul_occupied_storage.apply_async( 
-                    args=[media_file.id, 'remove'],
-                )
-                update_user_storage(
-                    user=user,
-                    media_id=media_file.id,
-                    file_size=media_file.file_size,
-                    cache_key=f'user_storage_id_{user.id}',
-                    operation_type='remove'
-                )
-                return Response({'message': 'Time Capsoul media deleted successfully'})
-            return Response({'message': 'Soory Time capsoul media files cant be deleted'})
+            media_file.is_deleted = True
+            media_file.save()
+            update_time_capsoul_occupied_storage.apply_async( 
+                args=[media_file.id, 'remove'],
+            )
+            update_user_storage(
+                user=user,
+                media_id=media_file.id,
+                file_size=media_file.file_size,
+                cache_key=f'user_storage_id_{user.id}',
+                operation_type='remove'
+            )
+            return Response({'message': 'Time Capsoul media deleted successfully'})
         else:
             # check is tagged recipient checking here
             recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = media_file.time_capsoul, email = user.email,is_deleted = False).first()
@@ -647,11 +675,11 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
             # remove current media-id from parent media 
             try:
                 parent_files_id.remove(media_file_id)
-                print(f"Removed: {media_file_id}")
-            except ValueError:
-                print(f"Value '{media_file_id}' not found in the list.")
             except Exception as e:
-                print(f"An unexpected error occurred: {e}")
+                logger.error(f'Erorr while removing media id from parent list: {e} for user {user.email} and media_file_id {media_file_id}')
+            else:
+              recipient.parent_media_refrences  = ','.join(map(str, parent_files_id)) if parent_files_id else None
+              recipient.save()
             return Response(status=status.HTTP_204_NO_CONTENT)
     
     def patch(self, request, time_capsoul_id, media_file_id):

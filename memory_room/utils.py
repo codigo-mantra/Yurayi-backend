@@ -603,7 +603,7 @@ def convert_file_size(size_str, target_unit="MB"):
     """
     try:
         if not size_str or not str(size_str).strip():
-            return f"0 {target_unit.upper()}"
+            return 0,f"{target_unit.upper()}"
         
         match = re.match(r"(\d+(?:\.\d+)?)\s*(KB|MB|GB|TB)", str(size_str).strip(), re.IGNORECASE)
         if not match:
@@ -624,7 +624,7 @@ def convert_file_size(size_str, target_unit="MB"):
         elif unit == "TB":
             value_gb = value * 1024
         else:
-            return f"0 {target_unit}"
+            return 0, target_unit
 
         # Step 2: Convert GB → target unit
         if target_unit == "KB":
@@ -636,7 +636,7 @@ def convert_file_size(size_str, target_unit="MB"):
         elif target_unit == "TB":
             final_value = value_gb / 1024
         else:
-            return f"0 {target_unit}"
+            return 0, target_unit
 
         # Format: avoid trailing ".0"
         final_value = round(final_value, 2)
@@ -646,7 +646,7 @@ def convert_file_size(size_str, target_unit="MB"):
         return final_value,target_unit
 
     except Exception:
-        return f"0 {target_unit.upper()}"
+            return 0, target_unit
 
 import boto3
 from botocore.exceptions import ClientError

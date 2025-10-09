@@ -164,4 +164,50 @@ def update_user_storage(user, media_id, file_size, cache_key, operation_type):
     except Exception as e:
         logger.error(f'Exception while updating user storage for user: {user.email} media-file id: {media_id} error-message: {e}')
         
-        
+
+def update_users_storage(operation_type=None, media_updation=None, media_file=None, capsoul=None):
+    is_storage_updated = False
+    try:
+        if media_updation and media_file and operation_type: 
+            file_size_in_kb, _ = convert_file_size(media_file.file_size, "KB")  
+            user_mapper = media_file.user.user_mapper.first()
+            if user_mapper: 
+                current_storage_occupied, _ = convert_file_size(user_mapper.current_storage, "KB")  
+
+                if media_updation == 'capsoul':
+                    capsoul = media_file.time_capsoul
+                else:
+                    capsoul = media_file.memory_room
+                capsoul_storge_in_kb, _ = convert_file_size(capsoul.occupied_storage, "KB")
+
+                if operation_type == 'addition':
+                    updated_size = current_storage_occupied + file_size_in_kb
+                    updated_capsoul_size_in_kb = capsoul_storge_in_kb + file_size_in_kb
+
+                else:
+                    updated_size = max(0, current_storage_occupied - file_size_in_kb)  # prevent negative
+                    updated_capsoul_size_in_kb = max(0, capsoul_storge_in_kb - file_size_in_kb)  # prevent negative
+
+                user_mapper.current_storage = f"{updated_size} KB"
+                user_mapper.save()
+                capsoul.occupied_storage = f"{updated_capsoul_size_in_kb} KB"
+                capsoul.save()
+                is_storage_updated = True
+
+        elif capsoul:
+                capsoul_storge_in_kb, _ = convert_file_size(capsoul.occupied_storage, "KB")
+                user_mapper = capsoul.user.user_mapper.first()
+                if user_mapper: 
+                    current_storage_occupied, _ = convert_file_size(user_mapper.current_storage, "KB")  
+                    updated_storage_size_in_kb = max(0, current_storage_occupied - capsoul_storge_in_kb)  # prevent negative
+
+                    capsoul.occupied_storage = f"{updated_storage_size_in_kb} KB"
+                    capsoul.save()
+                    is_storage_updated = True
+
+    except Exception as e:
+        logger.error(f'Exception while updating user storage for media-file id: {media_file.id if media_file else "N/A"} error-message: {e}')
+    else:
+        logger.info(f'User storage updated successfully for user: {media_file.user.email if media_file else "N/A"} option type: {operation_type} updated storage: {user_mapper.current_storage if user_mapper else "N/A"}' )
+    finally:
+        return is_storage_updated

@@ -541,16 +541,16 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             logger.exception('Exception while extracting thumbnail')
 
         if progress_callback:
-            progress_callback(95, "Finalizing...")
+            progress_callback(90, "Finalizing...")
 
         instance = super().create(validated_data)
 
         # here update recipent media ids
-        update_parent_media_refrences_task.apply_async(instance.id)
+        # update_parent_media_refrences_task.apply_async(instance.id)
 
 
         if progress_callback:
-            progress_callback(100, "File processed successfully!")
+            progress_callback(95, "File processed successfully!")
 
         return instance
 

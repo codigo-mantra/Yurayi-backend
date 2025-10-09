@@ -434,12 +434,12 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             print(f'[Thumbnail Error] {e}')
 
         if progress_callback:
-            progress_callback(95, "Finalizing...")
+            progress_callback(90, "Finalizing...")
 
         instance = super().create(validated_data)
         
         if progress_callback:
-            progress_callback(100, "File processed successfully!")
+            progress_callback(95, "File processed successfully!")
             
         return instance
 
