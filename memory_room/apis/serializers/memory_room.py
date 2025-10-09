@@ -367,7 +367,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
 
         validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
-        s3_key = generate_room_media_s3_key(file.name, user.s3_storage_id)
+        s3_key = generate_room_media_s3_key(file.name, user.s3_storage_id, memory_room.id)
 
 
         if progress_callback:

@@ -257,7 +257,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         Each file has its own IV for decryption. Uses multi-threading for parallel uploads.
         """
         user = self.get_current_user(request)
-        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         replica_instance = None
         
         if time_capsoul.status == 'unlocked':
