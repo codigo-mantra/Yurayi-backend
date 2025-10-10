@@ -5,7 +5,8 @@ from botocore.config import Config
 from django.conf import settings
 import logging
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from memory_room.signals import update_user_storage
+from memory_room.signals import update_user_storage, update_users_storage
+
 
 from memory_room.models import TimeCapSoul, TimeCapSoulMediaFile,CustomTimeCapSoulTemplate
 from memory_room.tasks import update_time_capsoul_occupied_storage
@@ -288,16 +289,23 @@ def create_duplicate_media_file(media:TimeCapSoulMediaFile, new_capsoul:TimeCapS
                     
                 new_media = create_media(media=media, new_capsoul=new_capsoul, current_user=current_user, thumbnail=thumbnail) # create media file in db
                 if new_media:
-                    update_time_capsoul_occupied_storage.apply_async( # update capsoul storage
-                        args=[new_media.id, 'addition'],
+                    # update_time_capsoul_occupied_storage.apply_async( # update capsoul storage
+                    #     args=[new_media.id, 'addition'],
+                    # )
+                    # update_user_storage( # update user storage
+                    #     user=current_user,
+                    #     media_id=new_media.id,
+                    #     file_size=new_media.file_size,
+                    #     cache_key=f'user_storage_id_{current_user.id}',
+                    #     operation_type='addition'
+                    # )
+                    update_users_storage(
+                        operation_type='addition',
+                        media_updation='capsoul',
+                        media_file=new_media
                     )
-                    update_user_storage( # update user storage
-                        user=current_user,
-                        media_id=new_media.id,
-                        file_size=new_media.file_size,
-                        cache_key=f'user_storage_id_{current_user.id}',
-                        operation_type='addition'
-                    )
+                    
+                    
                     is_duplicated = True
         except Exception as e:
             logger.error(f'Exception while uploading duplicate media file to s3 for media id: {media.id} user: {current_user.email} error-message: {e}')
@@ -372,4 +380,30 @@ def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul, current_user):
             
             return new_capsoul
     
-    
+
+
+def create_parent_media_files_replica_upload_to_s3_bucket(old_capsoul, new_capsoul, current_user):
+    try:
+        # now create media files here
+        media_files = TimeCapSoulMediaFile.objects.filter(
+            time_capsoul=old_capsoul,
+            is_deleted=False,
+            media_duplicate__isnull=True
+        )
+        new_media_count = 0
+        old_media_count = media_files.count()   
+        
+        for media in media_files:
+            try:
+                new_media = create_duplicate_media_file(media, new_capsoul, current_user)
+            except Exception as e:
+                logger.error(f'Exception while creating media file duplicate for media: {media.id} and capsoul: {old_capsoul.id} user: {new_capsoul.user.email}')
+            else:
+                new_media_count += 1 
+                pass
+    except Exception as e:
+        logger.error(f'Exception while creating room media duplica for {old_capsoul.id}')
+    finally:
+        print(f'\n old media count: {old_media_count} new media count: {new_media_count}')
+        logger.info(f'Timecapsoul duplication completed for user: {old_capsoul.user.email} capsoul-id: {new_capsoul.id} duplicate-capsoul-id: {new_capsoul.id} old-media-count: {old_media_count} new-media-count: {new_media_count}')
+            

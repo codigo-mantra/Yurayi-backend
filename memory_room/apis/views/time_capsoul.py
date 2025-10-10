@@ -13,7 +13,11 @@ from memory_room.views import parse_storage_size as parse_into_mbs
 from memory_room.signals import update_user_storage, update_users_storage
 from memory_room.tasks import update_time_capsoul_occupied_storage
 from timecapsoul.utils import MediaThumbnailExtractor
-from memory_room.helpers import upload_file_to_s3_kms,create_duplicate_time_capsoul
+from memory_room.helpers import (
+    upload_file_to_s3_kms,
+    create_duplicate_time_capsoul,
+    create_parent_media_files_replica_upload_to_s3_bucket
+    )
 
 logger = logging.getLogger(__name__)
 from rest_framework.pagination import PageNumberPagination
@@ -240,12 +244,12 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 # If owner, also include replica parent files (excluding already linked ones)
                 media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False, user=user)
 
-                if time_capsoul.capsoul_replica_refrence:
-                    parent_files = TimeCapSoulMediaFile.objects.filter(
-                        time_capsoul=time_capsoul.capsoul_replica_refrence
-                    )
-                    # used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
-                    media_files = (media_files | parent_files).distinct()
+                # if time_capsoul.capsoul_replica_refrence:
+                #     parent_files = TimeCapSoulMediaFile.objects.filter(
+                #         time_capsoul=time_capsoul.capsoul_replica_refrence
+                #     )
+                #     # used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
+                #     media_files = (media_files | parent_files).distinct()
             else:
                 recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
                 if not recipient:
@@ -261,13 +265,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     logger.info(f'User is not owner and capsoul is locked for tagged capsoul {time_capsoul.id} and user {user.email}')
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-                parent_files_id = (
-                    [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                    if recipient.parent_media_refrences else []
-                )
+                # parent_files_id = (
+                #     [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                #     if recipient.parent_media_refrences else []
+                # )
                 media_files = TimeCapSoulMediaFile.objects.filter(
                     time_capsoul=time_capsoul,
-                    id__in=parent_files_id)
+                )
                 
         serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files.distinct(), many=True)
         return Response({"media_files": serializer.data})
@@ -308,8 +312,17 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     capsoul_replica_refrence = time_capsoul,
                     created_at = created_at
                 )
+                # create parent replica here
+                create_parent_media_files_replica_upload_to_s3_bucket(
+                    old_capsoul=time_capsoul,
+                    new_capsoul=replica_instance,
+                    current_user=user
+                ) 
+                
+                
+                
         
-        if replica_instance:
+        if replica_instance is not None:
             time_capsoul = replica_instance
             
 
@@ -363,7 +376,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 }
 
         def file_upload_stream():
-            def process_single_file(file_index, uploaded_file, file_iv):
+            def process_single_file(file_index, uploaded_file, file_iv, time_capsoul):
                 """Process a single file upload with progress tracking"""
                 try:
                     def progress_callback(progress, message):
@@ -397,12 +410,12 @@ class TimeCapSoulMediaFilesView(SecuredView):
                         #     operation_type='addition'
                         # )
                         time_capsoul = media_file.time_capsoul
-                        if time_capsoul.status == 'sealed':
-                            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
-                            media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
-                            capsoul_recipients.update(parent_media_refrences = media_ids)
+                        # if time_capsoul.status == 'sealed':
+                            # capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+                            # media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
+                            # capsoul_recipients.update(parent_media_refrences = media_ids)
                         
-                        update_users_storage(
+                        is_updated = update_users_storage(
                             operation_type='addition',
                             media_updation='capsoul',
                             media_file=media_file
@@ -448,7 +461,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
                 future_to_index = {
-                    executor.submit(process_single_file, i, files[i], ivs[i]): i
+                    executor.submit(process_single_file, i, files[i], ivs[i], time_capsoul): i
                     for i in range(total_files)
                 }
 
