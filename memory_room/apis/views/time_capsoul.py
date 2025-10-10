@@ -194,13 +194,13 @@ class TimeCapSoulUpdationView(SecuredView):
             recipient.save()
             return Response({'message': f'Time Capsoul deleted successfully for {user.email}'})
         else:
-            if not time_capsoul.is_deleted == False:
+            if  time_capsoul.is_deleted == False:
                 is_updated = update_users_storage(
                     capsoul=time_capsoul
                 )
                 time_capsoul.is_deleted = True
                 time_capsoul.save()
-        return Response({'message': "Time capsoul deleted successfully"})
+            return Response({'message': "Time capsoul deleted successfully"})
 
 class TimeCapSoulMediaFilesView(SecuredView):
     """
@@ -238,11 +238,10 @@ class TimeCapSoulMediaFilesView(SecuredView):
         else:
             if time_capsoul.user == user:
                 # If owner, also include replica parent files (excluding already linked ones)
-                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False)
+                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False, user=user)
 
                 if time_capsoul.capsoul_replica_refrence:
                     parent_files = TimeCapSoulMediaFile.objects.filter(
-                        is_deleted = False,
                         time_capsoul=time_capsoul.capsoul_replica_refrence
                     )
                     # used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
@@ -397,6 +396,12 @@ class TimeCapSoulMediaFilesView(SecuredView):
                         #     cache_key=f'user_storage_id_{user.id}',
                         #     operation_type='addition'
                         # )
+                        time_capsoul = media_file.time_capsoul
+                        if time_capsoul.status == 'sealed':
+                            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+                            media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
+                            capsoul_recipients.update(parent_media_refrences = media_ids)
+                        
                         update_users_storage(
                             operation_type='addition',
                             media_updation='capsoul',
