@@ -99,7 +99,7 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
         existing_rooms = MemoryRoom.objects.filter(
             user=user,
             is_deleted = False,
-            room_template__name__istartswith=default.name
+            room_template__name__iexact=default.name
         )
 
         if existing_rooms.exists():
@@ -140,7 +140,7 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
         room_exists = MemoryRoom.objects.filter(
             user=user,
             is_deleted = False,
-            room_template__name__istartswith=base_name
+            room_template__name__iexact=base_name
         ).first()
         if room_exists:
             raise serializers.ValidationError({'name': 'You already have a room with this name. Please choose a different name.'})
@@ -185,7 +185,8 @@ class MemoryRoomUpdationSerializer(serializers.ModelSerializer):
             room_exists = MemoryRoom.objects.filter(
                 user=instance.user,
                 is_deleted = False,
-                room_template__name__istartswith=new_title
+                room_template__name__iexact=new_title
+                
             ).first()
             if room_exists and room_exists.id != instance.id:
                 raise serializers.ValidationError({'name': 'You already have a room with this name. Please choose a different name.'})

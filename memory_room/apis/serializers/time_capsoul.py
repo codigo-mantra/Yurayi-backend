@@ -86,7 +86,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         existing_rooms = TimeCapSoul.objects.filter(
             user=user,
             is_deleted = False,
-            capsoul_template__name__istartswith=default.name,
+            capsoul_template__name__iexact=default.name,
         )
 
 
@@ -119,9 +119,10 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         if new_capsoul_name:
             room_exists = TimeCapSoul.objects.filter(
                 user=user,
-                is_deleted = False,
-                capsoul_template__name__istartswith=new_capsoul_name
+                is_deleted=False,
+                capsoul_template__name__iexact=new_capsoul_name
             ).first()
+
             if room_exists :
                 raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
         
@@ -328,6 +329,7 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
             try:
                 replica_instance = TimeCapSoul.objects.get(
                     user = current_user,
+                    is_deleted = False,
                     capsoul_replica_refrence = time_capsoul)
             except TimeCapSoul.DoesNotExist as e:
                 # create custom template for replica
@@ -336,19 +338,19 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                     room_exists = TimeCapSoul.objects.filter(
                         user=instance.user,
                         is_deleted = False,
-                        capsoul_template__name__istartswith=new_capsoul_name
+                        capsoul_template__name__iexact=new_capsoul_name
                     ).first()
                     if room_exists and room_exists.id != instance.id:
                         raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
 
                 created_at = timezone.localtime(timezone.now())
-                
                 template = CustomTimeCapSoulTemplate.objects.create(
-                    name = name + ' (1)',
+                    name = new_capsoul_name,
                     summary = summary,
                     cover_image = cover_image,
                     default_template = time_capsoul.capsoul_template.default_template,
-                    created_at = created_at
+                    created_at = created_at, 
+                    slug = instance.capsoul_template.slug
                 )
                 template.slug = generate_unique_slug(template)
                 replica_instance = TimeCapSoul.objects.create(
@@ -388,7 +390,7 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                         room_exists = TimeCapSoul.objects.filter(
                             user=instance.user,
                             is_deleted = False,
-                            capsoul_template__name__istartswith=new_capsoul_name
+                            capsoul_template__name__iexact=new_capsoul_name
                         ).first()
                         if room_exists and room_exists.id != instance.id:
                             raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
@@ -628,7 +630,8 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     summary = template.summary,
                     cover_image = template.cover_image,
                     default_template = time_capsoul.capsoul_template.default_template,
-                    created_at = created_at
+                    created_at = created_at,
+                    slug = template.slug,
                 )
                 template_replica.slug = generate_unique_slug(template_replica)
                 time_capsoul_replica = TimeCapSoul.objects.create(

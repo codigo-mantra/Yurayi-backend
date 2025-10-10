@@ -104,18 +104,18 @@ class GoogleAuthView(APIView):
         
         user = result["user"]
         is_new_user = result["is_new_user"]
-        is_password_set = False
+        # is_password_set = False
 
-        if not is_new_user:
-            user_password = user.password
-            is_password_set = False
-            if user_password != '' or user_password is None:
-                is_password_set = True
-        else:
-            user.set_unusable_password()
+        # if not is_new_user:
+        #     user_password = user.password
+        #     is_password_set = False
+        #     if user_password != '' or user_password is None:
+        #         is_password_set = True
+        # else:
+        #     user.set_unusable_password()
         
-        if is_password_set:
-            raise serializers.ValidationError({'password': 'Password is already set. Please login with your password.'})
+        # if is_password_set:
+        #     raise serializers.ValidationError({'password': 'Password is already set. Please login with your password.'})
 
 
         city = serializer.validated_data.get('city')

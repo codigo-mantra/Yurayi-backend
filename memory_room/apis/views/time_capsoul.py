@@ -194,7 +194,7 @@ class TimeCapSoulUpdationView(SecuredView):
             recipient.save()
             return Response({'message': f'Time Capsoul deleted successfully for {user.email}'})
         else:
-            if not time_capsoul.is_deleted:
+            if not time_capsoul.is_deleted == False:
                 is_updated = update_users_storage(
                     capsoul=time_capsoul
                 )
@@ -242,10 +242,11 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                 if time_capsoul.capsoul_replica_refrence:
                     parent_files = TimeCapSoulMediaFile.objects.filter(
+                        is_deleted = False,
                         time_capsoul=time_capsoul.capsoul_replica_refrence
                     )
-                    used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
-                    media_files = media_files | parent_files.exclude(id__in=used_ids)
+                    # used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
+                    media_files = (media_files | parent_files).distinct()
             else:
                 recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
                 if not recipient:
@@ -265,14 +266,10 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
                     if recipient.parent_media_refrences else []
                 )
-
                 media_files = TimeCapSoulMediaFile.objects.filter(
                     time_capsoul=time_capsoul,
-                    is_deleted=False,
                     id__in=parent_files_id)
                 
-
-
         serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files.distinct(), many=True)
         return Response({"media_files": serializer.data})
 
@@ -289,7 +286,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         if time_capsoul.status == 'unlocked':
             # create  replica here
             try:
-                replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul, user = user)
+                replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul, user = user, is_deleted = False)
             except TimeCapSoul.DoesNotExist as e:
                 # create custom template for replica
                 from django.utils import timezone
@@ -301,7 +298,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     summary = template.summary,
                     cover_image = template.cover_image,
                     default_template = time_capsoul.capsoul_template.default_template,
-                    created_at = created_at
+                    created_at = created_at,
+                    slug = template.slug,
                 )
                 replica_template.slug = generate_unique_slug(replica_template)
                 replica_instance = TimeCapSoul.objects.create(
@@ -534,7 +532,9 @@ class SetTimeCapSoulCover(SecuredView):
                     name = title,
                     summary = summary,
                     cover_image = cover_image,
-                    default_template = time_capsoul.capsoul_template.default_template
+                    default_template = time_capsoul.capsoul_template.default_template,
+                    slug = time_capsoul.capsoul_template.slug,
+                    
                 )
                 template.slug = generate_unique_slug(replica_instance)
                 replica_instance = TimeCapSoul.objects.create(
@@ -643,18 +643,14 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         user = self.get_current_user(request)
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id)
         if user == media_file.user:
-            media_file.is_deleted = True
-            media_file.save()
-            update_time_capsoul_occupied_storage.apply_async( 
-                args=[media_file.id, 'remove'],
-            )
-            update_user_storage(
-                user=user,
-                media_id=media_file.id,
-                file_size=media_file.file_size,
-                cache_key=f'user_storage_id_{user.id}',
-                operation_type='remove'
-            )
+            if media_file.is_deleted == False:
+                media_file.is_deleted = True
+                media_file.save()
+                update_users_storage(
+                    operation_type='remove',
+                    media_updation='capsoul',
+                    media_file=media_file
+                )
             return Response({'message': 'Time Capsoul media deleted successfully'})
         else:
             # check is tagged recipient checking here
