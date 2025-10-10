@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 from django.shortcuts import get_object_or_404
 from userauth.models import User
 from django.core.cache import cache
-from memory_room.helpers import upload_file_to_s3_kms
+from memory_room.helpers import upload_file_to_s3_kms,create_parent_media_files_replica_upload_to_s3_bucket
 
 from memory_room.signals import update_user_storage
 from memory_room.tasks import capsoul_almost_unlock,capsoul_unlocked,update_parent_media_refrences_task
@@ -360,6 +360,12 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                     capsoul_replica_refrence = time_capsoul,
                     created_at = created_at
                 )
+                # create parent replica here
+                create_parent_media_files_replica_upload_to_s3_bucket(
+                    old_capsoul=time_capsoul,
+                    new_capsoul=replica_instance,
+                    current_user=user
+                )
                 
             # else:
                 
@@ -640,6 +646,12 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     status = 'created',
                     created_at = created_at,
                     capsoul_replica_refrence = time_capsoul
+                )
+                # create parent replica here
+                create_parent_media_files_replica_upload_to_s3_bucket(
+                    old_capsoul=time_capsoul,
+                    new_capsoul=replica_instance,
+                    current_user=user
                 )
             
             # now create get or create media-file replica here
