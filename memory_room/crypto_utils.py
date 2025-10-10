@@ -400,7 +400,7 @@ def decrypt_frontend_file(uploaded_file, iv_str: str) -> bytes:
 import io
 import mimetypes
 
-def save_and_upload_decrypted_file(filename: str, decrypted_bytes: bytes, bucket='time-capsoul-files',content_type=None):
+def save_and_upload_decrypted_file(filename: str, decrypted_bytes: bytes, bucket='time-capsoul-files',content_type=None, s3_key=None):
     """
     Save decrypted bytes as a file-like object and upload to S3 as a simple file.
     """
@@ -417,7 +417,9 @@ def save_and_upload_decrypted_file(filename: str, decrypted_bytes: bytes, bucket
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
         region_name=settings.AWS_S3_REGION_NAME
     )
-    s3_key = f'assets/{filename}'
+    if s3_key is None:
+        s3_key = f'assets/{filename}'
+        
     # Upload like a normal file
     s3.upload_fileobj(
         Fileobj=file_obj,

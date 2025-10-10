@@ -284,7 +284,7 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         return getattr(obj.capsoul_template, "summary", None)
 
     def get_cover_image(self, obj):
-        cover_image = getattr(obj.capsoul_template, "cover_image", None)
+        cover_image = obj.capsoul_template.cover_image
         if cover_image:
             return AssetSerializer(cover_image).data
         return None
@@ -786,27 +786,40 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                         media_file_replica.save() # save replica media file
                 return instance
         else:
-            title =  validated_data.get('title', None)
-            description = validated_data.get('description', None)
+            if current_user != time_capsoul.user:
+                raise serializers.ValidationError({'user': "Dont have permission to perform that action"})
             
-            if title:
-                instance.title = title
-            if description:
-                instance.description = description
+            if time_capsoul.capsoul_template.default_template is None:
+            
+                title =  validated_data.get('title', None)
+                description = validated_data.get('description', None)
                 
-            if  bool(set_as_cover) == True and  instance.is_cover_image == False and media_file.file_type == "image":
-                if time_capsoul.capsoul_template.default_template is None:
-                    from userauth.models import Assets
-                    media_s3_key =  str(media_file.s3_key)
-                    file_name = media_s3_key.split('/')[-1]
-                    file_bytes,content_type = decrypt_and_get_image(media_s3_key)
-                    s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
-                    assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
-                    custom_template = time_capsoul.capsoul_template 
-                    custom_template.cover_image = assets_obj
-                    custom_template.save()
-                    instance.is_cover_image = True
-            instance.save()
+                if title:
+                    instance.title = title
+                if description:
+                    instance.description = description
+                    
+                if  bool(set_as_cover) == True and  instance.is_cover_image == False and media_file.file_type == "image":
+                    if time_capsoul.capsoul_template.default_template is None:
+                        from userauth.models import Assets
+                        media_s3_key =  str(media_file.s3_key)
+                        file_name = media_s3_key.split('/')[-1]
+                        cover_s3_key = f'{media_s3_key[0:62]}cover/{file_name}'
+                        assets_obj = Assets.objects.filter(s3_key = cover_s3_key).first()
+                        if not assets_obj:
+                            file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, current_user)
+                            if not file_bytes or not content_type:
+                                logger.error(f'Media file decryption failed while set as cover media-id: {media_file.id} for user {current_user.email}')
+                                raise serializers.ValidationError({'file': 'media file decryption failed'})
+                            s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type, s3_key=cover_s3_key)
+                            assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
+                            custom_template = time_capsoul.capsoul_template 
+                            custom_template.cover_image = assets_obj
+                            custom_template.save()
+                            instance.is_cover_image = True
+                            other_media = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted=False, user = user).exclude(id = media_file.id)
+                            other_media.update(is_cover_image = False)
+                instance.save()
         return instance
 
 

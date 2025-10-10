@@ -6,6 +6,7 @@ from memory_room.utils import to_mb, parse_storage_size,convert_file_size
 from django.core.cache import cache
 import logging
 logger = logging.getLogger(__name__)
+from django.core.cache import cache
 
 
 # @receiver(post_save, sender=User)
@@ -193,6 +194,11 @@ def update_users_storage(operation_type=None, media_updation=None, media_file=No
                 capsoul.occupied_storage = f"{updated_capsoul_size_in_kb} KB"
                 capsoul.save()
                 is_storage_updated = True
+                # clear storage calcultion cache
+                cache_key = f'user_storage_id_{user_mapper.user.id}'
+                cache.delete(cache_key)
+
+                
 
         elif capsoul:
                 capsoul_storge_in_kb, _ = convert_file_size(capsoul.occupied_storage, "KB")
@@ -204,6 +210,9 @@ def update_users_storage(operation_type=None, media_updation=None, media_file=No
                     capsoul.occupied_storage = f"{updated_storage_size_in_kb} KB"
                     capsoul.save()
                     is_storage_updated = True
+                    # clear storage calcultion cache
+                    cache_key = f'user_storage_id_{user_mapper.user.id}'
+                    cache.delete(cache_key)
 
     except Exception as e:
         logger.error(f'Exception while updating user storage for media-file id: {media_file.id if media_file else "N/A"} error-message: {e}')

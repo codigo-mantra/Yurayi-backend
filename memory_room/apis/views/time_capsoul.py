@@ -8,7 +8,7 @@ from botocore.exceptions import ClientError
 from django.conf import settings
 from django.http import StreamingHttpResponse, Http404,HttpResponse, JsonResponse, HttpResponseNotFound
 from memory_room.utils import determine_download_chunk_size
-from memory_room.utils import parse_storage_size, to_mb, to_gb, convert_file_size
+from memory_room.utils import parse_storage_size, to_mb, to_gb, convert_file_size,auto_format_size
 from memory_room.views import parse_storage_size as parse_into_mbs
 from memory_room.signals import update_user_storage, update_users_storage
 from memory_room.tasks import update_time_capsoul_occupied_storage
@@ -117,8 +117,9 @@ class CreateTimeCapSoulView(SecuredView):
         """Time CapSoul list"""
         user = self.get_current_user(request)
         
-        time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False).order_by('-created_at')
-        try: # tagged capsoul
+        time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False).order_by('-created_at') # owner capsoul
+        try: 
+            # tagged capsoul
             tagged_time_capsouls = TimeCapSoul.objects.filter(
                 recipient_detail__email=user.email,
                 recipient_detail__is_capsoul_deleted=False
@@ -160,7 +161,7 @@ class TimeCapSoulUpdationView(SecuredView):
     def patch(self, request, time_capsoul_id):
         logger.info("TimeCapSoulUpdationView.patch called")
         user = self.get_current_user(request)
-        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id, is_deleted = False)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True, context={'is_owner': True if time_capsoul.user == user else False, 'current_user': user})
         if serializer.is_valid():
             update_time_capsoul = serializer.save()
@@ -513,8 +514,8 @@ class SetTimeCapSoulCover(SecuredView):
     def patch(self, request,  media_file_id, capsoul_id):
         """Move media file from one TimeCapsoul to another"""
         user = self.get_current_user(request)
-        time_capsoul = get_object_or_404(TimeCapSoul, id=capsoul_id, user=user)
-        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id, user=user)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=capsoul_id)
+        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id)
         capsoul_template = time_capsoul.capsoul_template
 
         title = request.data.get('title', capsoul_template.name)
@@ -567,7 +568,10 @@ class SetTimeCapSoulCover(SecuredView):
                 logger.exception('Exception while creating time-capsoul replica')
                 pass 
         else:
-            if not time_capsoul.capsoul_template.default_template:
+            if user != time_capsoul.user:
+                return Response(status=status.HTTP_400_BAD_REQUEST)
+            
+            if time_capsoul.capsoul_template.default_template is None and set_as_cover == True and media_file.is_cover_image == False:
                 custom_template = time_capsoul.capsoul_template
                 
                 if title:
@@ -578,17 +582,21 @@ class SetTimeCapSoulCover(SecuredView):
                 
                 if bool(set_as_cover) == True:
                     if media_file.file_type == 'image':
-                        file_bytes,content_type = decrypt_and_get_image(str(media_file.s3_key))
+                        file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                        if not file_bytes or not content_type:
+                            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                         s3_key, url = save_and_upload_decrypted_file(filename='', decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
                         assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
                         # custom_template = time_capsoul.capsoul_template
                         custom_template.cover_image = assets_obj
                         media_file.is_cover_image = True
                         media_file.save()
+                        other_media = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted=False, user = user).exclude(id = media_file_id)
+                        other_media.update(is_cover_image = False)
                 custom_template.save()
                 
             else:
-                return Response({'message': "Time can not be updated its default template"})
+                return Response({'message': "Time can not be updated its default template or image already set as cover image"})
 
 
 class MoveTimeCapSoulMediaFile(SecuredView):
@@ -1301,23 +1309,39 @@ class UserStorageTracker(SecuredView):
                 def safe_percent(part, total):
                     return round(min(max((part * 100) / total if total > 0 else 0, 0), 100), 3)
 
+          
+
+                # # Convert category-wise to GB
+                # for category in ['images', 'videos', 'documents', 'audio']:
+                #     kb_amount = user_storage_data[category]['amount']
+                #     gb_amount = kb_amount / KB_IN_GB
+                #     user_storage_data[category]['amount'] = round(gb_amount, 5)
+                #     user_storage_data[category]['percentge'] = safe_percent(kb_amount, user_storage_limit_kb)
+
+                for category in ['images', 'videos', 'documents', 'audio']:
+                    kb_amount = user_storage_data[category]['amount']
+                    formatted_value, unit = auto_format_size(kb_amount)  # auto pick best unit
+                    user_storage_data[category]['amount'] = formatted_value
+                    user_storage_data[category]['unit'] = unit
+                    user_storage_data[category]['percentage'] = safe_percent(kb_amount, user_storage_limit_kb)
+                
                 # ---- Convert all KB totals to GB ----
                 KB_IN_GB = 1024 * 1024
                 total_space_occupied_gb = total_space_occupied_kb / KB_IN_GB
-
-                # Convert category-wise to GB
-                for category in ['images', 'videos', 'documents', 'audio']:
-                    kb_amount = user_storage_data[category]['amount']
-                    gb_amount = kb_amount / KB_IN_GB
-                    user_storage_data[category]['amount'] = round(gb_amount, 5)
-                    user_storage_data[category]['percentge'] = safe_percent(kb_amount, user_storage_limit_kb)
-
+                
+                current_storage_used = auto_format_size(total_space_occupied_kb)
+                same_formated = convert_file_size('15 GB', current_storage_used[-1])
+                free_storage_in_kb = convert_file_size(f'{(max(0, same_formated[0] - current_storage_used[0]))} {current_storage_used[-1]}', 'KB')
+                auto_formated_free_storage = auto_format_size(free_storage_in_kb[0])
+                
                 used_gb = round(total_space_occupied_gb, 5)
+                formatted_value, unit = auto_format_size(kb_amount)  # auto pick best unit
+                
                 free_gb = max(user_storage_limit_gb - used_gb, 0)
                 usage_percent = safe_percent(total_space_occupied_kb, user_storage_limit_kb)
 
-                user_storage_data['current_used_storage'] = used_gb
-                user_storage_data['free_storage'] = round(free_gb, 5)
+                user_storage_data['current_used_storage'] = current_storage_used
+                user_storage_data['free_storage'] = auto_formated_free_storage
                 user_storage_data['storage_usage_percentage'] = usage_percent
 
                 cache.set(cache_key, user_storage_data, timeout=60 * 60 * 2)

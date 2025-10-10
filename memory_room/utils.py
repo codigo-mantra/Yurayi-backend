@@ -682,3 +682,35 @@ def delete_s3_file(s3_key: str, bucket_name: str = 'yurayi-media') -> bool:
     except Exception as e:
         print(f"Unexpected error deleting {s3_key}: {e}")
         return False
+
+
+def auto_format_size(size_kb: float, round_digit=5):
+    """
+    Automatically format a file size in KB to the most appropriate unit (KB, MB, or GB).
+    
+    Args:
+        size_kb (float): Size in kilobytes.
+    
+    Returns:
+        tuple: (value, unit) — e.g. (512.35, 'KB'), (42.3, 'MB'), (1.2, 'GB')
+    """
+    try:
+        if size_kb < 0:
+            return 0, "KB"
+
+        KB_IN_MB = 1024
+        KB_IN_GB = 1024 * 1024
+
+        if size_kb < KB_IN_MB:  # < 1 MB
+            value = round(size_kb, round_digit)
+            unit = "KB"
+        elif size_kb < KB_IN_GB:  # < 1 GB
+            value = round(size_kb / KB_IN_MB, round_digit)
+            unit = "MB"
+        else:
+            value = round(size_kb / KB_IN_GB, round_digit)
+            unit = "GB"
+
+        return value, unit
+    except Exception:
+        return 0, "KB"
