@@ -1379,23 +1379,19 @@ class TimeCapsoulDuplicationApiView(SecuredView):
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         print(f'\n user storage id: {user.s3_storage_id}')
         if user != time_capsoul.user:
-            if time_capsoul.status == 'unlocked':
-                is_recipient = TimeCapSoulRecipient.objects.filter(email = user.email).first()
-                if not is_recipient:
-                    return Response(status=status.HTTP_404_NOT_FOUND)
-                duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
-                serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
-                logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-
-            else:
+            # if time_capsoul.status == 'unlocked':
+            is_recipient = TimeCapSoulRecipient.objects.filter(email = user.email).first()
+            if not is_recipient:
                 return Response(status=status.HTTP_404_NOT_FOUND)
+            duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
+            serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
+            logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
-            if time_capsoul.status != 'unlocked': 
-                duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
-                serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
-                logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
-                return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response({'message': "Only timecapsoul with status crafted or sealed can create duplicates"})
+            # if time_capsoul.status != 'unlocked': 
+            duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
+            serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
+            logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
         
         
