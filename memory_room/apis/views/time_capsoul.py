@@ -232,7 +232,6 @@ class TimeCapSoulMediaFilesView(SecuredView):
         from django.utils import timezone
         user = self.get_current_user(request)
         
-
         # if user is Owner of the time-capsoul 
         try:
             time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
@@ -241,15 +240,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
             return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
         else:
             if time_capsoul.user == user:
-                # If owner, also include replica parent files (excluding already linked ones)
-                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul, is_deleted =False, user=user)
-
-                # if time_capsoul.capsoul_replica_refrence:
-                #     parent_files = TimeCapSoulMediaFile.objects.filter(
-                #         time_capsoul=time_capsoul.capsoul_replica_refrence
-                #     )
-                #     # used_ids = media_files.values_list("media_refrence_replica_id", flat=True)
-                #     media_files = (media_files | parent_files).distinct()
+                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul,user=user, is_deleted =False)
             else:
                 recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
                 if not recipient:
@@ -273,7 +264,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     time_capsoul=time_capsoul,
                 )
                 
-        serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files.distinct(), many=True)
+        serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files, many=True)
         return Response({"media_files": serializer.data})
 
     
