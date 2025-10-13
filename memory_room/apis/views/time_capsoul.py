@@ -16,7 +16,7 @@ from timecapsoul.utils import MediaThumbnailExtractor
 from memory_room.helpers import (
     upload_file_to_s3_kms,
     create_duplicate_time_capsoul,
-    create_parent_media_files_replica_upload_to_s3_bucket
+    create_parent_media_files_replica_upload_to_s3_bucket, generate_unique_capsoul_name
     )
 
 logger = logging.getLogger(__name__)
@@ -283,36 +283,37 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul, user = user, is_deleted = False)
             except TimeCapSoul.DoesNotExist as e:
                 # create custom template for replica
-                from django.utils import timezone
-
-                created_at = timezone.localtime(timezone.now())
-                template = time_capsoul.capsoul_template
-                replica_template = CustomTimeCapSoulTemplate.objects.create(
-                    name = template.name + '(1)',
-                    summary = template.summary,
-                    cover_image = template.cover_image,
-                    default_template = time_capsoul.capsoul_template.default_template,
-                    created_at = created_at,
-                    slug = template.slug,
-                )
-                replica_template.slug = generate_unique_slug(replica_template)
-                replica_instance = TimeCapSoul.objects.create(
-                    user = user,
-                    capsoul_template=replica_template,
-                    status = 'created',
-                    capsoul_replica_refrence = time_capsoul,
-                    created_at = created_at
-                )
-                # create parent replica here
-                create_parent_media_files_replica_upload_to_s3_bucket(
-                    old_capsoul=time_capsoul,
-                    new_capsoul=replica_instance,
-                    current_user=user
-                ) 
+                try:
+                    from django.utils import timezone
+                    created_at = timezone.localtime(timezone.now())
+                    template = time_capsoul.capsoul_template
+                    capsoul_name = template.name 
+                    unique_capsoul_name = generate_unique_capsoul_name(user = user, base_name=capsoul_name, )
+                    replica_template = CustomTimeCapSoulTemplate.objects.create(
+                        name = unique_capsoul_name,
+                        summary = template.summary,
+                        cover_image = template.cover_image,
+                        default_template = time_capsoul.capsoul_template.default_template,
+                        created_at = created_at,
+                        slug = template.slug,
+                    )
+                    replica_template.slug = generate_unique_slug(replica_template)
+                    replica_instance = TimeCapSoul.objects.create(
+                        user = user,
+                        capsoul_template=replica_template,
+                        status = 'created',
+                        capsoul_replica_refrence = time_capsoul,
+                        created_at = created_at
+                    )
+                    # create parent media-replica here
+                    create_parent_media_files_replica_upload_to_s3_bucket(
+                        old_capsoul=time_capsoul,
+                        new_capsoul=replica_instance,
+                        current_user=user
+                    )
+                except Exception as e:
+                    logger.error(f'Exception while time-capsoul replica for {user.email} as: {e}')
                 
-                
-                
-        
         if replica_instance is not None:
             time_capsoul = replica_instance
             

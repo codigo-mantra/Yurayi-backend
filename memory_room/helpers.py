@@ -7,8 +7,10 @@ import logging
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from memory_room.signals import update_user_storage, update_users_storage
 
+import re
+from django.core.cache import cache
 
-from memory_room.models import TimeCapSoul, TimeCapSoulMediaFile,CustomTimeCapSoulTemplate
+from memory_room.models import TimeCapSoul, TimeCapSoulMediaFile,CustomTimeCapSoulTemplate, TimeCapSoulRecipient
 from memory_room.tasks import update_time_capsoul_occupied_storage
 from memory_room.crypto_utils import get_media_file_bytes_with_content_type,generate_capsoul_media_s3_key
 
@@ -304,8 +306,6 @@ def create_duplicate_media_file(media:TimeCapSoulMediaFile, new_capsoul:TimeCapS
                         media_updation='capsoul',
                         media_file=new_media
                     )
-                    
-                    
                     is_duplicated = True
         except Exception as e:
             logger.error(f'Exception while uploading duplicate media file to s3 for media id: {media.id} user: {current_user.email} error-message: {e}')
@@ -344,7 +344,7 @@ def create_duplicate_capsoul(time_capsoul:TimeCapSoul, capsoul_duplication_numbe
         return None
 
 
-def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul, current_user):
+def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul, current_user, creation_type='replica_creation'):
     new_capsoul = None
     logger.info(f'Timecapsoul duplication creation started for user: {time_capsoul.user.email} capsoul-id: {time_capsoul.id}')
     try:
@@ -385,11 +385,18 @@ def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul, current_user):
 def create_parent_media_files_replica_upload_to_s3_bucket(old_capsoul, new_capsoul, current_user):
     try:
         # now create media files here
-        media_files = TimeCapSoulMediaFile.objects.filter(
-            time_capsoul=old_capsoul,
-            is_deleted=False,
-            media_duplicate__isnull=True
-        )
+        if current_user != old_capsoul.user: # if current user is not owner of tha capsoul 
+            media_files = TimeCapSoulMediaFile.objects.filter(
+                time_capsoul=old_capsoul,
+                media_duplicate__isnull=True
+            )
+        else:
+            media_files = TimeCapSoulMediaFile.objects.filter(
+                time_capsoul=old_capsoul,
+                is_deleted = False,
+                media_duplicate__isnull=True
+            )
+            
         new_media_count = 0
         old_media_count = media_files.count()   
         
@@ -407,3 +414,41 @@ def create_parent_media_files_replica_upload_to_s3_bucket(old_capsoul, new_capso
         print(f'\n old media count: {old_media_count} new media count: {new_media_count}')
         logger.info(f'Timecapsoul duplication completed for user: {old_capsoul.user.email} capsoul-id: {new_capsoul.id} duplicate-capsoul-id: {new_capsoul.id} old-media-count: {old_media_count} new-media-count: {new_media_count}')
             
+
+
+def generate_unique_capsoul_name(user, base_name, cache_timeout=None, is_owner=True):
+    """
+    Generate a unique capsoul name for a given user.
+    Uses Django cache to avoid repeated DB queries.
+    """
+   
+    existing_capsouls = TimeCapSoul.objects.filter(
+        user=user,
+        is_deleted=False,
+        capsoul_template__name__iexact=base_name,
+    ).values_list("capsoul_template__name", flat=True)
+    
+    recipient_capsouls = TimeCapSoulRecipient.objects.filter(
+        email=user.email,
+        is_capsoul_deleted=False,
+        # time_capsoul__is_deleted=False,
+        time_capsoul__capsoul_template__name__iexact=base_name,
+    ).values_list("time_capsoul__capsoul_template__name", flat=True)
+    existing_names = set(name.lower() for name in list(existing_capsouls) + list(recipient_capsouls))
+
+
+    # If base_name not used, return directly
+    if base_name.lower() not in existing_names:
+        existing_names.append(base_name)
+        return base_name
+
+    # Extract numeric suffixes like base_name_1, base_name_2
+    pattern = re.compile(rf"^{re.escape(base_name)} \((\d+)\)$", re.IGNORECASE)
+    counters = [
+        int(match.group(1))
+        for name in existing_names
+        if (match := pattern.match(name))
+    ]
+    next_counter = (max(counters) + 1) if counters else 1
+    unique_name = f"{base_name} ({next_counter})"
+    return unique_name

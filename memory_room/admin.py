@@ -36,11 +36,11 @@ class MemoryRoomTemplateDefaultAdmin(admin.ModelAdmin):
     search_fields = ("name", "slug")
 
 
-@admin.register(CustomMemoryRoomTemplate)
-class CustomMemoryRoomTemplateAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "default_template", "created_at")
-    list_filter = ("default_template",)
-    search_fields = ("name",)
+# @admin.register(CustomMemoryRoomTemplate)
+# class CustomMemoryRoomTemplateAdmin(admin.ModelAdmin):
+#     list_display = ("name", "slug", "default_template", "created_at")
+#     list_filter = ("default_template",)
+#     search_fields = ("name",)
 
 
 @admin.register(MemoryRoom)
@@ -60,10 +60,10 @@ class MemoryRoomMediaFilesAdmin(admin.ModelAdmin):
         return obj.memory_room.id
 
 
-@admin.register(MemoryRoomDetail)
-class MemoryRoomDetailAdmin(admin.ModelAdmin):
-    list_display = ("memory_room", "created_at")
-    filter_horizontal = ("media_files",)
+# @admin.register(MemoryRoomDetail)
+# class MemoryRoomDetailAdmin(admin.ModelAdmin):
+#     list_display = ("memory_room", "created_at")
+#     filter_horizontal = ("media_files",)
 
 
 @admin.register(TimeCapSoulTemplateDefault)
@@ -72,11 +72,11 @@ class TimeCapSoulTemplateDefaultAdmin(admin.ModelAdmin):
     search_fields = ("name",)
 
 
-@admin.register(CustomTimeCapSoulTemplate)
-class CustomTimeCapSoulTemplatesAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "default_template", "created_at")
-    list_filter = ("default_template",)
-    search_fields = ("name",)
+# @admin.register(CustomTimeCapSoulTemplate)
+# class CustomTimeCapSoulTemplatesAdmin(admin.ModelAdmin):
+#     list_display = ("name", "slug", "default_template", "created_at")
+#     list_filter = ("default_template",)
+#     search_fields = ("name",)
 
 
 @admin.register(TimeCapSoul)
@@ -92,10 +92,10 @@ class TimeCapSoulAdmin(admin.ModelAdmin):
         return obj.details.unlock_date if obj.details.unlock_date else 'Not Available'
 
 
-@admin.register(TimeCapSoulDetail)
-class TimeCapSoulDetailAdmin(admin.ModelAdmin):
-    list_display = ('id', "time_capsoul", 'occupied_storage', "unlock_date", "created_at")
-    filter_horizontal = ("media_files",)
+# @admin.register(TimeCapSoulDetail)
+# class TimeCapSoulDetailAdmin(admin.ModelAdmin):
+#     list_display = ('id', "time_capsoul", 'occupied_storage', "unlock_date", "created_at")
+#     filter_horizontal = ("media_files",)
 
 
 @admin.register(TimeCapSoulRecipient)
@@ -104,10 +104,10 @@ class TimeCapSoulRecipientsAdmin(admin.ModelAdmin):
     search_fields = ("name", "email", "time_capsoul")
 
 
-@admin.register(RecipientsDetail)
-class RecipientsDetailsAdmin(admin.ModelAdmin):
-    list_display = ("time_capsoul",  "created_at")
-    filter_horizontal = ("recipients",)
+# @admin.register(RecipientsDetail)
+# class RecipientsDetailsAdmin(admin.ModelAdmin):
+#     list_display = ("time_capsoul",  "created_at")
+#     filter_horizontal = ("recipients",)
 
 
 
