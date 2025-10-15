@@ -706,7 +706,8 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         if value.startswith('+'):
             # Must start with +91 and followed by exactly 10 digits
             if not re.fullmatch(r'\+91\d{10}', value):
-                raise serializers.ValidationError("Phone number must be in the format +91XXXXXXXXXX.")
+                # raise serializers.ValidationError("Phone number must be in the format +91XXXXXXXXXX.")
+                raise serializers.ValidationError('Please enter a valid 10 digits number')
             digits_only = value[3:]  # remove +91
 
             if digits_only[0] < '3':
