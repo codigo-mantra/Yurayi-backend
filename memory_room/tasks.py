@@ -71,9 +71,9 @@ def capsoul_unlocked(capsoul_id):
     
     try:
         time_capsoul = TimeCapSoul.objects.get(id=capsoul_id)
-    except Exception as e:
-        pass
-    else:
+        media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
+        recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
+        recipients.update(parent_media_refrences = media_ids)
         # Notify owner 
         notif = NotificationService.create_notification_with_key(
             notification_key='capsoul_unlocked',
@@ -81,6 +81,9 @@ def capsoul_unlocked(capsoul_id):
             time_capsoul=time_capsoul
         )
         is_created = True
+    except Exception as e:
+        print(f'Exception in capsoul_unlocked  for capsoul id {capsoul_id} as: {e}')
+        
     finally:
         return is_created
         

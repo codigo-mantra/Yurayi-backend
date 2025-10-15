@@ -1,7 +1,7 @@
 """
 Encryption/Decryption utilities for S3 images.
 """
-import base64, os
+import base64, os, re
 import logging
 import boto3
 from rest_framework import status
@@ -848,3 +848,26 @@ def generate_room_media_s3_key(filename, user_storage, room_id):
     s3_key = f'media/memory-room-files/{user_storage}/room-id:{room_id}/{filename}'.replace(" ", "_")
     return s3_key
 
+
+
+def clean_filename(filename: str):
+    """
+    Cleans a filename by:
+    - Replacing spaces with underscores
+    - Removing emojis and special characters
+    - Keeping only letters, numbers, and underscores
+    - Preserving the original file extension
+    """
+    # Split into name and extension
+    name, ext = os.path.splitext(filename)
+    
+    # Replace spaces with underscores
+    name = name.replace(" ", "_")
+    
+    # Remove all non-alphanumeric and non-underscore characters
+    name = re.sub(r'[^A-Za-z0-9_]', '', name)
+    
+    # Recombine cleaned name with extension
+    clean_name = f"{name}{ext}"
+    
+    return clean_name

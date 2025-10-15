@@ -10,7 +10,7 @@ from memory_room.models import (
 )
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, generate_signature
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,generate_room_media_s3_key
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,generate_room_media_s3_key,clean_filename
 from django.core.files.base import ContentFile
 from memory_room.helpers import upload_file_to_s3_kms, upload_file_to_s3_kms_chunked
 
@@ -355,9 +355,11 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             if progress_callback:
                 progress_callback(-1, "Invalid file type")
             raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+        file_name = clean_filename(file.name)
+        
 
         validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
-        s3_key = generate_room_media_s3_key(file.name, user.s3_storage_id, memory_room.id)
+        s3_key = generate_room_media_s3_key(file_name, user.s3_storage_id, memory_room.id)
 
 
         if progress_callback:

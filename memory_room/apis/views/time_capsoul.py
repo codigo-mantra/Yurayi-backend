@@ -16,7 +16,8 @@ from timecapsoul.utils import MediaThumbnailExtractor
 from memory_room.helpers import (
     upload_file_to_s3_kms,
     create_duplicate_time_capsoul,
-    create_parent_media_files_replica_upload_to_s3_bucket, generate_unique_capsoul_name
+    create_parent_media_files_replica_upload_to_s3_bucket, generate_unique_capsoul_name,
+    create_time_capsoul,create_time_capsoul_media_file
     )
 
 logger = logging.getLogger(__name__)
@@ -256,12 +257,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     logger.info(f'User is not owner and capsoul is locked for tagged capsoul {time_capsoul.id} and user {user.email}')
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-                # parent_files_id = (
-                #     [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                #     if recipient.parent_media_refrences else []
-                # )
+                parent_files_id = (
+                    [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                    if recipient.parent_media_refrences else []
+                )
                 media_files = TimeCapSoulMediaFile.objects.filter(
                     time_capsoul=time_capsoul,
+                    id__in = parent_files_id,
                 )
                 
         serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files, many=True)
@@ -278,42 +280,48 @@ class TimeCapSoulMediaFilesView(SecuredView):
         replica_instance = None
         
         if time_capsoul.status == 'unlocked':
-            # create  replica here
             try:
                 replica_instance = TimeCapSoul.objects.get(capsoul_replica_refrence = time_capsoul, user = user, is_deleted = False)
             except TimeCapSoul.DoesNotExist as e:
-                # create custom template for replica
-                try:
-                    from django.utils import timezone
-                    created_at = timezone.localtime(timezone.now())
-                    template = time_capsoul.capsoul_template
-                    capsoul_name = template.name 
-                    unique_capsoul_name = generate_unique_capsoul_name(user = user, base_name=capsoul_name, )
-                    replica_template = CustomTimeCapSoulTemplate.objects.create(
-                        name = unique_capsoul_name,
-                        summary = template.summary,
-                        cover_image = template.cover_image,
-                        default_template = time_capsoul.capsoul_template.default_template,
-                        created_at = created_at,
-                        slug = template.slug,
-                    )
-                    replica_template.slug = generate_unique_slug(replica_template)
-                    replica_instance = TimeCapSoul.objects.create(
-                        user = user,
-                        capsoul_template=replica_template,
-                        status = 'created',
-                        capsoul_replica_refrence = time_capsoul,
-                        created_at = created_at
-                    )
-                    # create parent media-replica here
-                    create_parent_media_files_replica_upload_to_s3_bucket(
-                        old_capsoul=time_capsoul,
-                        new_capsoul=replica_instance,
-                        current_user=user
-                    )
-                except Exception as e:
-                    logger.error(f'Exception while time-capsoul replica for {user.email} as: {e}')
-                
+                replica_instance = create_time_capsoul(
+                    old_time_capsoul = time_capsoul, # create time-capsoul replica
+                    current_user = user,
+                    option_type = 'replica_creation',
+                )
+                if user == time_capsoul.user: # if user is owner of the capsoul
+                    parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
+                else:
+                    recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
+                    if not recipient:
+                        logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
+                        return Response(status=status.HTTP_404_NOT_FOUND)
+                    else:
+                        parent_files_id = (
+                            [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                            if recipient.parent_media_refrences else []
+                        )
+                        parent_media_files = TimeCapSoulMediaFile.objects.filter(
+                            time_capsoul=time_capsoul,
+                            id__in = parent_files_id,
+                        )
+                new_media_count = 0
+                old_media_count = parent_media_files.count()   
+                for parent_file in parent_media_files:
+                    try:
+                        is_media_created = create_time_capsoul_media_file(
+                            old_media=parent_file,
+                            new_capsoul=replica_instance,
+                            current_user = user,
+                            option_type = 'replica_creation',
+                        )
+                    except Exception as e:
+                        logger.exception(F'Exception while creating time-capsoul media-file replica for media-file id {parent_file.id} and user {user.email}')
+                        pass
+                    else:
+                        if is_media_created:
+                            new_media_count += 1
+                print(f"Old media count: {old_media_count}, New media count: {new_media_count}")
+
         if replica_instance is not None:
             time_capsoul = replica_instance
             
