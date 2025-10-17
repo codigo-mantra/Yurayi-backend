@@ -8,6 +8,8 @@ from userauth.models import Assets
 from memory_room.models import (
     MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
 )
+
+from memory_room.media_helper import decrypt_and_upload_file_chunked,decrypt_upload_and_extract_audio_thumbnail_chunked
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, generate_signature
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,generate_room_media_s3_key,clean_filename
@@ -190,6 +192,11 @@ class MemoryRoomUpdationSerializer(serializers.ModelSerializer):
             ).first()
             if room_exists and room_exists.id != instance.id:
                 raise serializers.ValidationError({'name': 'You already have a room with this name. Please choose a different name.'})
+        room_name = validated_data.get('name')
+        
+        if room_name:
+            if len(room_name) > 255:
+                raise serializers.ValidationError({'name': "Memory room name is too long. It can contains only 255 words"})
             
         template.name = validated_data.get('name', template.name)
         template.summary = validated_data.get('summary', template.summary)
@@ -316,65 +323,143 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             'iv',   # <-- NEW
         )
         read_only_fields = ['thumbnail_url', 'cover_image']
+    
+    @staticmethod
+    def truncate_filename(filename, max_length=100):
+        """Truncate filename while preserving extension."""
+        name, ext = os.path.splitext(filename)
+        if len(filename) > max_length:
+            max_name_length = max_length - len(ext)
+            name = name[:max_name_length]
+        return f"{name}{ext}"
+    
+    def to_internal_value(self, data):
+        file = data.get('file')
+        if file:
+            file.name = clean_filename(self.truncate_filename(file.name))
+        return super().to_internal_value(data)
+    
+    def validate(self, attrs):
+        """Perform validation for file, IV, and type."""
+        file = attrs.get('file')
+        iv = attrs.get('iv')
+
+        if not file:
+            raise serializers.ValidationError({"file": "No file provided."})
+        if not iv or len(iv) < 16:
+            raise serializers.ValidationError({"iv": "Invalid IV. Must be at least 16 chars."})
+
+        file_type = get_file_category(file.name)
+        if file_type == 'invalid':
+            raise serializers.ValidationError({'file_type': 'Unsupported file type.'})
+
+        attrs['file_type'] = file_type
+
+        file_name = clean_filename(file.name)
+        file.name = file_name
+        attrs['title'] = file_name
+
+        max_file_size = settings.DATA_UPLOAD_MAX_MEMORY_SIZE
+        if file.size > max_file_size:
+            raise serializers.ValidationError({
+                "file": f"File size exceeds max limit of {max_file_size} bytes"
+            })
+        return attrs
 
     def create(self, validated_data):
         user = self.context['user']
         memory_room = self.context['memory_room']
+        validated_data['user'] = user
+        validated_data['memory_room'] = memory_room
         progress_callback = self.context.get('progress_callback')
         iv = validated_data.pop('iv')
         file = validated_data.pop('file', None)
-
-        validated_data['user'] = user
-        validated_data['memory_room'] = memory_room
-
-        if not file:
-            raise serializers.ValidationError({"file": "No file provided."})
-
-        # Track processing progress (first 50% of total progress)
-        if progress_callback:
-            progress_callback(5, "Starting file processing...")
-
-        try:
-            # 🔑 Decrypt using shared AES key + IV
-            if progress_callback:
-                progress_callback(10, "Decrypting file...")
-            decrypted_bytes = decrypt_frontend_file(file, iv)
-            if progress_callback:
-                progress_callback(20, "File decrypted successfully")
-        except Exception as e:
-            if progress_callback:
-                progress_callback(-1, f"Decryption failed: {str(e)}")
-            raise serializers.ValidationError({'decryption_error': f'File decryption failed: {str(e)}'})
-
-        # Infer file type from original name
-        if progress_callback:
-            progress_callback(25, "Validating file type...")
-            
-        file_type = get_file_category(file.name)
-        if file_type == 'invalid':
-            if progress_callback:
-                progress_callback(-1, "Invalid file type")
-            raise serializers.ValidationError({'file_type': 'File type is invalid.'})
-        file_name = clean_filename(file.name)
+        file_name = file.name
+        file_type = validated_data.get('file_type')
         
-
-        validated_data['file_size'] = get_readable_file_size_from_bytes(len(decrypted_bytes))
-        s3_key = generate_room_media_s3_key(file_name, user.s3_storage_id, memory_room.id)
-
-
         if progress_callback:
-            progress_callback(30, "Preparing for upload...")
-
+            progress_callback(15, "Initializing upload...")
+            
         try:
-            # Create progress wrapper for upload (remaining 50% of total progress)
+            s3_key = generate_room_media_s3_key(file_name, user.s3_storage_id, memory_room.id)
+            if progress_callback:
+                progress_callback(20, "Preparing chunked decrypt & upload...")
+
+            # Progress wrapper for upload
             def upload_progress_callback(upload_percentage, message):
                 if progress_callback:
-                    # Map upload progress (0-100) to overall progress (30-80)
-                    if upload_percentage == -1:  # Error case
+                    if upload_percentage == -1:
                         progress_callback(-1, message)
                     else:
-                        overall_progress = 30 + int((upload_percentage / 100) * 50)
+                        overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
                         progress_callback(min(overall_progress, 80), message)
+            
+            if file_type == 'audio':
+                result = decrypt_upload_and_extract_audio_thumbnail_chunked(
+                    key=s3_key,
+                    encrypted_file=file,
+                    iv_str=iv,
+                    content_type=file.content_type,
+                    file_ext=os.path.splitext(file.name)[1].lower(),
+                    progress_callback=upload_progress_callback
+                )
+            else:
+                result = decrypt_and_upload_file_chunked(
+                    key=s3_key,
+                    encrypted_file=file,
+                    iv_str=iv,
+                    content_type=file.content_type,
+                    progress_callback=upload_progress_callback
+                )
+        except Exception as e:
+            logger.error('Chunked Decrypt/Upload Error', exc_info=True)
+            if progress_callback:
+                progress_callback(0, f"Chunked decryption/upload failed: {str(e)}")
+            raise serializers.ValidationError({'upload_error': f"Chunked decryption/upload failed: {str(e)}"})
+
+        if progress_callback:
+            progress_callback(85, "File uploaded successfully, generating thumbnails...")
+        
+        
+        # Track processing progress (first 50% of total progress)
+        # if progress_callback:
+        #     progress_callback(7, "Starting file processing...")
+
+        # try:
+        #     #  Decrypt using shared AES key + IV
+        #     if progress_callback:
+        #         progress_callback(10, "Decrypting file...")
+        #     decrypted_bytes = decrypt_frontend_file(file, iv)
+        #     if progress_callback:
+        #         progress_callback(20, "File decrypted successfully")
+        # except Exception as e:
+        #     if progress_callback:
+        #         progress_callback(-1, f"Decryption failed: {str(e)}")
+        #     raise serializers.ValidationError({'decryption_error': f'File decryption failed: {str(e)}'})
+
+        # Infer file type from original name
+        # if progress_callback:
+        #     progress_callback(25, "Validating file type...")
+            
+        # file_type = get_file_category(file.name)
+        # if file_type == 'invalid':
+        #     if progress_callback:
+        #         progress_callback(-1, "Invalid file type")
+        #     raise serializers.ValidationError({'file_type': 'File type is invalid.'})
+        # file_name = clean_filename(file.name)
+        
+
+        
+        # try:
+        #     # Create progress wrapper for upload (remaining 50% of total progress)
+        #     def upload_progress_callback(upload_percentage, message):
+        #         if progress_callback:
+        #             # Map upload progress (0-100) to overall progress (30-80)
+        #             if upload_percentage == -1:  # Error case
+        #                 progress_callback(-1, message)
+        #             else:
+        #                 overall_progress = 30 + int((upload_percentage / 100) * 50)
+        #                 progress_callback(min(overall_progress, 80), message)
 
             # Upload decrypted file with progress tracking
             # upload_media_obj = encrypt_and_upload_file(
@@ -390,41 +475,43 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             #     content_type=file.content_type,
             # )
             
-            upload_file_to_s3_kms_chunked(
-                key=s3_key,
-                plaintext_bytes=decrypted_bytes,
-                content_type=file.content_type,
-                progress_callback=upload_progress_callback
-            )
-        except Exception as e:
-            print(f'[Upload Error] {e}')
-            logger.error(f'File upload failed for {user.email} memory-room id: {memory_room.id} file-type: {file_type} file-size: {validated_data['file_size']}')
-            if progress_callback:
-                progress_callback(-1, f"Upload failed: {str(e)}")
-            raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
+        #     upload_file_to_s3_kms_chunked(
+        #         key=s3_key,
+        #         plaintext_bytes=decrypted_bytes,
+        #         content_type=file.content_type,
+        #         progress_callback=upload_progress_callback
+        #     )
+        # except Exception as e:
+        #     print(f'[Upload Error] {e}')
+        #     logger.error(f'File upload failed for {user.email} memory-room id: {memory_room.id} file-type: {file_type} file-size: {validated_data['file_size']}')
+        #     if progress_callback:
+        #         progress_callback(-1, f"Upload failed: {str(e)}")
+        #     raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
 
         # Assign uploaded file details
         validated_data['file_type'] = file_type
         validated_data['s3_key'] = s3_key
-        validated_data['title'] = file.name
+        validated_data['title'] = file_name
+        validated_data['file_size'] = get_readable_file_size_from_bytes(result['uploaded_size'])
+        
         # validated_data['file'] = file  # keep reference (but it's encrypted version)
 
         if progress_callback:
             progress_callback(85, "Generating thumbnails...")
 
         # === Thumbnail / cover generation ===
-        try:
-            from userauth.models import Assets
-            if file_type == 'audio':
-                ext = os.path.splitext(file.name)[1]
-                extractor = MediaThumbnailExtractor(ContentFile(decrypted_bytes, name=file.name), ext)
-                thumbnail_data = extractor.extract()
-                if thumbnail_data:
-                    image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
-                    asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Audio')
-                    validated_data['cover_image'] = asset
-                    validated_data['thumbnail_url'] = asset.s3_url
-                    validated_data['thumbnail_key'] = asset.s3_key
+        # try:
+        #     from userauth.models import Assets
+        #     if file_type == 'audio':
+        #         ext = os.path.splitext(file.name)[1]
+        #         extractor = MediaThumbnailExtractor(ContentFile(decrypted_bytes, name=file.name), ext)
+        #         thumbnail_data = extractor.extract()
+        #         if thumbnail_data:
+        #             image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
+        #             asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Audio')
+        #             validated_data['cover_image'] = asset
+        #             validated_data['thumbnail_url'] = asset.s3_url
+        #             validated_data['thumbnail_key'] = asset.s3_key
 
             # elif file_type == 'image':
             #     image_file = ImageFile(ContentFile(decrypted_bytes, name=file.name))
@@ -433,8 +520,21 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             #     validated_data['thumbnail_url'] = asset.s3_url
             #     validated_data['thumbnail_key'] = asset.s3_key
 
+        # except Exception as e:
+        #     print(f'[Thumbnail Error] {e}')
+        
+        try:
+            if file_type == 'audio' and result.get('thumbnail_data'):
+                from django.core.files.base import ContentFile
+                image_file = ContentFile(result['thumbnail_data'], name=f"thumbnail_{file.name}.jpg")
+
+                if image_file:
+                    from userauth.models import Assets
+                    asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
+                    validated_data['thumbnail'] = asset
         except Exception as e:
-            print(f'[Thumbnail Error] {e}')
+            logger.exception('Exception while extracting thumbnail')
+
 
         if progress_callback:
             progress_callback(90, "Finalizing...")
@@ -442,7 +542,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         instance = super().create(validated_data)
         
         if progress_callback:
-            progress_callback(95, "File processed successfully!")
+            progress_callback(92, "File processed successfully!")
             
         return instance
 
