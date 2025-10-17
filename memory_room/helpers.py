@@ -418,24 +418,40 @@ def create_parent_media_files_replica_upload_to_s3_bucket(old_capsoul, new_capso
         logger.info(f'Timecapsoul duplication completed for user: {old_capsoul.user.email} capsoul-id: {new_capsoul.id} duplicate-capsoul-id: {new_capsoul.id} old-media-count: {old_media_count} new-media-count: {new_media_count}')
             
 
+def user_capsoul_name_list(user):
+    
+    existing_capsouls = TimeCapSoul.objects.filter(
+        user=user,
+        is_deleted=False,
+    ).values_list("capsoul_template__name", flat=True)
+    
+    recipient_capsouls = TimeCapSoulRecipient.objects.filter(
+        email=user.email,
+        is_capsoul_deleted=False,
+    ).values_list("time_capsoul__capsoul_template__name", flat=True)
+    existing_names = set(name.lower() for name in list(existing_capsouls) + list(recipient_capsouls))
+    
+    return existing_names
+
 
 def generate_unique_capsoul_name(user, base_name):
     """
     Generate a unique capsoul name for a given user.
     Uses Django cache to avoid repeated DB queries.
     """
+    base_name = str(base_name).lower()
    
     existing_capsouls = TimeCapSoul.objects.filter(
         user=user,
         is_deleted=False,
-        capsoul_template__name__iexact=base_name,
+        # capsoul_template__name__iexact=base_name,
     ).values_list("capsoul_template__name", flat=True)
     
     recipient_capsouls = TimeCapSoulRecipient.objects.filter(
         email=user.email,
         is_capsoul_deleted=False,
         # time_capsoul__is_deleted=False,
-        time_capsoul__capsoul_template__name__iexact=base_name,
+        # time_capsoul__capsoul_template__name__iexact=base_name,
     ).values_list("time_capsoul__capsoul_template__name", flat=True)
     existing_names = set(name.lower() for name in list(existing_capsouls) + list(recipient_capsouls))
 
@@ -526,11 +542,7 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
             file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
             s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
             
-            # upload_file_to_s3_kms(
-            #     key=s3_key,
-            #     plaintext_bytes=file_bytes, # upload file to s3
-            #     content_type=content_type,
-            # )
+           
             upload_file_to_s3_kms_chunked(
                 key=s3_key,
                 plaintext_bytes=file_bytes,

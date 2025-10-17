@@ -111,42 +111,42 @@ class MediaThumbnailExtractor:
             logger.error(f"Video thumbnail extraction failed: {e}")
             return None
     
-    # def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):
-    #     if extension  not in ['.mp3', '.m4a', '.mp4', '.flac']:
-    #         return None
-    #     try:
-    #         data = BytesIO(decrypted_bytes)
-    #         data.seek(0)
+    def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):
+        if extension  not in ['.mp3', '.m4a', '.mp4', '.flac']:
+            return None
+        try:
+            data = BytesIO(decrypted_bytes)
+            data.seek(0)
 
-    #         if extension == ".mp3":
-    #             try:
-    #                 audio = MP3(data, ID3=ID3)
-    #             except Exception as e:
-    #                 logger.warning("MP3 header sync issue, trying raw ID3")
-    #                 try:
-    #                     audio = ID3(data)
-    #                 except Exception as e2:
-    #                     logger.error("Failed to read ID3 tags")
-    #                     return None
+            if extension == ".mp3":
+                try:
+                    audio = MP3(data, ID3=ID3)
+                except Exception as e:
+                    logger.warning("MP3 header sync issue, trying raw ID3")
+                    try:
+                        audio = ID3(data)
+                    except Exception as e2:
+                        logger.error("Failed to read ID3 tags")
+                        return None
 
-    #             tags = getattr(audio, 'tags', audio)
-    #             for tag in tags.values():
-    #                 if isinstance(tag, APIC):
-    #                     return tag.data
+                tags = getattr(audio, 'tags', audio)
+                for tag in tags.values():
+                    if isinstance(tag, APIC):
+                        return tag.data
 
-    #         elif extension in [".m4a", ".mp4"]:
-    #             audio = MP4(data)
-    #             if 'covr' in audio:
-    #                 return audio['covr'][0]
+            elif extension in [".m4a", ".mp4"]:
+                audio = MP4(data)
+                if 'covr' in audio:
+                    return audio['covr'][0]
 
-    #         elif extension == ".flac":
-    #             audio = FLAC(data)
-    #             if audio.pictures:
-    #                 return audio.pictures[0].data
+            elif extension == ".flac":
+                audio = FLAC(data)
+                if audio.pictures:
+                    return audio.pictures[0].data
 
-    #     except Exception as e:
-    #         logger.error("Thumbnail extraction failed")
-    #     return None
+        except Exception as e:
+            logger.error("Thumbnail extraction failed")
+        return None
 
 def send_html_email(subject, to_email, template_name, context=None, inline_images=None, email_list = None):
     """

@@ -101,7 +101,7 @@ class MemoryRoomCreationSerializer(serializers.Serializer):
         existing_rooms = MemoryRoom.objects.filter(
             user=user,
             is_deleted = False,
-            room_template__name__iexact=default.name
+            room_template__default_template=default
         )
 
         if existing_rooms.exists():
@@ -394,23 +394,15 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                         overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
                         progress_callback(min(overall_progress, 80), message)
             
-            if file_type == 'audio':
-                result = decrypt_upload_and_extract_audio_thumbnail_chunked(
-                    key=s3_key,
-                    encrypted_file=file,
-                    iv_str=iv,
-                    content_type=file.content_type,
-                    file_ext=os.path.splitext(file.name)[1].lower(),
-                    progress_callback=upload_progress_callback
-                )
-            else:
-                result = decrypt_upload_and_extract_audio_thumbnail_chunked(
-                    key=s3_key,
-                    encrypted_file=file,
-                    iv_str=iv,
-                    content_type=file.content_type,
-                    progress_callback=upload_progress_callback
-                )
+            result = decrypt_upload_and_extract_audio_thumbnail_chunked(
+                # file_type = file_type,
+                key=s3_key,
+                encrypted_file=file,
+                iv_str=iv,
+                # content_type="audio/mpeg",
+                progress_callback=upload_progress_callback,
+                file_ext=os.path.splitext(file.name)[1].lower(),
+            )
         except Exception as e:
             logger.error('Chunked Decrypt/Upload Error', exc_info=True)
             if progress_callback:

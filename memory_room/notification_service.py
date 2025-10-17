@@ -48,7 +48,7 @@ class NotificationService:
             return None
    
     @staticmethod
-    def create_notification_with_key(notification_key, user, memory_room=None, time_capsoul=None):
+    def create_notification_with_key(notification_key, user, memory_room=None, time_capsoul=None, custom_message=None):
         """
         Safely create a system-generated notification.
         Returns:
@@ -63,7 +63,10 @@ class NotificationService:
             category = notification_data['category']
             category_type = notification_data['type']
             title = notification_data['title']
-            message = notification_data['message']
+            if custom_message is None:
+                message = notification_data['message']
+            else:
+                message = custom_message
 
             notification, created = Notification.objects.get_or_create(
                 user=user,

@@ -44,8 +44,8 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
     file_ext: str = "",
     progress_callback=None,
     chunk_size: int = 10 * 1024 * 1024,  # 10 MB default
-    file_type=None
-):
+    file_type=None,
+    ):
     """
     Decrypt AES-256-GCM encrypted audio file chunk-by-chunk with streaming,
     upload decrypted chunks to S3 with KMS encryption using threading,

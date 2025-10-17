@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from userauth.models import User
 from django.core.cache import cache
 from memory_room.helpers import (
-    upload_file_to_s3_kms,create_parent_media_files_replica_upload_to_s3_bucket,upload_file_to_s3_kms_chunked,create_time_capsoul,create_time_capsoul_media_file
+    upload_file_to_s3_kms,create_parent_media_files_replica_upload_to_s3_bucket,upload_file_to_s3_kms_chunked,create_time_capsoul,create_time_capsoul_media_file, generate_unique_capsoul_name,user_capsoul_name_list
 )
 
 from memory_room.signals import update_user_storage
@@ -89,13 +89,11 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         existing_rooms = TimeCapSoul.objects.filter(
             user=user,
             is_deleted = False,
-            capsoul_template__name__iexact=default.name,
+            capsoul_template=default,
         )
 
-
         if existing_rooms.exists():
-            count = existing_rooms.count()
-            capsoul_name = f"{default.name} ({count})"
+            capsoul_name = generate_unique_capsoul_name(default.name)
         else:
             capsoul_name = default.name
 
@@ -121,6 +119,11 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         new_capsoul_name = base_name
         if len(base_name) > 255:
             raise serializers.ValidationError({'name': "Time-capsoul name is too long. It can be of 255 words only"})
+        
+        capsoul = TimeCapSoul.objects.filter(
+            user = user,
+            is_deleted = False
+        )
         
         if new_capsoul_name:
             room_exists = TimeCapSoul.objects.filter(
@@ -262,10 +265,21 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         return False
 
     def get_total_files(self, obj):
-        try:
-            return obj.timecapsoul_media_files.filter(is_deleted=False).count()
-        except Exception as e:
-            return 0
+        count = 0
+        user = self.context.get('user', None)  
+        if obj.user != user:
+            recipient = TimeCapSoulRecipient.objects.get(time_capsoul = obj, email = user.email)
+            parent_files_id = (
+                    [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                    if recipient.parent_media_refrences else []
+                )
+            count = len(parent_files_id)
+        else:
+            try:
+                count =  obj.timecapsoul_media_files.filter(is_deleted=False).count()
+            except Exception as e:
+                pass
+        return count
         
 
     def get_status(self, obj):
@@ -356,10 +370,10 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 cover_image = cover_image,
 
             )
-            if user == time_capsoul.user: # if user is owner of the capsoul
+            if user.id == time_capsoul.user.id: # if user is owner of the capsoul
                 parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
             else:
-                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
+                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
                 if not recipient:
                     logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
                     raise serializers.ValidationError({'detail': 'You do not have access to this time-capsoul.'})
@@ -502,7 +516,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                 key=s3_key,
                 encrypted_file=file,
                 iv_str=iv,
-                content_type="audio/mpeg",
+                # content_type="audio/mpeg",
                 progress_callback=upload_progress_callback,
                 file_ext=os.path.splitext(file.name)[1].lower(),
             )
@@ -636,10 +650,10 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 option_type = 'replica_creation',
                 cover_image = cover_image 
             )
-            if user == time_capsoul.user: # if user is owner of the capsoul
+            if user.id == time_capsoul.user.id: # if user is owner of the capsoul
                 parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
             else:
-                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
+                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
                 if not recipient:
                     logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
                     raise serializers.ValidationError({'detail': 'You do not have access to this time-capsoul.'})
@@ -656,23 +670,12 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
             old_media_count = parent_media_files.count()   
             for parent_file in parent_media_files:
                 try:
-                    if parent_file.id == media_file.id:
-                        is_media_created = create_time_capsoul_media_file(
-                            old_media=parent_file,
-                            new_capsoul=replica_instance,
-                            current_user = current_user,
-                            option_type = 'replica_creation',
-                            updated_media_title = title,
-                            updated_media_description = description,
-                            set_as_cover = is_cover_image
-                        )
-                    else:
-                        is_media_created = create_time_capsoul_media_file(
-                            old_media=parent_file,
-                            new_capsoul=replica_instance,
-                            current_user = current_user,
-                            option_type = 'replica_creation',
-                        )
+                    is_media_created = create_time_capsoul_media_file(
+                        old_media=parent_file,
+                        new_capsoul=replica_instance,
+                        current_user = current_user,
+                        option_type = 'replica_creation',
+                    )
                 except Exception as e:
                     logger.exception(F'Exception while creating time-capsoul media-file replica for media-file id {parent_file.id} and user {user.email}')
                     pass
@@ -773,7 +776,7 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             now = timezone.now()
             if now <= instance.unlock_date <= now + timedelta(hours=1):
                 capsoul_almost_unlock.apply_async((time_capsoul.id,),eta=instance.unlock_date)
-                capsoul_unlocked.apply_async((time_capsoul.id,), eta=instance.unlock_date)
+                # capsoul_unlocked.apply_async((time_capsoul.id,), eta=instance.unlock_date)
            
             
             # create notification at sealed of owner

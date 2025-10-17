@@ -13,6 +13,9 @@ from memory_room.views import parse_storage_size as parse_into_mbs
 from memory_room.signals import update_user_storage, update_users_storage
 from memory_room.tasks import update_time_capsoul_occupied_storage
 from timecapsoul.utils import MediaThumbnailExtractor
+from memory_room.notification_service import NotificationService
+
+
 from memory_room.helpers import (
     upload_file_to_s3_kms,
     create_duplicate_time_capsoul,
@@ -46,7 +49,7 @@ from memory_room.apis.serializers.memory_room import (
 
 from memory_room.models import (
     TimeCapSoulTemplateDefault, TimeCapSoul, TimeCapSoulDetail, TimeCapSoulMediaFile,RecipientsDetail,
-    TimeCapSoulRecipient,FILE_TYPES, CustomTimeCapSoulTemplate, MemoryRoom, MemoryRoomMediaFile
+    TimeCapSoulRecipient,FILE_TYPES, CustomTimeCapSoulTemplate, MemoryRoom, MemoryRoomMediaFile, Notification
     )
 
 from memory_room.apis.serializers.time_capsoul import (
@@ -286,10 +289,10 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     current_user = user,
                     option_type = 'replica_creation',
                 )
-                if user == time_capsoul.user: # if user is owner of the capsoul
+                if user.id == time_capsoul.user.id: # if user is owner of the capsoul
                     parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
                 else:
-                    recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
+                    recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
                     if not recipient:
                         logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
                         return Response(status=status.HTTP_404_NOT_FOUND)
@@ -691,7 +694,6 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
     
     def patch(self, request, time_capsoul_id, media_file_id):
         user = self.get_current_user(request)
-        # time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id,is_deleted = False)
         serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True, context={'is_owner': True if media_file.user == user else False, 'current_user': user})
         serializer.is_valid(raise_exception=True)
@@ -1345,6 +1347,7 @@ class TaggedCapsoulTracker(SecuredView):
             time_capsoul__id=capsoul_id,
             email=user.email
         )
+        time_caspsoul = capsoul_recipient.time_capsoul
 
         serializer = TimeCapSoulRecipientUpdateSerializer(
             capsoul_recipient,
@@ -1354,6 +1357,13 @@ class TaggedCapsoulTracker(SecuredView):
         
         if serializer.is_valid():
             serializer.save()
+            message = f"The wait is over! {user.username if user.username else user.email} has opened a moment you shared. Dive in and relive it."
+            notif = NotificationService.create_notification_with_key(
+                notification_key='capsoul_unlocked',
+                user=user,
+                time_capsoul=time_caspsoul,
+                custom_message = message
+            )
             return Response(serializer.data, status=status.HTTP_200_OK)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

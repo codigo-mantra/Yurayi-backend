@@ -630,101 +630,227 @@ from django.http import HttpResponse, HttpResponseForbidden
 from django.views import View
 
 SECRET = settings.SECRET_KEY.encode()
+from django.http import StreamingHttpResponse, HttpResponse, FileResponse
+from django.utils.http import http_date
+from rest_framework.response import Response
+from rest_framework import status
+import time, logging
+from wsgiref.util import FileWrapper
+from io import BytesIO
 
+# class ServeMedia(SecuredView):
+#     """
+#     Securely serve decrypted media from S3 via Django.
+#     """
+
+#     def get(self, request, s3_key, media_file_id):
+#         user  = self.get_current_user(request)
+#         if user is None:
+#             return Response(status=status.HTTP_401_UNAUTHORIZED)
+#         try:
+#             exp = request.GET.get("exp")
+#             sig = request.GET.get("sig")
+            
+#             if not exp or not sig:
+#                 return Response(status=status.HTTP_404_NOT_FOUND)
+
+#             if int(exp) < int(time.time()):
+#                 return Response(status=status.HTTP_404_NOT_FOUND)
+            
+#             media_file =  get_object_or_404(MemoryRoomMediaFile, id = media_file_id, user = user)
+            
+#             #  signature-verification
+#             if not verify_signature(media_file.s3_key, exp, sig):
+#                 return Response(status=status.HTTP_404_NOT_FOUND)
+            
+#             bytes_cache_key = str(media_file.s3_key)
+#             file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+#             if not file_bytes or not content_type:
+#                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        
+#             if file_bytes and content_type:
+#                 if media_file.s3_key.lower().endswith(".doc"): # .doc to .docx conversion here
+#                     try:
+#                         docx_bytes_cache_key = f'{media_file.id}_docx_preview'
+#                         docx_bytes = cache.get(docx_bytes_cache_key)
+                        
+#                         if not docx_bytes:
+#                             docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+#                             cache.set(docx_bytes_cache_key, docx_bytes, timeout=60*60*2)  
+                            
+#                         response = HttpResponse(
+#                             docx_bytes,
+#                             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+#                         )
+#                         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+#                         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+#                         response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}"'
+#                         return response
+#                     except Exception as e:
+#                         logger.error(f'Exception while generating docx for doc files as {e}')
+#                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#                 else:
+#                     if media_file.s3_key.lower().endswith(".heic")  or media_file.s3_key.lower().endswith(".heif"):
+#                         jpeg_cache_key = f'{bytes_cache_key}_jpeg'
+#                         jpeg_file_bytes = cache.get(jpeg_cache_key)
+#                         if not jpeg_file_bytes:
+#                             jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+#                             cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=60*60*2)
+                            
+#                         response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
+#                         response["Content-Disposition"] = (
+#                             f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
+#                         )
+#                         return response
+#                     elif media_file.s3_key.lower().endswith(".mkv"):
+#                         cache_key = f'{bytes_cache_key}_mp4'
+#                         mp4_bytes = cache.get(cache_key)
+#                         if not mp4_bytes:
+#                             try:
+#                                 mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
+#                                 content_type = "video/mp4"
+#                                 cache.set(cache_key, mp4_bytes, timeout=60*60*2)
+#                             except Exception as e:
+#                                 logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
+#                                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+#                         download_name = media_file.s3_key.split("/")[-1]
+#                         download_name = download_name.replace(".mkv", ".mp4")
+#                         response = HttpResponse(mp4_bytes, content_type=content_type)
+#                         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+#                         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+#                         response["Content-Disposition"] = f'inline; filename="{download_name}"'
+#                         return response
+#                     else:
+#                         response = HttpResponse(file_bytes, content_type=content_type)
+#                         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # 
+#                         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+#                         response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
+#                         return response
+#         except Exception as e:
+#             logger.warning(f'Exception while serving media file as s3-key: {s3_key} user: {user.email}')
+#             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class ServeMedia(SecuredView):
     """
     Securely serve decrypted media from S3 via Django.
+    Supports Range requests for video/audio playback.
     """
 
+    def _stream_file_with_range(self, request, file_bytes, content_type, filename):
+        """
+        Handle HTTP Range requests for audio/video files.
+        """
+        file_size = len(file_bytes)
+        range_header = request.headers.get("Range", "")
+        range_match = None
+        start = 0
+        end = file_size - 1
+
+        if range_header and "bytes=" in range_header:
+            try:
+                range_match = range_header.replace("bytes=", "").split("-")
+                if range_match[0]:
+                    start = int(range_match[0])
+                if len(range_match) > 1 and range_match[1]:
+                    end = int(range_match[1])
+            except ValueError:
+                pass  # Ignore malformed Range headers
+
+        end = min(end, file_size - 1)
+        chunk = file_bytes[start:end + 1]
+
+        response = StreamingHttpResponse(
+            BytesIO(chunk),
+            content_type=content_type,
+            status=206 if range_match else 200
+        )
+        response["Content-Length"] = str(len(chunk))
+        response["Accept-Ranges"] = "bytes"
+        if range_match:
+            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        response["Last-Modified"] = http_date(time.time())
+        return response
+
     def get(self, request, s3_key, media_file_id):
-        user  = self.get_current_user(request)
+        user = self.get_current_user(request)
         if user is None:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
+
         try:
             exp = request.GET.get("exp")
             sig = request.GET.get("sig")
-            
-            if not exp or not sig:
+            if not exp or not sig or int(exp) < int(time.time()):
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
-            if int(exp) < int(time.time()):
-                return Response(status=status.HTTP_404_NOT_FOUND)
-            
-            media_file =  get_object_or_404(MemoryRoomMediaFile, id = media_file_id, user = user)
-            
-            #  signature-verification
+            media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user=user)
+
             if not verify_signature(media_file.s3_key, exp, sig):
                 return Response(status=status.HTTP_404_NOT_FOUND)
-            
-            bytes_cache_key = str(media_file.s3_key)
+
             file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
             if not file_bytes or not content_type:
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                        
-            if file_bytes and content_type:
-                if media_file.s3_key.lower().endswith(".doc"): # .doc to .docx conversion here
-                    try:
-                        docx_bytes_cache_key = f'{media_file.id}_docx_preview'
-                        docx_bytes = cache.get(docx_bytes_cache_key)
-                        
-                        if not docx_bytes:
-                            docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-                            cache.set(docx_bytes_cache_key, docx_bytes, timeout=60*60*2)  
-                            
-                        response = HttpResponse(
-                            docx_bytes,
-                            content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                        )
-                        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-                        response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-                        response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}"'
-                        return response
-                    except Exception as e:
-                        logger.error(f'Exception while generating docx for doc files as {e}')
-                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                else:
-                    if media_file.s3_key.lower().endswith(".heic")  or media_file.s3_key.lower().endswith(".heif"):
-                        jpeg_cache_key = f'{bytes_cache_key}_jpeg'
-                        jpeg_file_bytes = cache.get(jpeg_cache_key)
-                        if not jpeg_file_bytes:
-                            jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
-                            cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=60*60*2)
-                            
-                        response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
-                        response["Content-Disposition"] = (
-                            f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
-                        )
-                        return response
-                    elif media_file.s3_key.lower().endswith(".mkv"):
-                        cache_key = f'{bytes_cache_key}_mp4'
-                        mp4_bytes = cache.get(cache_key)
-                        if not mp4_bytes:
-                            try:
-                                mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
-                                content_type = "video/mp4"
-                                cache.set(cache_key, mp4_bytes, timeout=60*60*2)
-                            except Exception as e:
-                                logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
-                                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-                        download_name = media_file.s3_key.split("/")[-1]
-                        download_name = download_name.replace(".mkv", ".mp4")
-                        response = HttpResponse(mp4_bytes, content_type=content_type)
-                        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-                        response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-                        response["Content-Disposition"] = f'inline; filename="{download_name}"'
-                        return response
-                    else:
-                        response = HttpResponse(file_bytes, content_type=content_type)
-                        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # 
-                        response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-                        response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
-                        return response
+            filename = media_file.s3_key.split("/")[-1]
+
+            # DOC conversion (unchanged)
+            if media_file.s3_key.lower().endswith(".doc"):
+                docx_bytes_cache_key = f'{media_file.id}_docx_preview'
+                docx_bytes = cache.get(docx_bytes_cache_key)
+                if not docx_bytes:
+                    docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=60 * 60 * 2)
+
+                response = HttpResponse(
+                    docx_bytes,
+                    content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                )
+                frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                response["Content-Disposition"] = f'inline; filename="{filename.replace(".doc", ".docx")}"'
+                return response
+
+            # HEIC conversion (unchanged)
+            if media_file.s3_key.lower().endswith((".heic", ".heif")):
+                jpeg_cache_key = f'{media_file.s3_key}_jpeg'
+                jpeg_file_bytes = cache.get(jpeg_cache_key)
+                if not jpeg_file_bytes:
+                    jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+                    cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=60 * 60 * 2)
+
+                response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
+                response["Content-Disposition"] = f'inline; filename="{filename.replace(".heic", ".jpg").replace(".heif", ".jpg")}"'
+                return response
+
+            # MKV conversion (unchanged)
+            if media_file.s3_key.lower().endswith(".mkv"):
+                cache_key = f'{media_file.s3_key}_mp4'
+                mp4_bytes = cache.get(cache_key)
+                if not mp4_bytes:
+                    mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
+                    content_type = "video/mp4"
+                    cache.set(cache_key, mp4_bytes, timeout=60 * 60 * 2)
+                filename = filename.replace(".mkv", ".mp4")
+                return self._stream_file_with_range(request, mp4_bytes, content_type, filename)
+
+            # Audio/Video — enable streaming + Range
+            if "video" in content_type or "audio" in content_type:
+                return self._stream_file_with_range(request, file_bytes, content_type, filename)
+
+            # Default file (unchanged)
+            response = HttpResponse(file_bytes, content_type=content_type)
+            frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+            response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+            response["Content-Disposition"] = f'inline; filename="{filename.replace(".enc", "")}"'
+            return response
+
         except Exception as e:
-            logger.warning(f'Exception while serving media file as s3-key: {s3_key} user: {user.email}')
+            logger.warning(f'Exception while serving media file {s3_key} for user {user.email}: {e}')
             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
+          
                 
 
 class RefreshMediaURL(SecuredView):
