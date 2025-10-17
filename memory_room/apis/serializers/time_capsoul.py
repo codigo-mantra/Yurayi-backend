@@ -89,7 +89,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         existing_rooms = TimeCapSoul.objects.filter(
             user=user,
             is_deleted = False,
-            capsoul_template=default,
+            capsoul_template__default_template=default,
         )
 
         if existing_rooms.exists():
