@@ -9,7 +9,7 @@ from memory_room.models import (
     MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
 )
 
-from memory_room.media_helper import decrypt_and_upload_file_chunked,decrypt_upload_and_extract_audio_thumbnail_chunked
+from memory_room.media_helper import decrypt_upload_and_extract_audio_thumbnail_chunked
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, generate_signature
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,generate_room_media_s3_key,clean_filename
@@ -404,7 +404,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                     progress_callback=upload_progress_callback
                 )
             else:
-                result = decrypt_and_upload_file_chunked(
+                result = decrypt_upload_and_extract_audio_thumbnail_chunked(
                     key=s3_key,
                     encrypted_file=file,
                     iv_str=iv,
@@ -421,72 +421,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             progress_callback(85, "File uploaded successfully, generating thumbnails...")
         
         
-        # Track processing progress (first 50% of total progress)
-        # if progress_callback:
-        #     progress_callback(7, "Starting file processing...")
-
-        # try:
-        #     #  Decrypt using shared AES key + IV
-        #     if progress_callback:
-        #         progress_callback(10, "Decrypting file...")
-        #     decrypted_bytes = decrypt_frontend_file(file, iv)
-        #     if progress_callback:
-        #         progress_callback(20, "File decrypted successfully")
-        # except Exception as e:
-        #     if progress_callback:
-        #         progress_callback(-1, f"Decryption failed: {str(e)}")
-        #     raise serializers.ValidationError({'decryption_error': f'File decryption failed: {str(e)}'})
-
-        # Infer file type from original name
-        # if progress_callback:
-        #     progress_callback(25, "Validating file type...")
-            
-        # file_type = get_file_category(file.name)
-        # if file_type == 'invalid':
-        #     if progress_callback:
-        #         progress_callback(-1, "Invalid file type")
-        #     raise serializers.ValidationError({'file_type': 'File type is invalid.'})
-        # file_name = clean_filename(file.name)
-        
-
-        
-        # try:
-        #     # Create progress wrapper for upload (remaining 50% of total progress)
-        #     def upload_progress_callback(upload_percentage, message):
-        #         if progress_callback:
-        #             # Map upload progress (0-100) to overall progress (30-80)
-        #             if upload_percentage == -1:  # Error case
-        #                 progress_callback(-1, message)
-        #             else:
-        #                 overall_progress = 30 + int((upload_percentage / 100) * 50)
-        #                 progress_callback(min(overall_progress, 80), message)
-
-            # Upload decrypted file with progress tracking
-            # upload_media_obj = encrypt_and_upload_file(
-            #     key=s3_key,
-            #     plaintext_bytes=decrypted_bytes,
-            #     content_type=file.content_type,
-            #     file_category=file_type,
-            #     progress_callback=upload_progress_callback
-            # )
-            # upload_file_to_s3_kms(
-            #     key=s3_key,
-            #     plaintext_bytes=decrypted_bytes,
-            #     content_type=file.content_type,
-            # )
-            
-        #     upload_file_to_s3_kms_chunked(
-        #         key=s3_key,
-        #         plaintext_bytes=decrypted_bytes,
-        #         content_type=file.content_type,
-        #         progress_callback=upload_progress_callback
-        #     )
-        # except Exception as e:
-        #     print(f'[Upload Error] {e}')
-        #     logger.error(f'File upload failed for {user.email} memory-room id: {memory_room.id} file-type: {file_type} file-size: {validated_data['file_size']}')
-        #     if progress_callback:
-        #         progress_callback(-1, f"Upload failed: {str(e)}")
-        #     raise serializers.ValidationError({'upload_error': "File upload failed. Invalid file."})
+       
 
         # Assign uploaded file details
         validated_data['file_type'] = file_type

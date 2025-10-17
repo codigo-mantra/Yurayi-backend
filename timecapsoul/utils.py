@@ -15,6 +15,15 @@ from mutagen.flac import FLAC
 from io import BytesIO
 from mutagen.id3 import ID3, APIC
 
+from io import BytesIO
+import logging
+from mutagen.mp4 import MP4
+from mutagen.flac import FLAC
+# from moviepy.editor import VideoFileClip
+import tempfile
+from PIL import Image
+
+
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
@@ -71,42 +80,73 @@ class MediaThumbnailExtractor:
             logger.error("Thumbnail extraction failed")
         return None
     
-    def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):
-        if extension  not in ['.mp3', '.m4a', '.mp4', '.flac']:
+    def extract_video_thumbnail_from_bytes(self, extension, decrypted_bytes):
+        """
+        Extract a thumbnail (JPEG bytes) from a decrypted video byte stream.
+        Works for common formats: .mp4, .mov, .avi, .mkv
+        """
+        if extension.lower() not in ['.mp4', '.mov', '.avi', '.mkv']:
             return None
-        try:
-            data = BytesIO(decrypted_bytes)
-            data.seek(0)
 
-            if extension == ".mp3":
-                try:
-                    audio = MP3(data, ID3=ID3)
-                except Exception as e:
-                    logger.warning("MP3 header sync issue, trying raw ID3")
-                    try:
-                        audio = ID3(data)
-                    except Exception as e2:
-                        logger.error("Failed to read ID3 tags")
-                        return None
+        try:  
+            
+            # Write decrypted bytes to a temporary file
+            with tempfile.NamedTemporaryFile(suffix=extension, delete=True) as tmp_file:
+                tmp_file.write(decrypted_bytes)
+                tmp_file.flush()
 
-                tags = getattr(audio, 'tags', audio)
-                for tag in tags.values():
-                    if isinstance(tag, APIC):
-                        return tag.data
+                # Load video
+                clip = VideoFileClip(tmp_file.name)
+                frame = clip.get_frame(0.5)  # frame at 0.5 sec (you can adjust)
 
-            elif extension in [".m4a", ".mp4"]:
-                audio = MP4(data)
-                if 'covr' in audio:
-                    return audio['covr'][0]
+                # Convert frame (numpy array) → image bytes
+                img = Image.fromarray(frame)
+                img_bytes = BytesIO()
+                img.save(img_bytes, format="JPEG")
+                clip.close()
 
-            elif extension == ".flac":
-                audio = FLAC(data)
-                if audio.pictures:
-                    return audio.pictures[0].data
+                return img_bytes.getvalue()
 
         except Exception as e:
-            logger.error("Thumbnail extraction failed")
-        return None
+            logger.error(f"Video thumbnail extraction failed: {e}")
+            return None
+    
+    # def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):
+    #     if extension  not in ['.mp3', '.m4a', '.mp4', '.flac']:
+    #         return None
+    #     try:
+    #         data = BytesIO(decrypted_bytes)
+    #         data.seek(0)
+
+    #         if extension == ".mp3":
+    #             try:
+    #                 audio = MP3(data, ID3=ID3)
+    #             except Exception as e:
+    #                 logger.warning("MP3 header sync issue, trying raw ID3")
+    #                 try:
+    #                     audio = ID3(data)
+    #                 except Exception as e2:
+    #                     logger.error("Failed to read ID3 tags")
+    #                     return None
+
+    #             tags = getattr(audio, 'tags', audio)
+    #             for tag in tags.values():
+    #                 if isinstance(tag, APIC):
+    #                     return tag.data
+
+    #         elif extension in [".m4a", ".mp4"]:
+    #             audio = MP4(data)
+    #             if 'covr' in audio:
+    #                 return audio['covr'][0]
+
+    #         elif extension == ".flac":
+    #             audio = FLAC(data)
+    #             if audio.pictures:
+    #                 return audio.pictures[0].data
+
+    #     except Exception as e:
+    #         logger.error("Thumbnail extraction failed")
+    #     return None
 
 def send_html_email(subject, to_email, template_name, context=None, inline_images=None, email_list = None):
     """

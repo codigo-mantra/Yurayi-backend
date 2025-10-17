@@ -14,7 +14,7 @@ from memory_room.helpers import (
 from memory_room.signals import update_user_storage
 from memory_room.tasks import capsoul_almost_unlock,capsoul_unlocked,update_parent_media_refrences_task
 
-from memory_room.media_helper import decrypt_and_upload_file_chunked,decrypt_upload_and_extract_audio_thumbnail_chunked,decrypt_and_upload_file_chunked_threaded
+from memory_room.media_helper import decrypt_upload_and_extract_audio_thumbnail_chunked
 
 from django.core.files.images import ImageFile 
 from timecapsoul.utils import MediaThumbnailExtractor
@@ -496,24 +496,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                     else:
                         overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
                         progress_callback(min(overall_progress, 80), message)
-            
-            # if file_type == 'audio':
-            #     result = decrypt_upload_and_extract_audio_thumbnail_chunked(
-            #         key=s3_key,
-            #         encrypted_file=file,
-            #         iv_str=iv,
-            #         content_type=file.content_type,
-            #         file_ext=os.path.splitext(file.name)[1].lower(),
-            #         progress_callback=upload_progress_callback
-            #     )
-            # else:
-            #     result = decrypt_and_upload_file_chunked(
-            #         key=s3_key,
-            #         encrypted_file=file,
-            #         iv_str=iv,
-            #         content_type=file.content_type,
-            #         progress_callback=upload_progress_callback
-            #     )
+
             result = decrypt_upload_and_extract_audio_thumbnail_chunked(
                 # file_type = file_type,
                 key=s3_key,
