@@ -93,7 +93,7 @@ class TimeCapSoulCreationSerializer(serializers.Serializer):
         )
 
         if existing_rooms.exists():
-            capsoul_name = generate_unique_capsoul_name(default.name)
+            capsoul_name = generate_unique_capsoul_name(user, default.name)
         else:
             capsoul_name = default.name
 
