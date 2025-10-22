@@ -1608,19 +1608,59 @@ class TimeCapsoulDuplicationApiView(SecuredView):
         user  = self.get_current_user(request)
         logger.info(f'TimeCapsoulDuplicationApiView is called by {user.email} capsoul-id: {time_capsoul_id}')
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
-        print(f'\n user storage id: {user.s3_storage_id}')
         if user != time_capsoul.user:
-            # if time_capsoul.status == 'unlocked':
-            is_recipient = TimeCapSoulRecipient.objects.filter(email = user.email).first()
+            is_recipient = TimeCapSoulRecipient.objects.filter(time_capsoul=time_capsoul, email = user.email).first()
             if not is_recipient:
                 return Response(status=status.HTTP_404_NOT_FOUND)
-            duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
-            serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
-            logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            # duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
+            duplicate_room = create_time_capsoul(
+                    old_time_capsoul = time_capsoul, # create time-capsoul duplicate here
+                    current_user = user,
+                    option_type = 'duplicate_time_capsoul',
+            )
+            parent_files_id = (
+                [int(i.strip()) for i in is_recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                if is_recipient.parent_media_refrences else []
+            )
+            parent_media_files = TimeCapSoulMediaFile.objects.filter(
+                time_capsoul=time_capsoul,
+                id__in = parent_files_id,
+            )
+            
+            # serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
+            # logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
+            # return Response(serializer.data, status=status.HTTP_201_CREATED)
         else:
             # if time_capsoul.status != 'unlocked': 
-            duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
+            # duplicate_room = create_duplicate_time_capsoul(time_capsoul, current_user=user)
+            duplicate_room = create_time_capsoul(
+                old_time_capsoul = time_capsoul, # create time-capsoul duplicate here
+                current_user = user,
+                option_type = 'duplicate_time_capsoul',
+            )
+            parent_media_files = TimeCapSoulMediaFile.objects.filter(
+                time_capsoul=time_capsoul,
+                user = user,
+                is_deleted = False,
+            )
+        new_media_count = 0
+        old_media_count = parent_media_files.count()   
+        for parent_file in parent_media_files:
+            try:
+                is_media_created = create_time_capsoul_media_file(
+                    old_media=parent_file,
+                    new_capsoul=duplicate_room,
+                    current_user = user,
+                    option_type = 'duplicate_creation',
+                )
+            except Exception as e:
+                logger.exception(F'Exception while creating time-capsoul media-file replica for media-file id {parent_file.id} and user {user.email}')
+                pass
+            else:
+                if is_media_created:
+                    new_media_count += 1
+            print(f"Old media count: {old_media_count}, New media count: {new_media_count}")
+            
             serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
             logger.info(f'Caposul  duplicate created successfully for capsoul: old {time_capsoul_id} new: {duplicate_room.id} for user {user.email} ')
             return Response(serializer.data, status=status.HTTP_201_CREATED)

@@ -426,30 +426,6 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         if progress_callback:
             progress_callback(85, "Generating thumbnails...")
 
-        # === Thumbnail / cover generation ===
-        # try:
-        #     from userauth.models import Assets
-        #     if file_type == 'audio':
-        #         ext = os.path.splitext(file.name)[1]
-        #         extractor = MediaThumbnailExtractor(ContentFile(decrypted_bytes, name=file.name), ext)
-        #         thumbnail_data = extractor.extract()
-        #         if thumbnail_data:
-        #             image_file = ContentFile(thumbnail_data, name=f"thumbnail_{file.name}.jpg")
-        #             asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Audio')
-        #             validated_data['cover_image'] = asset
-        #             validated_data['thumbnail_url'] = asset.s3_url
-        #             validated_data['thumbnail_key'] = asset.s3_key
-
-            # elif file_type == 'image':
-            #     image_file = ImageFile(ContentFile(decrypted_bytes, name=file.name))
-            #     asset = Assets.objects.create(image=image_file, asset_types='Thumbnail/Image')
-            #     validated_data['cover_image'] = asset
-            #     validated_data['thumbnail_url'] = asset.s3_url
-            #     validated_data['thumbnail_key'] = asset.s3_key
-
-        # except Exception as e:
-        #     print(f'[Thumbnail Error] {e}')
-        
         try:
             # if file_type == 'audio' and result.get('thumbnail_data'):
             if  result.get('thumbnail_data') is not None:
@@ -460,7 +436,9 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                 if image_file:
                     from userauth.models import Assets
                     asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
-                    validated_data['thumbnail'] = asset
+                    validated_data['thumbnail_url'] = asset.s3_url
+                    validated_data['thumbnail_key'] = asset.s3_key
+
         except Exception as e:
             logger.exception('Exception while extracting thumbnail')
 
@@ -468,7 +446,9 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         if progress_callback:
             progress_callback(90, "Finalizing...")
 
-        instance = super().create(validated_data)
+        # instance = super().create(validated_data)
+        instance = super(MemoryRoomMediaFileCreationSerializer, self).create(validated_data)
+
         
         if progress_callback:
             progress_callback(92, "File processed successfully!")

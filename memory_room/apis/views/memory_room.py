@@ -23,6 +23,7 @@ import queue
 import time
 from django.core.cache import cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from memory_room.helpers import generate_unique_memory_room_name
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView, NewSecuredView
@@ -737,41 +738,171 @@ class ServeMedia(SecuredView):
     Supports Range requests for video/audio playback.
     """
 
+    # def _stream_file_with_range(self, request, file_bytes, content_type, filename):
+    #     """
+    #     Handle HTTP Range requests for audio/video files.
+    #     """
+    #     file_size = len(file_bytes)
+    #     range_header = request.headers.get("Range", "")
+    #     range_match = None
+    #     start = 0
+    #     end = file_size - 1
+
+    #     if range_header and "bytes=" in range_header:
+    #         try:
+    #             range_match = range_header.replace("bytes=", "").split("-")
+    #             if range_match[0]:
+    #                 start = int(range_match[0])
+    #             if len(range_match) > 1 and range_match[1]:
+    #                 end = int(range_match[1])
+    #         except ValueError:
+    #             pass  # Ignore malformed Range headers
+
+    #     end = min(end, file_size - 1)
+    #     chunk = file_bytes[start:end + 1]
+
+    #     response = StreamingHttpResponse(
+    #         BytesIO(chunk),
+    #         content_type=content_type,
+    #         status=206 if range_match else 200
+    #     )
+    #     response["Content-Length"] = str(len(chunk))
+    #     response["Accept-Ranges"] = "bytes"
+    #     if range_match:
+    #         response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+
+    #     response["Content-Disposition"] = f'inline; filename="{filename}"'
+    #     response["Last-Modified"] = http_date(time.time())
+    #     return response
+
+    # def get(self, request, s3_key, media_file_id):
+    #     user = self.get_current_user(request)
+    #     if user is None:
+    #         return Response(status=status.HTTP_401_UNAUTHORIZED)
+
+    #     try:
+    #         exp = request.GET.get("exp")
+    #         sig = request.GET.get("sig")
+    #         if not exp or not sig or int(exp) < int(time.time()):
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
+
+    #         media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user=user)
+
+    #         if not verify_signature(media_file.s3_key, exp, sig):
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
+
+    #         file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+    #         if not file_bytes or not content_type:
+    #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    #         filename = media_file.s3_key.split("/")[-1]
+
+    #         # DOC conversion (unchanged)
+    #         if media_file.s3_key.lower().endswith(".doc"):
+    #             docx_bytes_cache_key = f'{media_file.id}_docx_preview'
+    #             docx_bytes = cache.get(docx_bytes_cache_key)
+    #             if not docx_bytes:
+    #                 docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+    #                 cache.set(docx_bytes_cache_key, docx_bytes, timeout=60 * 60 * 2)
+
+    #             response = HttpResponse(
+    #                 docx_bytes,
+    #                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    #             )
+    #             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #             response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #             response["Content-Disposition"] = f'inline; filename="{filename.replace(".doc", ".docx")}"'
+    #             return response
+
+    #         # HEIC conversion (unchanged)
+    #         if media_file.s3_key.lower().endswith((".heic", ".heif")):
+    #             jpeg_cache_key = f'{media_file.s3_key}_jpeg'
+    #             jpeg_file_bytes = cache.get(jpeg_cache_key)
+    #             if not jpeg_file_bytes:
+    #                 jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+    #                 cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=60 * 60 * 2)
+
+    #             response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
+    #             response["Content-Disposition"] = f'inline; filename="{filename.replace(".heic", ".jpg").replace(".heif", ".jpg")}"'
+    #             return response
+
+    #         # MKV conversion (unchanged)
+    #         if media_file.s3_key.lower().endswith(".mkv"):
+    #             cache_key = f'{media_file.s3_key}_mp4'
+    #             mp4_bytes = cache.get(cache_key)
+    #             if not mp4_bytes:
+    #                 mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
+    #                 content_type = "video/mp4"
+    #                 cache.set(cache_key, mp4_bytes, timeout=60 * 60 * 2)
+    #             filename = filename.replace(".mkv", ".mp4")
+    #             return self._stream_file_with_range(request, mp4_bytes, content_type, filename)
+
+    #         # Audio/Video — enable streaming + Range
+    #         if "video" in content_type or "audio" in content_type:
+    #             return self._stream_file_with_range(request, file_bytes, content_type, filename)
+
+    #         # Default file (unchanged)
+    #         response = HttpResponse(file_bytes, content_type=content_type)
+    #         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #         response["Content-Disposition"] = f'inline; filename="{filename.replace(".enc", "")}"'
+    #         return response
+
+    #     except Exception as e:
+    #         logger.warning(f'Exception while serving media file {s3_key} for user {user.email}: {e}')
+    #         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+   
+
     def _stream_file_with_range(self, request, file_bytes, content_type, filename):
         """
-        Handle HTTP Range requests for audio/video files.
+        Stream decrypted media file with proper Range support.
+        Allows seeking/jumping in video/audio players.
         """
         file_size = len(file_bytes)
-        range_header = request.headers.get("Range", "")
-        range_match = None
+        range_header = request.headers.get("Range", "").strip()
         start = 0
         end = file_size - 1
+        status_code = 200
 
         if range_header and "bytes=" in range_header:
             try:
-                range_match = range_header.replace("bytes=", "").split("-")
-                if range_match[0]:
-                    start = int(range_match[0])
-                if len(range_match) > 1 and range_match[1]:
-                    end = int(range_match[1])
+                range_values = range_header.replace("bytes=", "").split("-")
+                if range_values[0]:
+                    start = int(range_values[0])
+                if len(range_values) > 1 and range_values[1]:
+                    end = int(range_values[1])
+                status_code = 206  # Partial Content
             except ValueError:
-                pass  # Ignore malformed Range headers
+                start, end = 0, file_size - 1
 
         end = min(end, file_size - 1)
-        chunk = file_bytes[start:end + 1]
+        chunk_size = (end - start) + 1
+
+        def file_stream():
+            """
+            Generator to yield chunks progressively for playback.
+            """
+            buffer = memoryview(file_bytes)
+            chunk_len = 8192  # 8KB per chunk (tunable)
+            pos = start
+            while pos <= end:
+                yield buffer[pos:min(pos + chunk_len, end + 1)].tobytes()
+                pos += chunk_len
+                time.sleep(0.002)  # Slight delay to simulate progressive stream
 
         response = StreamingHttpResponse(
-            BytesIO(chunk),
+            file_stream(),
             content_type=content_type,
-            status=206 if range_match else 200
+            status=status_code
         )
-        response["Content-Length"] = str(len(chunk))
         response["Accept-Ranges"] = "bytes"
-        if range_match:
-            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-
+        response["Content-Length"] = str(chunk_size)
         response["Content-Disposition"] = f'inline; filename="{filename}"'
         response["Last-Modified"] = http_date(time.time())
+
+        if status_code == 206:
+            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+
         return response
 
     def get(self, request, s3_key, media_file_id):
@@ -790,13 +921,14 @@ class ServeMedia(SecuredView):
             if not verify_signature(media_file.s3_key, exp, sig):
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
+            # Decrypt or fetch from S3
             file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
             if not file_bytes or not content_type:
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
             filename = media_file.s3_key.split("/")[-1]
 
-            # DOC conversion (unchanged)
+            # Handle .doc (convert to docx)
             if media_file.s3_key.lower().endswith(".doc"):
                 docx_bytes_cache_key = f'{media_file.id}_docx_preview'
                 docx_bytes = cache.get(docx_bytes_cache_key)
@@ -813,7 +945,7 @@ class ServeMedia(SecuredView):
                 response["Content-Disposition"] = f'inline; filename="{filename.replace(".doc", ".docx")}"'
                 return response
 
-            # HEIC conversion (unchanged)
+            # Handle HEIC/HEIF to JPEG
             if media_file.s3_key.lower().endswith((".heic", ".heif")):
                 jpeg_cache_key = f'{media_file.s3_key}_jpeg'
                 jpeg_file_bytes = cache.get(jpeg_cache_key)
@@ -825,7 +957,7 @@ class ServeMedia(SecuredView):
                 response["Content-Disposition"] = f'inline; filename="{filename.replace(".heic", ".jpg").replace(".heif", ".jpg")}"'
                 return response
 
-            # MKV conversion (unchanged)
+            # Handle MKV → MP4
             if media_file.s3_key.lower().endswith(".mkv"):
                 cache_key = f'{media_file.s3_key}_mp4'
                 mp4_bytes = cache.get(cache_key)
@@ -836,11 +968,11 @@ class ServeMedia(SecuredView):
                 filename = filename.replace(".mkv", ".mp4")
                 return self._stream_file_with_range(request, mp4_bytes, content_type, filename)
 
-            # Audio/Video — enable streaming + Range
+            # Stream audio/video progressively with Range
             if "video" in content_type or "audio" in content_type:
                 return self._stream_file_with_range(request, file_bytes, content_type, filename)
 
-            # Default file (unchanged)
+            # Default file (normal response)
             response = HttpResponse(file_bytes, content_type=content_type)
             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
             response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
@@ -850,7 +982,7 @@ class ServeMedia(SecuredView):
         except Exception as e:
             logger.warning(f'Exception while serving media file {s3_key} for user {user.email}: {e}')
             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-          
+  
                 
 
 class RefreshMediaURL(SecuredView):
@@ -879,19 +1011,22 @@ def create_duplicate_room(room:MemoryRoom):
     new_room = None
     logger.info(f'Room duplication creation started for user: {room.user.email} room-id: {room.id}')
     try:
-        duplicate_capsoul = MemoryRoom.objects.filter(room_duplicate = room, is_deleted = False)
-        capsoul_duplication_number = f' ({1 + duplicate_capsoul.count()})'
+        # duplicate_capsoul = MemoryRoom.objects.filter(room_duplicate = room, is_deleted = False)
+        # capsoul_duplication_number = f' ({1 + duplicate_capsoul.count()})'
+        
+        unique_room_name = generate_unique_memory_room_name(room.user, room.room_template.name)
         # create duplicate room here
         created_at = timezone.localtime(timezone.now())
         old_room_template = room.room_template
         new_custom_template  =  CustomMemoryRoomTemplate.objects.create(
-            name= old_room_template.name + capsoul_duplication_number,
-            slug = old_room_template,
+            name= unique_room_name,
+            slug = old_room_template.slug,
             summary = old_room_template.summary,
             cover_image = old_room_template.cover_image,
             default_template = old_room_template.default_template,
             created_at = created_at
         )
+        new_custom_template.save()
         
         new_room = MemoryRoom.objects.create(
             user = room.user,
@@ -931,6 +1066,12 @@ def create_duplicate_room(room:MemoryRoom):
                         media_file_duplicate = media,
                         created_at = created_at
                     )
+                    if new_media:
+                        is_updated = update_users_storage(
+                            operation_type='addition',
+                            media_updation='memory_room',
+                            media_file=new_media
+                        )
                 except Exception as e:
                     logger.error(f'Exception while creating media file duplicate for media: {media.id} and room: {room.id} user: {room.user.email}')
             

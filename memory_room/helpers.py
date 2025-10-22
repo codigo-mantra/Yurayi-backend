@@ -10,7 +10,7 @@ from memory_room.signals import update_user_storage, update_users_storage
 import re
 from django.core.cache import cache
 
-from memory_room.models import TimeCapSoul, TimeCapSoulMediaFile,CustomTimeCapSoulTemplate, TimeCapSoulRecipient
+from memory_room.models import TimeCapSoul, TimeCapSoulMediaFile,CustomTimeCapSoulTemplate, TimeCapSoulRecipient, MemoryRoom
 from memory_room.tasks import update_time_capsoul_occupied_storage
 from memory_room.crypto_utils import get_media_file_bytes_with_content_type,generate_capsoul_media_s3_key
 
@@ -362,7 +362,6 @@ def create_duplicate_time_capsoul(time_capsoul:TimeCapSoul, current_user, creati
                 media_files = TimeCapSoulMediaFile.objects.filter(
                     time_capsoul=time_capsoul,
                     is_deleted=False,
-                    media_duplicate__isnull=True
                 )
                 old_media_count = media_files.count()   
                 new_media_count = 0
@@ -473,6 +472,38 @@ def generate_unique_capsoul_name(user, base_name):
     return unique_name
 
 
+def generate_unique_memory_room_name(user, base_name):
+    """
+    Generate a unique memoy room name for a given user.
+    Uses Django cache to avoid repeated DB queries.
+    """
+    base_name = str(base_name).lower()
+   
+    existing_capsouls = MemoryRoom.objects.filter(
+        user=user,
+        is_deleted=False,
+    ).values_list("room_template__name", flat=True)
+    
+    
+    existing_names = set(name.lower() for name in list(existing_capsouls))
+
+
+    # If base_name not used, return directly
+    if base_name.lower() not in existing_names:
+        # existing_names.append(base_name)
+        return base_name
+
+    # Extract numeric suffixes like base_name_1, base_name_2
+    pattern = re.compile(rf"^{re.escape(base_name)} \((\d+)\)$", re.IGNORECASE)
+    counters = [
+        int(match.group(1))
+        for name in existing_names
+        if (match := pattern.match(name))
+    ]
+    next_counter = (max(counters) + 1) if counters else 1
+    unique_name = f"{base_name} ({next_counter})"
+    return unique_name
+
 
 def create_time_capsoul(old_time_capsoul:TimeCapSoul, current_user:str, option_type='replica_creation', capsoul_name=None, capsoul_summary=None, cover_image=None):  
 
@@ -542,16 +573,15 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
             file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
             s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
             
-           
             upload_file_to_s3_kms_chunked(
                 key=s3_key,
                 plaintext_bytes=file_bytes,
                 content_type=content_type,
                 progress_callback=None
             )
-            thumbnail = None 
-            if old_media.file_type == 'audio': # generate thumbnail for audio file
-                thumbnail = audio_thumbnail_generator(file_name=file_name, decrypted_bytes=file_bytes)
+            thumbnail = old_media.thumbnail 
+            # if old_media.file_type == 'audio': # generate thumbnail for audio file
+            #     thumbnail = audio_thumbnail_generator(file_name=file_name, decrypted_bytes=file_bytes)
             
             from django.utils import timezone
             created_at = timezone.localtime(timezone.now())
