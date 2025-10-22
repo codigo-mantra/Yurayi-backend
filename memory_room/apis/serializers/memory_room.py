@@ -395,7 +395,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                         progress_callback(min(overall_progress, 80), message)
             
             result = decrypt_upload_and_extract_audio_thumbnail_chunked(
-                # file_type = file_type,
+                file_type = file_type,
                 key=s3_key,
                 encrypted_file=file,
                 iv_str=iv,
@@ -451,7 +451,9 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         #     print(f'[Thumbnail Error] {e}')
         
         try:
-            if file_type == 'audio' and result.get('thumbnail_data'):
+            # if file_type == 'audio' and result.get('thumbnail_data'):
+            if  result.get('thumbnail_data') is not None:
+                
                 from django.core.files.base import ContentFile
                 image_file = ContentFile(result['thumbnail_data'], name=f"thumbnail_{file.name}.jpg")
 
