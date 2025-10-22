@@ -829,7 +829,7 @@ def get_media_file_bytes_with_content_type(media_file, user):
             finally:
                 if file_bytes and content_type:
                     # caching here
-                    print(f'yes file bytes received')
+                    print(f'file bytes cached for {media_file.s3_key} received')
                     cache.set(bytes_cache_key, file_bytes, timeout=60*60*2)  
                     cache.set(content_type_cache_key, content_type, timeout=60*60*2)
         return file_bytes, content_type

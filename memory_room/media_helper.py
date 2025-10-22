@@ -206,19 +206,22 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                         # Attempt extraction if enough data buffered
                         if collected_bytes.tell() >= 128 * 1024:
                             try:
-                                extractor = MediaThumbnailExtractor(file='', file_ext=file_ext)
+                                thumb = None
+                                if file_type in ['video', 'audio']:
                                 
-                                if file_type and file_type == 'video':
-                                    video_thumb = extractor.extract_video_thumbnail_from_bytes(
-                                        decrypted_bytes=collected_bytes.getvalue(),
-                                        extension=file_ext,
-                                    )
-                                    thumb = video_thumb
-                                else:
-                                    thumb = extractor.extract_audio_thumbnail_from_bytes(
-                                        decrypted_bytes=collected_bytes.getvalue(),
-                                        extension=file_ext,
-                                    )
+                                    extractor = MediaThumbnailExtractor(file='', file_ext=file_ext)
+                                    
+                                    if file_type and file_type == 'video':
+                                        video_thumb = extractor.extract_video_thumbnail_from_bytes(
+                                            decrypted_bytes=collected_bytes.getvalue(),
+                                            extension=file_ext,
+                                        )
+                                        thumb = video_thumb
+                                    else:
+                                        thumb = extractor.extract_audio_thumbnail_from_bytes(
+                                            decrypted_bytes=collected_bytes.getvalue(),
+                                            extension=file_ext,
+                                        )
                                 if thumb:
                                     thumbnail_data = thumb
                                     thumbnail_extracted = True

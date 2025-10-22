@@ -1,4 +1,4 @@
-import boto3, io
+import boto3, io, re
 import logging
 import json
 import time
@@ -23,7 +23,7 @@ import queue
 import time
 from django.core.cache import cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from memory_room.helpers import generate_unique_memory_room_name
+from memory_room.helpers import generate_unique_memory_room_name,upload_file_to_s3_kms_chunked
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView, NewSecuredView
@@ -52,7 +52,7 @@ from memory_room.tasks import update_memory_room_occupied_storage
 
 logger = logging.getLogger(__name__)
 
-from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file,get_decrypt_file_bytes,get_media_file_bytes_with_content_type
+from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file,get_decrypt_file_bytes,get_media_file_bytes_with_content_type,generate_room_media_s3_key
 from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_file_size
 
 class MemoryRoomCoverView(SecuredView):
@@ -1009,6 +1009,7 @@ class RefreshMediaURL(SecuredView):
 def create_duplicate_room(room:MemoryRoom):
     from django.utils import timezone
     new_room = None
+    user = room.user
     logger.info(f'Room duplication creation started for user: {room.user.email} room-id: {room.id}')
     try:
         # duplicate_capsoul = MemoryRoom.objects.filter(room_duplicate = room, is_deleted = False)
@@ -1041,41 +1042,62 @@ def create_duplicate_room(room:MemoryRoom):
     else:
         try:
             # now create duplicate media files here
-            # media_files = MemoryRoomMediaFile.objects.filter(user = room.user, memory_room = room, is_deleted =False)
             media_files = MemoryRoomMediaFile.objects.filter(
                 user=room.user,
                 memory_room=room,
                 is_deleted=False
             )  # reverse by primary key (latest first)
+            old_files_count = media_files.count()
+            duplicate_media_count  = 0
             
             for media in media_files:
                 try:
-                    new_media = MemoryRoomMediaFile.objects.create(
-                        user = media.user,
-                        memory_room = new_room,
-                        file = media.file,
-                        file_type = media.file_type,
-                        cover_image = media.cover_image,
-                        title = media.title,
-                        description = media.description,
-                        is_cover_image = media.is_cover_image,
-                        thumbnail_url = media.thumbnail_url,
-                        thumbnail_key = media.thumbnail_key,
-                        s3_url = media.s3_url,
-                        s3_key = media.s3_key,
-                        media_file_duplicate = media,
-                        created_at = created_at
-                    )
-                    if new_media:
-                        is_updated = update_users_storage(
-                            operation_type='addition',
-                            media_updation='memory_room',
-                            media_file=new_media
+                    file_bytes, content_type = get_media_file_bytes_with_content_type(media, user)
+                    if not file_bytes or not content_type:
+                        raise Exception('File decryption failed')
+                    else:
+                        file_name  = f'{media.title.split(".", 1)[0].replace(" ", "_")}.{media.s3_key.split(".")[-1]}' # get file name 
+                        file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
+                        s3_key = generate_room_media_s3_key(file_name, user.s3_storage_id, room.id)
+                        
+                        upload_file_to_s3_kms_chunked(
+                            key=s3_key,
+                            plaintext_bytes=file_bytes,
+                            content_type=content_type,
+                            progress_callback=None
                         )
+                        
+                        new_media = MemoryRoomMediaFile.objects.create(
+                            user = media.user,
+                            memory_room = new_room,
+                            file = media.file,
+                            file_type = media.file_type,
+                            cover_image = media.cover_image,
+                            title = media.title,
+                            description = media.description,
+                            is_cover_image = media.is_cover_image,
+                            thumbnail_url = media.thumbnail_url,
+                            thumbnail_key = media.thumbnail_key,
+                            s3_url = media.s3_url,
+                            s3_key = media.s3_key,
+                            media_file_duplicate = media,
+                            created_at = created_at
+                        )
+                        if new_media:
+                            is_updated = update_users_storage(
+                                operation_type='addition',
+                                media_updation='memory_room',
+                                media_file=new_media
+                            )
+                            duplicate_media_count += 1
+                except Exception as e:
+                    logger.error(f'Exception while creating duplicate media for user: {user.email} old-media id: {media.id} s3_key: {media.s3_keys}')
+                    pass
+                    
                 except Exception as e:
                     logger.error(f'Exception while creating media file duplicate for media: {media.id} and room: {room.id} user: {room.user.email}')
             
-            logger.info(f'Room duplication creation completed for user: {room.user.email} room-id: {room.id}')
+            logger.info(f'Room duplication creation completed for user: {room.user.email} room-id: {room.id} old media files count: {old_files_count} duplicate file count: {duplicate_media_count}')
             
         
         except Exception as e:
