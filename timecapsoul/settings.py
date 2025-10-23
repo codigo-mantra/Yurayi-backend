@@ -132,18 +132,18 @@ else:
     #     }
     # }
     DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'yurayi_db_2025',
-        'USER': 'yurayi_user',
-        'PASSWORD': 'test@1234',
-        'HOST': 'localhost',
-        'PORT': '3306',
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-        },
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': 'yurayi_db_2025',
+            'USER': 'yurayi_user',
+            'PASSWORD': 'test@1234',
+            'HOST': 'localhost',
+            'PORT': '3306',
+            'OPTIONS': {
+                'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            }
+        }
     }
-}
 
     
 
@@ -183,6 +183,20 @@ MEDIA_FILES_BUCKET = "yurayi-media"
 DECRYPT_LINK_TTL_SECONDS = 60*60*24  # 1 day 
 DECRYPT_LINK_SECRET = "12345678901234567890123456789012"  # for JWT signing
 if ENVIRONMENT_TYPE == 'PROD':
+    COOKIE_DOMAIN = ".yurayi.com"
+    SESSION_COOKIE_DOMAIN = ".yurayi.com"
+    CSRF_COOKIE_DOMAIN = ".yurayi.com"
+    
+    ACCESS_COOKIE_SECURE = True
+    REFRESH_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    
+    ACCESS_COOKIE_SAMESITE = "None"
+    REFRESH_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SAMESITE = "None"
+    
     STATIC_ROOT = os.path.join(BASE_DIR, "staticfiles")
     STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
     AWS_STORAGE_BUCKET_NAME = AWS_SECRET['AWS_STORAGE_BUCKET_NAME']
@@ -196,6 +210,16 @@ if ENVIRONMENT_TYPE == 'PROD':
     DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
     MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
 else:
+    CSRF_COOKIE_DOMAIN = None
+    COOKIE_DOMAIN = None
+    ACCESS_COOKIE_SECURE = True
+    REFRESH_COOKIE_SECURE = True
+    SESSION_COOKIE_SECURE = False
+    CSRF_COOKIE_SECURE = False
+    ACCESS_COOKIE_SAMESITE = "None"
+    REFRESH_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SAMESITE = "None"
     MEDIA_URL = '/media/'
     STATICFILES_DIRS = [BASE_DIR / "static"]
     AWS_STORAGE_BUCKET_NAME = "time-capsoul-files"
@@ -205,7 +229,6 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 # CORS_ALLOWED_ORIGINS = ["http://localhost:3000", 'https://yurayi.com']
 
-CORS_ALLOW_ALL_ORIGINS = True
 
 
 REST_FRAMEWORK = {
@@ -310,10 +333,6 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
-SESSION_COOKIE_SAMESITE = 'Lax'  # or 'None' for cross-origin
-SESSION_COOKIE_SECURE = True  # Set to True in production with HTTPS
-CSRF_COOKIE_SAMESITE = 'Lax'   # or 'None' for cross-origin
-CSRF_COOKIE_SECURE = True 
 
 SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("JWT", "Bearer"),
@@ -333,31 +352,24 @@ JWT_ALGORITHM = "HS256"
 JWT_ISSUER = "secure_auth"
 SESSION_EXPIRE_TIME = 7*60*60*24 # 7 days
 
-COOKIE_DOMAIN = None  # set to  domain in prod
 REFRESH_COOKIE_NAME = "refresh_token"
-REFRESH_COOKIE_SAMESITE = "None"
-REFRESH_COOKIE_SECURE = not DEBUG
 REFRESH_COOKIE_HTTPONLY = True
 REFRESH_COOKIE_PATH = "/"
 
 # Access token cookie
 ACCESS_COOKIE_NAME = "access_token"
-ACCESS_COOKIE_SECURE = True          # True in production (HTTPS), False for local dev
 ACCESS_COOKIE_HTTPONLY = True        # Prevent JS access (XSS protection)
-ACCESS_COOKIE_SAMESITE = "None"      # "Strict" | "Lax" | "None"
 ACCESS_COOKIE_PATH = "/"
 
 # ACCESS_TOKEN_LIFETIME = 60 * 15      # 15 minutes (example)
 ACCESS_TOKEN_LIFETIME = 60 * 60 * 24 * 7  # 7 days
 # Refresh token cookie
 REFRESH_COOKIE_NAME = "refresh_token"
-REFRESH_COOKIE_SECURE = True
 REFRESH_COOKIE_HTTPONLY = True
-REFRESH_COOKIE_SAMESITE = "None"
 # REFRESH_COOKIE_PATH = "/auth/refresh/"
 REFRESH_TTL_DAYS = 7
 
-
+CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
@@ -495,3 +507,5 @@ else:
     logging.getLogger("botocore").setLevel(logging.WARNING)
     logging.getLogger("boto3").setLevel(logging.WARNING)
     logging.getLogger("s3transfer").setLevel(logging.WARNING)
+
+

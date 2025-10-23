@@ -54,6 +54,9 @@ from allauth.account.utils import perform_login
 from memory_room.notification_service import NotificationService
 from memory_room.notification_message import NOTIFICATIONS
 from userauth.tasks import send_html_email_task
+from userauth.helpers import (
+    create_tokens_for_user, set_auth_cookies
+)
 
 # module logger
 logger = logging.getLogger(__name__)
@@ -454,15 +457,10 @@ class LoginView(APIView):
         except Exception as e:
             logger.error(f'Exception while creating user sesion as {e} for user: {user.email}')
             raise
-            
-        access = create_access_jwt_for_user(user, session_id=session.id)
-        refresh_value = _gen_refresh_value()
-        from django.utils import timezone 
-        expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
-        RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
-
+        
+        access_token, refresh_token = create_tokens_for_user(user, session)
         resp = Response({
-            "access": access,
+            "access": access_token,
             'is_password_set': True,
             "user": {
                 "username": user.username,
@@ -471,31 +469,45 @@ class LoginView(APIView):
                 "last_name": user.last_name,
             },
         })
-
-        resp.set_cookie(
-            settings.REFRESH_COOKIE_NAME,
-            refresh_value,
-            httponly=settings.REFRESH_COOKIE_HTTPONLY,
-            secure=settings.REFRESH_COOKIE_SECURE,
-            samesite=settings.REFRESH_COOKIE_SAMESITE,
-            max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
-            domain=settings.COOKIE_DOMAIN,
-            path=settings.REFRESH_COOKIE_PATH,
-        )
-
-        #  Set access cookie
-        resp.set_cookie(
-            settings.ACCESS_COOKIE_NAME,
-            access,
-            httponly=settings.ACCESS_COOKIE_HTTPONLY,
-            secure=settings.ACCESS_COOKIE_SECURE,
-            samesite=settings.ACCESS_COOKIE_SAMESITE,
-            max_age=settings.ACCESS_TOKEN_LIFETIME,
-            domain=settings.COOKIE_DOMAIN,
-            path=settings.ACCESS_COOKIE_PATH,
-        )
-        logger.info("Login success")
+        # Set authentication cookies using utility functionk
+        resp = set_auth_cookies(resp, access_token, refresh_token)
+        
+        logger.info(f"Login success for user {user.email}")
         return resp
+        
+            
+        # access = create_access_jwt_for_user(user, session_id=session.id)
+        # refresh_value = _gen_refresh_value()
+        # from django.utils import timezone 
+        # expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
+        # RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+
+        
+
+        # resp.set_cookie(
+        #     settings.REFRESH_COOKIE_NAME,
+        #     refresh_value,
+        #     httponly=settings.REFRESH_COOKIE_HTTPONLY,
+        #     secure=settings.REFRESH_COOKIE_SECURE,
+        #     samesite=settings.REFRESH_COOKIE_SAMESITE,
+        #     max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
+        #     domain=settings.COOKIE_DOMAIN,
+        #     path=settings.REFRESH_COOKIE_PATH,
+        # )
+
+        # #  Set access cookie
+        # resp.set_cookie(
+        #     settings.ACCESS_COOKIE_NAME,
+        #     access,
+        #     httponly=settings.ACCESS_COOKIE_HTTPONLY,
+        #     secure=settings.ACCESS_COOKIE_SECURE,
+        #     samesite=settings.ACCESS_COOKIE_SAMESITE,
+        #     max_age=settings.ACCESS_TOKEN_LIFETIME,
+        #     domain=settings.COOKIE_DOMAIN,
+        #     path=settings.ACCESS_COOKIE_PATH,
+        # )
+        # logger.info("Login success")
+        # return resp
 
 
     def _issue_tokens(self, user):
@@ -602,6 +614,130 @@ class SecuredView(APIView):
         raise NotAuthenticated()
         # return Response({"detail": message}, status=status.HTTP_401_UNAUTHORIZED)
 
+from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated
+from userauth.helpers import decode_jwt_noverify
+
+# class SecuredView(APIView):
+#     """
+#     Base API view that authenticates users via access token in cookies.
+#     Provides `self.current_user`, `self.session`, and `self.token_payload`.
+    
+#     Usage:
+#         class MyProtectedView(SecuredView):
+#             def get(self, request):
+#                 user = self.current_user  # Authenticated user available here
+#                 return Response({"username": user.username})
+#     """
+
+#     permission_classes = []  # Disable DRF auth; we do cookie-based auth manually
+
+#     def initial(self, request, *args, **kwargs):
+
+#         """
+#         Called before any handler method. Performs authentication.
+#         IMPORTANT: Must raise exceptions, not return responses.
+#         """
+#         super().initial(request, *args, **kwargs)
+
+#         # Extract IP and User-Agent
+#         ua = request.META.get("HTTP_USER_AGENT")
+#         ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
+
+#         # Get access token from cookies
+#         token = request.COOKIES.get(settings.ACCESS_COOKIE_NAME)
+#         if not token:
+#             logger.warning("Access token missing from cookies")
+#             raise NotAuthenticated("Access token missing")
+
+#         # Decode and validate JWT
+#         try:
+#             payload = decode_jwt_noverify(token)
+#         except Exception as e:
+#             logger.warning(f"Invalid access token: {e}")
+#             raise AuthenticationFailed("Invalid access token")
+
+#         # Check token expiry
+#         exp_ts = payload.get("exp")
+#         if not exp_ts:
+#             logger.warning("Token missing expiry")
+#             raise AuthenticationFailed("Invalid token format")
+#         from django.utils import timezone
+#         from datetime import timezone as dt_timezone
+
+#         now = timezone.now()
+#         exp_datetime = timezone.now().astimezone(dt_timezone.utc)
+
+        
+#         if now >= exp_datetime:
+#             logger.warning(f"Access token expired. Now: {now}, Expiry: {exp_datetime}")
+#             raise AuthenticationFailed("Access token expired")
+
+#         # Check if token is revoked
+#         jti = payload.get("jti")
+#         if jti:
+#             from userauth.models import RevokedToken  # Adjust import as needed
+#             if RevokedToken.objects.filter(jti=jti, expires_at__gt=now).exists():
+#                 logger.warning(f"Token {jti} has been revoked")
+#                 raise AuthenticationFailed("Token has been revoked")
+
+#         # Validate session
+#         sid = payload.get("sid")
+#         self.session = None
+        
+#         if sid:
+#             try:
+#                 from userauth.models import Session  # Adjust import as needed
+#                 session = Session.objects.get(pk=sid)
+                
+#                 # Check if session is revoked
+#                 if session.revoked:
+#                     logger.warning(f"Session {sid} is revoked")
+#                     raise AuthenticationFailed("Session revoked")
+                
+#                 # Optional: Validate IP and User-Agent (comment out if causing issues)
+#                 # if session.user_agent != ua or session.ip_address != ip:
+#                 #     logger.warning(
+#                 #         f"Session hijack attempt. Expected ua={session.user_agent}, "
+#                 #         f"ip={session.ip_address}; got ua={ua}, ip={ip}"
+#                 #     )
+#                 #     raise AuthenticationFailed("Session invalid for this device")
+                
+#                 # Update last used timestamp
+#                 session.last_used_at = now
+#                 session.save(update_fields=["last_used_at"])
+#                 self.session = session
+                
+#             except Session.DoesNotExist:
+#                 logger.warning(f"Session {sid} does not exist")
+#                 raise AuthenticationFailed("Invalid session")
+
+#         # Fetch and attach user
+#         user_id = payload.get("user_id")
+#         if not user_id:
+#             logger.warning("Token missing user_id")
+#             raise AuthenticationFailed("Invalid token format")
+        
+#         try:
+#             from userauth.models import User  # Adjust import as needed
+#             self.current_user = User.objects.get(id=user_id, is_active=True)
+#         except User.DoesNotExist:
+#             logger.warning(f"User {user_id} not found or inactive")
+#             raise AuthenticationFailed("User not found or inactive")
+        
+#         # Store token payload for additional checks if needed
+#         self.token_payload = payload
+        
+#         logger.debug(f"Authentication successful for user {self.current_user.email}")
+
+#     def get_current_user(self, request=None):
+#         """
+#         Helper method to get the authenticated user.
+#         Raises NotAuthenticated if user is not set.
+#         """
+#         if not hasattr(self, 'current_user') or self.current_user is None:
+#             logger.error("get_current_user called but current_user not set")
+#             raise NotAuthenticated("User not authenticated")
+#         return self.current_user
 
   
 from rest_framework import permissions
