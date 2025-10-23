@@ -13,9 +13,12 @@ import logging
 import boto3
 from timecapsoul.utils import MediaThumbnailExtractor
 from rest_framework import status
+
 from botocore.config import Config
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from botocore.exceptions import NoCredentialsError, ClientError
+from cryptography.exceptions import InvalidTag
+
 
 logger = logging.getLogger(__name__)
 
@@ -125,6 +128,8 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
             Metadata={
                 "edk": base64.b64encode(data_key_encrypted).decode(),
                 "orig-content-type": content_type,
+                "chunk-size": str(chunk_size),  # ADD THIS
+
             },
         )
         upload_id = multipart_resp["UploadId"]
@@ -311,4 +316,224 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
         except Exception:
             pass
         
-      
+
+def decrypt_s3_file_chunked2(key: str,  chunk_size: int = 10 * 1024 * 1024 + 28):
+    """
+    Decrypts S3 file uploaded using decrypt_upload_and_extract_audio_thumbnail_chunked().
+    Each chunk = 12-byte nonce + ciphertext_chunk.
+    """
+    try:
+        bucket = MEDIA_FILES_BUCKET
+        obj = s3.get_object(Bucket=bucket, Key=key)
+        encrypted_blob = obj["Body"].read()
+        metadata = obj.get("Metadata", {})
+
+        if "edk" not in metadata:
+            raise ValueError("Missing encrypted data key (edk) in metadata")
+
+        # --- Decrypt KMS data key ---
+        encrypted_data_key = base64.b64decode(metadata["edk"])
+        data_key = kms.decrypt(CiphertextBlob=encrypted_data_key)["Plaintext"]
+        aesgcm = AESGCM(data_key)
+
+        plaintext = BytesIO()
+        offset = 0
+        total_len = len(encrypted_blob)
+        orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
+
+        # --- Iterate through all nonce + ciphertext chunks ---
+        while offset < total_len:
+            if offset + 12 > total_len:
+                logger.warning(f"Incomplete nonce found at offset {offset}, skipping remaining bytes.")
+                break
+
+            nonce = encrypted_blob[offset:offset + 12]
+            offset += 12
+
+            next_nonce = encrypted_blob.find(nonce, offset + 12)
+            if next_nonce == -1:
+                ciphertext_chunk = encrypted_blob[offset:]
+                offset = total_len
+            else:
+                ciphertext_chunk = encrypted_blob[offset:next_nonce]
+                offset = next_nonce
+
+            try:
+                decrypted_chunk = aesgcm.decrypt(nonce, ciphertext_chunk, None)
+                plaintext.write(decrypted_chunk)
+            except InvalidTag as e:
+                logger.error(f"InvalidTag while decrypting chunk at offset {offset}: {e}")
+                raise
+
+        plaintext.seek(0)
+        return plaintext.read(), orig_content_type
+
+    except Exception as e:
+        logger.error(f"Error decrypting chunked file '{key}': {e}")
+        return None, None
+
+def decrypt_s3_file_chunked(key: str):
+    """
+    Decrypts file uploaded using upload_file_to_s3_kms_chunked() or 
+    encrypt_upload_and_extract_audio_thumbnail_chunked().
+    
+    Each chunk layout:
+        [12-byte nonce][ciphertext+16-byte tag]
+    
+    CRITICAL: This function reads the actual chunk size from S3 metadata.
+    It does NOT assume fixed chunk sizes.
+    """
+    data_key = None
+    
+    try:
+        bucket = MEDIA_FILES_BUCKET
+        obj = s3.get_object(Bucket=bucket, Key=key)
+        encrypted_blob = obj["Body"].read()
+        metadata = obj.get("Metadata", {})
+
+        if "edk" not in metadata:
+            raise ValueError("Missing encrypted data key (edk) in metadata")
+
+        # Decrypt the KMS data key
+        encrypted_data_key = base64.b64decode(metadata["edk"])
+        data_key = kms.decrypt(CiphertextBlob=encrypted_data_key)["Plaintext"]
+        aesgcm = AESGCM(data_key)
+
+        # Try to get chunk size from metadata (may not exist for old files)
+        chunk_size_str = metadata.get("chunk-size")
+        if chunk_size_str:
+            expected_chunk_size = int(chunk_size_str)
+            logger.info(f"Using stored chunk size: {expected_chunk_size}")
+        else:
+            # For files without chunk-size metadata, we'll determine it dynamically
+            expected_chunk_size = None
+            logger.warning("No chunk-size in metadata, will detect dynamically")
+
+        plaintext = BytesIO()
+        total_len = len(encrypted_blob)
+        offset = 0
+        chunk_num = 0
+        detected_chunk_sizes = []
+
+        logger.info(f"Starting decryption: total_size={total_len} bytes, expected_chunk_size={expected_chunk_size}")
+
+        # Process each encrypted chunk
+        while offset < total_len:
+            chunk_num += 1
+            
+            # Check if we have enough data for nonce
+            if offset + 12 > total_len:
+                logger.warning(f"Incomplete nonce at offset {offset}, stopping.")
+                break
+
+            # Read 12-byte nonce
+            nonce = encrypted_blob[offset:offset + 12]
+            offset += 12
+
+            # Calculate remaining data after nonce
+            remaining = total_len - offset
+            
+            # CRITICAL FIX: Determine ciphertext size for this chunk
+            if expected_chunk_size is not None:
+                # Use stored chunk size (ciphertext = plaintext + 16-byte tag)
+                expected_ciphertext_size = min(expected_chunk_size + 16, remaining)
+            else:
+                # Dynamic detection: Try to read all remaining as one chunk
+                # This handles variable chunk sizes from encrypt_upload_and_extract_audio_thumbnail_chunked
+                expected_ciphertext_size = remaining
+            
+            # Must have at least the 16-byte tag
+            if expected_ciphertext_size < 16:
+                logger.warning(f"Insufficient data for auth tag at offset {offset}")
+                break
+            
+            # Read ciphertext + tag
+            ciphertext_chunk = encrypted_blob[offset:offset + expected_ciphertext_size]
+            offset += expected_ciphertext_size
+
+            # Decrypt chunk
+            try:
+                decrypted_chunk = aesgcm.decrypt(nonce, ciphertext_chunk, None)
+                plaintext.write(decrypted_chunk)
+                
+                # Track detected chunk sizes for debugging
+                detected_chunk_sizes.append(len(decrypted_chunk))
+                
+                logger.debug(
+                    f"✓ Chunk {chunk_num}: "
+                    f"nonce={len(nonce)}B, "
+                    f"ciphertext={len(ciphertext_chunk)}B, "
+                    f"plaintext={len(decrypted_chunk)}B"
+                )
+                
+            except InvalidTag as e:
+                logger.error(
+                    f"❌ InvalidTag at chunk {chunk_num} (offset {offset}): "
+                    f"nonce_len={len(nonce)}, "
+                    f"ciphertext_len={len(ciphertext_chunk)}, "
+                    f"expected_chunk_size={expected_chunk_size}, "
+                    f"remaining={remaining}"
+                )
+                
+                # If we don't have expected chunk size, try alternative sizes
+                if expected_chunk_size is None and remaining > expected_ciphertext_size:
+                    logger.info("Attempting to detect correct chunk size...")
+                    
+                    # Common chunk sizes used in encrypt_upload_and_extract_audio_thumbnail_chunked
+                    alternative_sizes = [
+                        10 * 1024 * 1024,  # 10MB
+                        8 * 1024 * 1024,   # 8MB
+                        5 * 1024 * 1024,   # 5MB
+                        2 * 1024 * 1024,   # 2MB
+                    ]
+                    
+                    decryption_succeeded = False
+                    for alt_size in alternative_sizes:
+                        alt_ciphertext_size = min(alt_size + 16, remaining)
+                        if alt_ciphertext_size == expected_ciphertext_size:
+                            continue  # Already tried this
+                        
+                        # Reset offset to retry with different size
+                        retry_offset = offset - expected_ciphertext_size
+                        alt_ciphertext = encrypted_blob[retry_offset:retry_offset + alt_ciphertext_size]
+                        
+                        try:
+                            alt_decrypted = aesgcm.decrypt(nonce, alt_ciphertext, None)
+                            plaintext.write(alt_decrypted)
+                            offset = retry_offset + alt_ciphertext_size
+                            expected_chunk_size = alt_size
+                            detected_chunk_sizes.append(len(alt_decrypted))
+                            logger.info(f"✓ Found correct chunk size: {alt_size} bytes")
+                            decryption_succeeded = True
+                            break
+                        except InvalidTag:
+                            continue
+                    
+                    if not decryption_succeeded:
+                        raise ValueError(f"Failed to decrypt chunk {chunk_num} with any known chunk size")
+                else:
+                    raise
+
+        plaintext.seek(0)
+        decrypted_data = plaintext.read()
+        
+        # Log statistics
+        if detected_chunk_sizes:
+            unique_sizes = set(detected_chunk_sizes)
+            logger.info(
+                f"✓ Successfully decrypted {len(decrypted_data)} bytes from {chunk_num} chunks. "
+                f"Chunk sizes used: {unique_sizes}"
+            )
+        
+        return decrypted_data, metadata.get("orig-content-type", "application/octet-stream")
+
+    except Exception as e:
+        logger.error(f"Error decrypting chunked file '{key}': {e}", exc_info=True)
+        return None, None
+    
+    finally:
+        try:
+            if data_key:
+                del data_key
+        except:
+            pass

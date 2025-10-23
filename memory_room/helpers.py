@@ -7,6 +7,7 @@ import logging
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from memory_room.signals import update_user_storage, update_users_storage
 
+
 import re
 from django.core.cache import cache
 
@@ -16,6 +17,7 @@ from memory_room.crypto_utils import get_media_file_bytes_with_content_type,gene
 
 logger = logging.getLogger(__name__)
 
+from memory_room.media_helper import decrypt_s3_file_chunked,decrypt_upload_and_extract_audio_thumbnail_chunked
 
 AWS_KMS_REGION = 'ap-south-1'
 AWS_KMS_KEY_ID = '843da3bb-9a57-4d9f-a8ab-879a6109f460'
@@ -84,25 +86,120 @@ def upload_file_to_s3_kms(key: str, plaintext_bytes: bytes,
         raise
 
 
-# import os
-# import io
-# import base64
-# import boto3
-# from botocore.client import Config
 from botocore.exceptions import ClientError
-# from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
-# AWS_KMS_REGION = 'ap-south-1'
-# MEDIA_FILES_BUCKET = 'yurayi-media'
-# AWS_KMS_KEY_ID = '843da3bb-9a57-4d9f-a8ab-879a6109f460'
+# def upload_file_to_s3_kms_chunked(
+#     key: str,
+#     plaintext_bytes: bytes,
+#     content_type: str = "application/octet-stream",
+#     progress_callback=None,
+#     chunk_size: int = 10 * 1024 * 1024,  # 10 MB per chunk
+# ):
+#     """
+#     Encrypts and uploads large files to S3 in chunks using AWS KMS and AES-GCM encryption.
 
-# s3 = boto3.client(
-#     "s3",
-#     region_name=AWS_KMS_REGION,
-#     config=Config(retries={"max_attempts": 5, "mode": "adaptive"}),
-# )
-# kms = boto3.client("kms", region_name=AWS_KMS_REGION)
+#     Args:
+#         key (str): S3 key (path).
+#         plaintext_bytes (bytes): Raw file bytes to upload.
+#         content_type (str): MIME type of file.
+#         progress_callback (callable): Optional, progress callback(percent, message).
+#         chunk_size (int): Chunk size in bytes (default 10 MB).
 
+#     Returns:
+#         dict: S3 complete_multipart_upload response.
+#     """
+#     total_size = len(plaintext_bytes)
+#     bucket = MEDIA_FILES_BUCKET
+
+#     # Local state tracking
+#     parts = []
+#     uploaded_bytes = 0
+
+#     try:
+#         # Step 1: Generate KMS data key
+#         if progress_callback:
+#             progress_callback(45, "Requesting KMS data key...")
+
+#         resp = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+#         data_key_plain = resp["Plaintext"]
+#         data_key_encrypted = resp["CiphertextBlob"]
+#         aesgcm = AESGCM(data_key_plain)
+
+#         # Step 2: Create multipart upload session
+#         multipart_resp = s3.create_multipart_upload(
+#             Bucket=bucket,
+#             Key=key,
+#             ContentType=content_type,
+#             Metadata={
+#                 "edk": base64.b64encode(data_key_encrypted).decode(),
+#                 "orig-content-type": content_type,
+#             },
+#         )
+#         upload_id = multipart_resp["UploadId"]
+
+#         # Step 3: Encrypt and upload each chunk
+#         for part_number, start in enumerate(range(0, total_size, chunk_size), start=1):
+#             chunk = plaintext_bytes[start:start + chunk_size]
+#             chunk_nonce = os.urandom(12)
+#             ciphertext_chunk = aesgcm.encrypt(chunk_nonce, chunk, associated_data=None)
+
+#             # Nonce prepended to ciphertext for later decryption
+#             body = chunk_nonce + ciphertext_chunk
+
+#             try:
+#                 resp = s3.upload_part(
+#                     Bucket=bucket,
+#                     Key=key,
+#                     PartNumber=part_number,
+#                     UploadId=upload_id,
+#                     Body=body,
+#                 )
+#                 parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
+#             except ClientError as e:
+#                 s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
+#                 raise RuntimeError(f"Failed to upload part {part_number}: {e}")
+
+#             uploaded_bytes += len(chunk)
+#             # if progress_callback:
+#             #     percent = int((uploaded_bytes / total_size) * 100)
+#             #     progress_callback(percent, f"Uploaded chunk {part_number}")
+
+#         # Step 4: Complete the multipart upload
+#         result = s3.complete_multipart_upload(
+#             Bucket=bucket,
+#             Key=key,
+#             UploadId=upload_id,
+#             MultipartUpload={"Parts": parts},
+#         )
+
+#         if progress_callback:
+#             progress_callback(80, "Upload completed successfully!")
+
+#         return result
+
+#     except ClientError as e:
+#         # if progress_callback:
+#         #     progress_callback(-1, f"S3 ClientError: {str(e)}")
+#         pass
+#         raise
+
+#     except Exception as e:
+#         if "upload_id" in locals():
+#             # Cleanup if multipart initiated but failed
+#             try:
+#                 s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
+#             except Exception:
+#                 pass
+#         if progress_callback:
+#             progress_callback(-1, f"Upload failed: {str(e)}")
+#         raise RuntimeError(f"Upload failed: {e}")
+
+#     finally:
+#         # Wipe plaintext key from memory
+#         try:
+#             del data_key_plain
+#         except Exception:
+#             pass
 
 def upload_file_to_s3_kms_chunked(
     key: str,
@@ -126,6 +223,7 @@ def upload_file_to_s3_kms_chunked(
     """
     total_size = len(plaintext_bytes)
     bucket = MEDIA_FILES_BUCKET
+    upload_id = None
 
     # Local state tracking
     parts = []
@@ -134,7 +232,7 @@ def upload_file_to_s3_kms_chunked(
     try:
         # Step 1: Generate KMS data key
         if progress_callback:
-            progress_callback(45, "Requesting KMS data key...")
+            progress_callback(5, "Requesting KMS data key...")
 
         resp = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
         data_key_plain = resp["Plaintext"]
@@ -142,6 +240,7 @@ def upload_file_to_s3_kms_chunked(
         aesgcm = AESGCM(data_key_plain)
 
         # Step 2: Create multipart upload session
+        # CRITICAL FIX: Store chunk-size in metadata for decryption
         multipart_resp = s3.create_multipart_upload(
             Bucket=bucket,
             Key=key,
@@ -149,17 +248,26 @@ def upload_file_to_s3_kms_chunked(
             Metadata={
                 "edk": base64.b64encode(data_key_encrypted).decode(),
                 "orig-content-type": content_type,
+                "chunk-size": str(chunk_size),  # ADDED: Required for proper decryption
             },
         )
         upload_id = multipart_resp["UploadId"]
 
-        # Step 3: Encrypt and upload each chunk
-        for part_number, start in enumerate(range(0, total_size, chunk_size), start=1):
-            chunk = plaintext_bytes[start:start + chunk_size]
-            chunk_nonce = os.urandom(12)
-            ciphertext_chunk = aesgcm.encrypt(chunk_nonce, chunk, associated_data=None)
+        if progress_callback:
+            progress_callback(10, "Starting chunked encryption and upload...")
 
-            # Nonce prepended to ciphertext for later decryption
+        # Step 3: Encrypt and upload each chunk
+        part_number = 1
+        for start in range(0, total_size, chunk_size):
+            chunk = plaintext_bytes[start:start + chunk_size]
+            
+            # Generate unique nonce for each chunk
+            chunk_nonce = os.urandom(12)
+            
+            # Encrypt with AES-GCM (None is clearer than associated_data=None)
+            ciphertext_chunk = aesgcm.encrypt(chunk_nonce, chunk, None)
+
+            # Format: [12-byte nonce][ciphertext + 16-byte auth tag]
             body = chunk_nonce + ciphertext_chunk
 
             try:
@@ -171,16 +279,26 @@ def upload_file_to_s3_kms_chunked(
                     Body=body,
                 )
                 parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
+                
             except ClientError as e:
+                logger.error(f"Failed to upload part {part_number}: {e}")
                 s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
                 raise RuntimeError(f"Failed to upload part {part_number}: {e}")
 
             uploaded_bytes += len(chunk)
-            # if progress_callback:
-            #     percent = int((uploaded_bytes / total_size) * 100)
-            #     progress_callback(percent, f"Uploaded chunk {part_number}")
+            
+            if progress_callback:
+                # Progress from 10% to 80%
+                percent = 10 + int((uploaded_bytes / total_size) * 70)
+                total_chunks = (total_size + chunk_size - 1) // chunk_size
+                progress_callback(percent, f"Uploaded chunk {part_number}/{total_chunks}")
+            
+            part_number += 1
 
         # Step 4: Complete the multipart upload
+        # ADDED: Sort parts to ensure correct order
+        parts.sort(key=lambda x: x["PartNumber"])
+        
         result = s3.complete_multipart_upload(
             Bucket=bucket,
             Key=key,
@@ -189,34 +307,35 @@ def upload_file_to_s3_kms_chunked(
         )
 
         if progress_callback:
-            progress_callback(80, "Upload completed successfully!")
+            progress_callback(100, "Upload completed successfully!")
 
         return result
 
     except ClientError as e:
-        # if progress_callback:
-        #     progress_callback(-1, f"S3 ClientError: {str(e)}")
-        pass
+        logger.error(f"S3 ClientError during upload: {e}")
         raise
 
     except Exception as e:
-        if "upload_id" in locals():
-            # Cleanup if multipart initiated but failed
+        # FIXED: More robust cleanup check
+        if upload_id is not None:
             try:
                 s3.abort_multipart_upload(Bucket=bucket, Key=key, UploadId=upload_id)
-            except Exception:
-                pass
+                logger.info(f"Aborted multipart upload {upload_id}")
+            except Exception as cleanup_error:
+                logger.warning(f"Failed to abort multipart upload: {cleanup_error}")
+        
         if progress_callback:
-            progress_callback(-1, f"Upload failed: {str(e)}")
+            progress_callback(0, f"Upload failed: {str(e)}")
+        
+        logger.error(f"Upload failed for key '{key}': {e}")
         raise RuntimeError(f"Upload failed: {e}")
 
     finally:
         # Wipe plaintext key from memory
         try:
             del data_key_plain
-        except Exception:
+        except:
             pass
-
 
 def audio_thumbnail_generator(file_name, decrypted_bytes):
     import os
@@ -565,7 +684,9 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
         set_as_cover_image = set_as_cover if set_as_cover else old_media.is_cover_image
         
         
-        file_bytes, content_type = get_media_file_bytes_with_content_type(old_media, current_user)
+        # file_bytes, content_type = get_media_file_bytes_with_content_type(old_media, current_user)
+        file_bytes, content_type = decrypt_s3_file_chunked(old_media.s3_key)
+        
         if not file_bytes or not content_type:
             raise Exception('File decryption failed')
         else:
@@ -579,6 +700,7 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
                 content_type=content_type,
                 progress_callback=None
             )
+            
             thumbnail = old_media.thumbnail 
             # if old_media.file_type == 'audio': # generate thumbnail for audio file
             #     thumbnail = audio_thumbnail_generator(file_name=file_name, decrypted_bytes=file_bytes)

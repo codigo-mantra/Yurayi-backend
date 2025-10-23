@@ -1,13 +1,25 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 from allauth.socialaccount.models import SocialAccount
-from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoul, RecipientsDetail, TimeCapSoulDetail,TimeCapSoulMediaFile
+from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoul, RecipientsDetail, TimeCapSoulDetail,TimeCapSoulMediaFile, TimeCapSoulRecipient
 from memory_room.utils import get_readable_file_size_from_bytes, delete_s3_file
 from timecapsoul.utils import send_html_email
 from userauth.tasks import send_html_email_task
 from userauth.models import User
 import logging
 logger = logging.getLogger(__name__)
+
+def backfill_time_capsoul_recipient_media_ids():
+    time_capsouls = TimeCapSoul.objects.filter(status ='unlocked')
+    
+    for capsoul in time_capsouls:
+        try:
+            capsoul_media_files = capsoul.timecapsoul_media_files.filter(is_deleted=False)
+            media_ids = ','.join(str(m.id) for m in capsoul.timecapsoul_media_files.filter(is_deleted=False))
+            recepients = TimeCapSoulRecipient.objects.filter(time_capsoul = capsoul)
+            recepients.update(parent_media_refrences = media_ids)
+        except Exception as e:
+            pass
 
 # from timecapsoul.utils import MediaThumbnailExtractor
 # # Create your views here.
@@ -178,6 +190,11 @@ def testing_view(request):
     #     user.set_password('Test@1234')
     #     user.save()
     # user_storage_calculator()
+    # backfill_time_capsoul_recipient_media_ids()
+    
+    # time_capsouls = TimeCapSoul.objects.filter(user__email = 'receiver@gmail.com', is_deleted = False)
+    # time_capsouls.update(is_deleted = True)
+    
 
 
     

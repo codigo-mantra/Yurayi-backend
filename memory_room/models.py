@@ -536,7 +536,7 @@ class TimeCapSoulRecipient(BaseModel):
     is_opened = models.BooleanField(default=False)
     is_logged_in = models.BooleanField(default=False)
     is_capsoul_deleted = models.BooleanField(default=False)
-    parent_media_refrences = models.CharField(max_length=255, blank=True, null=True, help_text="Comma separated media refrences")
+    parent_media_refrences = models.TextField(max_length=255, blank=True, null=True, help_text="Comma separated media refrences")
 
     class Meta:
         constraints = [

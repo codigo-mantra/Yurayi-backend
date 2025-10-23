@@ -650,10 +650,10 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 option_type = 'replica_creation',
                 cover_image = cover_image 
             )
-            if user.id == time_capsoul.user.id: # if user is owner of the capsoul
+            if current_user == time_capsoul.user: # if user is owner of the capsoul
                 parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
             else:
-                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
+                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = current_user.email).first()
                 if not recipient:
                     logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
                     raise serializers.ValidationError({'detail': 'You do not have access to this time-capsoul.'})
@@ -789,8 +789,8 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             # send email here tagged 
             time_cap_owner = time_capsoul.user.first_name if time_capsoul.user.first_name else time_capsoul.user.email
             try:
-                # capsoul_media_files = time_capsoul.timecapsoul_media_files.filter(is_deleted=False)
-                # media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
+                capsoul_media_files = time_capsoul.timecapsoul_media_files.filter(is_deleted=False)
+                media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
 
                 if capsoul_recipients:
                     tagged_recipients = capsoul_recipients.values_list("name", "email")
