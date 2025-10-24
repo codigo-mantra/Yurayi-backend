@@ -23,10 +23,16 @@ def create_user_profile(sender, instance, created, **kwargs):
             time_capsoul = TimeCapSoulRecipient.objects.filter(email = instance.email)
             for capsoul in time_capsoul:
                 # create notification here 
+                time_capsoul_obj = capsoul.time_capsoul
+                time_cap_owner = time_capsoul_obj.user.first_name if time_capsoul_obj.user.first_name else time_capsoul_obj.user.email
+                
+                notification_msg = f"You’ve been invited to a capsoul. {time_cap_owner} special has saved a memory with you in mind — a surprise awaits."
+                
                 notif = NotificationService.create_notification_with_key(
                     notification_key='capsoul_invite_received',
                     user=instance,
-                    time_capsoul=capsoul.time_capsoul
+                    time_capsoul=capsoul.time_capsoul,
+                    custom_message=notification_msg
                 )
            
         except Exception as e:

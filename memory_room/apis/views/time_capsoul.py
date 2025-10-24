@@ -49,7 +49,7 @@ from memory_room.apis.serializers.memory_room import (
 )
 
 from memory_room.models import (
-    TimeCapSoulTemplateDefault, TimeCapSoul, TimeCapSoulDetail, TimeCapSoulMediaFile,RecipientsDetail,
+    TimeCapSoulTemplateDefault, TimeCapSoul, TimeCapSoulDetail, TimeCapSoulMediaFile,RecipientsDetail,TimeCapSoulRecipient,
     TimeCapSoulRecipient,FILE_TYPES, CustomTimeCapSoulTemplate, MemoryRoom, MemoryRoomMediaFile, Notification
     )
 
@@ -407,6 +407,13 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     if serializer.is_valid():
                         media_file = serializer.save()
                         time_capsoul = media_file.time_capsoul
+                        if time_capsoul.status == 'sealed':
+                            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+                            if capsoul_recipients.count() >0:
+                                existing_media_ids = capsoul_recipients[0].parent_media_refrences
+                                updated_media_ids = existing_media_ids +  f',{media_file.id}'
+                                capsoul_recipients.update(parent_media_refrences = updated_media_ids)
+                            
                         
                         is_updated = update_users_storage(
                             operation_type='addition',
@@ -656,6 +663,16 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
             if media_file.is_deleted == False:
                 media_file.is_deleted = True
                 media_file.save()
+                
+                
+                time_capsoul = media_file.time_capsoul
+                if time_capsoul.status == 'sealed':
+                    capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+                    if capsoul_recipients.count() >0:
+                        existing_media_ids = capsoul_recipients[0].parent_media_refrences
+                        updated_media_ids = existing_media_ids.replace(f'{media_file_id}', '')
+                        capsoul_recipients.update(parent_media_refrences = updated_media_ids)
+                
                 update_users_storage(
                     operation_type='remove',
                     media_updation='capsoul',
@@ -1030,6 +1047,19 @@ class ServeTimeCapSoulMedia(SecuredView):
     """
     
     CACHE_TIMEOUT = 60 * 60 * 2  # 2 hours
+    
+    def _serve_svg_safely(self, file_bytes, filename):
+        """
+        Serve SVG files with proper security headers to prevent XSS.
+        """
+        response = HttpResponse(file_bytes, content_type="image/svg+xml")
+        response["Content-Length"] = str(len(file_bytes))
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        response["Cache-Control"] = "private, max-age=3600"
+        # Strict CSP for SVG to prevent script execution
+        response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
 
     def _stream_file_with_range(self, request, file_bytes, content_type, filename):
         """Stream bytes with HTTP range support for audio/video."""
@@ -1123,23 +1153,25 @@ class ServeTimeCapSoulMedia(SecuredView):
         
         # Check if it's an image first - fast path for images
         is_image = file_ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'))
+        is_svg = file_ext.endswith('.svg')
+        
         
         # Cache decrypted file bytes to avoid repeated S3 calls
         bytes_cache_key = f"media_bytes_{s3_key}"
         
-        # For images, try cache first before any processing
-        if is_image:
-            cached_data = cache.get(bytes_cache_key)
-            if cached_data:
-                file_bytes, content_type = cached_data
-                # Direct response for cached images - fastest path
-                resp = HttpResponse(file_bytes, content_type=content_type)
-                resp["Content-Length"] = str(len(file_bytes))
-                resp["Content-Disposition"] = f'inline; filename="{filename}"'
-                resp["Cache-Control"] = "private, max-age=3600"
-                frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-                resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-                return resp
+        # # For images, try cache first before any processing
+        # if is_image:
+        #     cached_data = cache.get(bytes_cache_key)
+        #     if cached_data:
+        #         file_bytes, content_type = cached_data
+        #         # Direct response for cached images - fastest path
+        #         resp = HttpResponse(file_bytes, content_type=content_type)
+        #         resp["Content-Length"] = str(len(file_bytes))
+        #         resp["Content-Disposition"] = f'inline; filename="{filename}"'
+        #         resp["Cache-Control"] = "private, max-age=3600"
+        #         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+        #         resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+        #         return resp
         
         cached_data = cache.get(bytes_cache_key)
         if cached_data:
@@ -1151,15 +1183,21 @@ class ServeTimeCapSoulMedia(SecuredView):
             # Cache the decrypted bytes for future requests
             cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
         
-        # Fast path for regular images - use HttpResponse instead of StreamingHttpResponse
-        if is_image:
-            resp = HttpResponse(file_bytes, content_type=content_type)
-            resp["Content-Length"] = str(len(file_bytes))
-            resp["Content-Disposition"] = f'inline; filename="{filename}"'
-            resp["Cache-Control"] = "private, max-age=3600"
+        # For images, try cache first before any processing
+        if is_image or is_svg:
+        
+            # SVG gets special secure handling
+            if is_svg:
+                return self._serve_svg_safely(file_bytes, filename)
+            # Direct response for cached images - fastest path
+            response = HttpResponse(file_bytes, content_type=content_type)
+            response["Content-Length"] = str(len(file_bytes))
+            response["Content-Disposition"] = f'inline; filename="{filename}"'
+            response["Cache-Control"] = "private, max-age=3600"
+            response["X-Content-Type-Options"] = "nosniff"
             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-            resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-            return resp
+            response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+            return response
         
         # Handle DOC to DOCX conversion with caching
         if file_ext.endswith(".doc"):

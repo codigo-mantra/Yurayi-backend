@@ -9,7 +9,7 @@ from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 
 
-# logger = logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 @shared_task(bind=True, max_retries=3)
 def send_html_email_task(self, subject,  template_name, to_email=None, context=None, inline_images=None, email_list=None):
@@ -59,6 +59,6 @@ def send_html_email_task(self, subject,  template_name, to_email=None, context=N
         return True
 
     except Exception as e:
-        # logger.exception(f"Error sending email: {e}")
-        # Retry if email sending fails (optional)
-        raise self.retry(exc=e, countdown=60)
+        logger.error(f"Error sending email: {e}")
+        countdown = 60 * (2 ** self.request.retries)
+        raise self.retry(exc=e, countdown=countdown)

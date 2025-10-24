@@ -21,6 +21,7 @@ from asgiref.sync import async_to_sync
 import threading
 import queue
 import time
+from memory_room.media_helper import decrypt_s3_file_chunked,decrypt_s3_file_chunked_range
 from django.core.cache import cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from memory_room.helpers import generate_unique_memory_room_name,upload_file_to_s3_kms_chunked
@@ -630,7 +631,6 @@ from django.conf import settings
 from django.http import HttpResponse, HttpResponseForbidden
 from django.views import View
 
-SECRET = settings.SECRET_KEY.encode()
 from django.http import StreamingHttpResponse, HttpResponse, FileResponse
 from django.utils.http import http_date
 from rest_framework.response import Response
@@ -639,272 +639,118 @@ import time, logging
 from wsgiref.util import FileWrapper
 from io import BytesIO
 
-# class ServeMedia(SecuredView):
-#     """
-#     Securely serve decrypted media from S3 via Django.
-#     """
-
-#     def get(self, request, s3_key, media_file_id):
-#         user  = self.get_current_user(request)
-#         if user is None:
-#             return Response(status=status.HTTP_401_UNAUTHORIZED)
-#         try:
-#             exp = request.GET.get("exp")
-#             sig = request.GET.get("sig")
-            
-#             if not exp or not sig:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
-
-#             if int(exp) < int(time.time()):
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
-            
-#             media_file =  get_object_or_404(MemoryRoomMediaFile, id = media_file_id, user = user)
-            
-#             #  signature-verification
-#             if not verify_signature(media_file.s3_key, exp, sig):
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
-            
-#             bytes_cache_key = str(media_file.s3_key)
-#             file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
-#             if not file_bytes or not content_type:
-#                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                        
-#             if file_bytes and content_type:
-#                 if media_file.s3_key.lower().endswith(".doc"): # .doc to .docx conversion here
-#                     try:
-#                         docx_bytes_cache_key = f'{media_file.id}_docx_preview'
-#                         docx_bytes = cache.get(docx_bytes_cache_key)
-                        
-#                         if not docx_bytes:
-#                             docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-#                             cache.set(docx_bytes_cache_key, docx_bytes, timeout=60*60*2)  
-                            
-#                         response = HttpResponse(
-#                             docx_bytes,
-#                             content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-#                         )
-#                         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#                         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-#                         response["Content-Disposition"] = f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".doc", ".docx")}"'
-#                         return response
-#                     except Exception as e:
-#                         logger.error(f'Exception while generating docx for doc files as {e}')
-#                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-#                 else:
-#                     if media_file.s3_key.lower().endswith(".heic")  or media_file.s3_key.lower().endswith(".heif"):
-#                         jpeg_cache_key = f'{bytes_cache_key}_jpeg'
-#                         jpeg_file_bytes = cache.get(jpeg_cache_key)
-#                         if not jpeg_file_bytes:
-#                             jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
-#                             cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=60*60*2)
-                            
-#                         response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
-#                         response["Content-Disposition"] = (
-#                             f'inline; filename="{media_file.s3_key.split("/")[-1].replace(".heic", ".jpg")}"'
-#                         )
-#                         return response
-#                     elif media_file.s3_key.lower().endswith(".mkv"):
-#                         cache_key = f'{bytes_cache_key}_mp4'
-#                         mp4_bytes = cache.get(cache_key)
-#                         if not mp4_bytes:
-#                             try:
-#                                 mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
-#                                 content_type = "video/mp4"
-#                                 cache.set(cache_key, mp4_bytes, timeout=60*60*2)
-#                             except Exception as e:
-#                                 logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
-#                                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-#                         download_name = media_file.s3_key.split("/")[-1]
-#                         download_name = download_name.replace(".mkv", ".mp4")
-#                         response = HttpResponse(mp4_bytes, content_type=content_type)
-#                         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#                         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-#                         response["Content-Disposition"] = f'inline; filename="{download_name}"'
-#                         return response
-#                     else:
-#                         response = HttpResponse(file_bytes, content_type=content_type)
-#                         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS) # 
-#                         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-#                         response["Content-Disposition"] = f'inline; filename="{s3_key.split("/")[-1].replace(".enc", "")}"'
-#                         return response
-#         except Exception as e:
-#             logger.warning(f'Exception while serving media file as s3-key: {s3_key} user: {user.email}')
-#             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
+# working
 class ServeMedia(SecuredView):
     """
     Securely serve decrypted media from S3 via Django.
     Supports Range requests for video/audio playback.
+    Optimized for speed with caching.
     """
-
-    # def _stream_file_with_range(self, request, file_bytes, content_type, filename):
-    #     """
-    #     Handle HTTP Range requests for audio/video files.
-    #     """
-    #     file_size = len(file_bytes)
-    #     range_header = request.headers.get("Range", "")
-    #     range_match = None
-    #     start = 0
-    #     end = file_size - 1
-
-    #     if range_header and "bytes=" in range_header:
-    #         try:
-    #             range_match = range_header.replace("bytes=", "").split("-")
-    #             if range_match[0]:
-    #                 start = int(range_match[0])
-    #             if len(range_match) > 1 and range_match[1]:
-    #                 end = int(range_match[1])
-    #         except ValueError:
-    #             pass  # Ignore malformed Range headers
-
-    #     end = min(end, file_size - 1)
-    #     chunk = file_bytes[start:end + 1]
-
-    #     response = StreamingHttpResponse(
-    #         BytesIO(chunk),
-    #         content_type=content_type,
-    #         status=206 if range_match else 200
-    #     )
-    #     response["Content-Length"] = str(len(chunk))
-    #     response["Accept-Ranges"] = "bytes"
-    #     if range_match:
-    #         response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-
-    #     response["Content-Disposition"] = f'inline; filename="{filename}"'
-    #     response["Last-Modified"] = http_date(time.time())
-    #     return response
-
-    # def get(self, request, s3_key, media_file_id):
-    #     user = self.get_current_user(request)
-    #     if user is None:
-    #         return Response(status=status.HTTP_401_UNAUTHORIZED)
-
-    #     try:
-    #         exp = request.GET.get("exp")
-    #         sig = request.GET.get("sig")
-    #         if not exp or not sig or int(exp) < int(time.time()):
-    #             return Response(status=status.HTTP_404_NOT_FOUND)
-
-    #         media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user=user)
-
-    #         if not verify_signature(media_file.s3_key, exp, sig):
-    #             return Response(status=status.HTTP_404_NOT_FOUND)
-
-    #         file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
-    #         if not file_bytes or not content_type:
-    #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    #         filename = media_file.s3_key.split("/")[-1]
-
-    #         # DOC conversion (unchanged)
-    #         if media_file.s3_key.lower().endswith(".doc"):
-    #             docx_bytes_cache_key = f'{media_file.id}_docx_preview'
-    #             docx_bytes = cache.get(docx_bytes_cache_key)
-    #             if not docx_bytes:
-    #                 docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-    #                 cache.set(docx_bytes_cache_key, docx_bytes, timeout=60 * 60 * 2)
-
-    #             response = HttpResponse(
-    #                 docx_bytes,
-    #                 content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-    #             )
-    #             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-    #             response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-    #             response["Content-Disposition"] = f'inline; filename="{filename.replace(".doc", ".docx")}"'
-    #             return response
-
-    #         # HEIC conversion (unchanged)
-    #         if media_file.s3_key.lower().endswith((".heic", ".heif")):
-    #             jpeg_cache_key = f'{media_file.s3_key}_jpeg'
-    #             jpeg_file_bytes = cache.get(jpeg_cache_key)
-    #             if not jpeg_file_bytes:
-    #                 jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
-    #                 cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=60 * 60 * 2)
-
-    #             response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
-    #             response["Content-Disposition"] = f'inline; filename="{filename.replace(".heic", ".jpg").replace(".heif", ".jpg")}"'
-    #             return response
-
-    #         # MKV conversion (unchanged)
-    #         if media_file.s3_key.lower().endswith(".mkv"):
-    #             cache_key = f'{media_file.s3_key}_mp4'
-    #             mp4_bytes = cache.get(cache_key)
-    #             if not mp4_bytes:
-    #                 mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
-    #                 content_type = "video/mp4"
-    #                 cache.set(cache_key, mp4_bytes, timeout=60 * 60 * 2)
-    #             filename = filename.replace(".mkv", ".mp4")
-    #             return self._stream_file_with_range(request, mp4_bytes, content_type, filename)
-
-    #         # Audio/Video — enable streaming + Range
-    #         if "video" in content_type or "audio" in content_type:
-    #             return self._stream_file_with_range(request, file_bytes, content_type, filename)
-
-    #         # Default file (unchanged)
-    #         response = HttpResponse(file_bytes, content_type=content_type)
-    #         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-    #         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-    #         response["Content-Disposition"] = f'inline; filename="{filename.replace(".enc", "")}"'
-    #         return response
-
-    #     except Exception as e:
-    #         logger.warning(f'Exception while serving media file {s3_key} for user {user.email}: {e}')
-    #         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-   
-
+    
+    CACHE_TIMEOUT = 60 * 60 * 2  # 2 hours
+    
+    def _serve_svg_safely(self, file_bytes, filename):
+        """
+        Serve SVG files with proper security headers to prevent XSS.
+        """
+        response = HttpResponse(file_bytes, content_type="image/svg+xml")
+        response["Content-Length"] = str(len(file_bytes))
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        response["Cache-Control"] = "private, max-age=3600"
+        # Strict CSP for SVG to prevent script execution
+        response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+    
+    def _is_video_file(self, filename):
+        """Check if file is a video by extension."""
+        return filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v'))
+    
+    def _is_audio_file(self, filename):
+        """Check if file is audio by extension."""
+        return filename.lower().endswith(('.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.wma', '.opus'))
+  
     def _stream_file_with_range(self, request, file_bytes, content_type, filename):
         """
-        Stream decrypted media file with proper Range support.
-        Allows seeking/jumping in video/audio players.
+        Stream decrypted media file with proper Range support (seekable, inline playback).
         """
         file_size = len(file_bytes)
-        range_header = request.headers.get("Range", "").strip()
-        start = 0
-        end = file_size - 1
-        status_code = 200
+        range_header = request.headers.get("Range", "")
 
-        if range_header and "bytes=" in range_header:
-            try:
-                range_values = range_header.replace("bytes=", "").split("-")
-                if range_values[0]:
-                    start = int(range_values[0])
-                if len(range_values) > 1 and range_values[1]:
-                    end = int(range_values[1])
-                status_code = 206  # Partial Content
-            except ValueError:
-                start, end = 0, file_size - 1
+        # Parse range
+        start, end = 0, file_size - 1
+        if range_header:
+            import re
+            m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            if m:
+                start = int(m.group(1))
+                if m.group(2):
+                    end = int(m.group(2))
+                end = min(end, file_size - 1)
 
-        end = min(end, file_size - 1)
-        chunk_size = (end - start) + 1
+        length = end - start + 1
+        is_partial = range_header != ""
 
-        def file_stream():
-            """
-            Generator to yield chunks progressively for playback.
-            """
-            buffer = memoryview(file_bytes)
-            chunk_len = 8192  # 8KB per chunk (tunable)
-            pos = start
-            while pos <= end:
-                yield buffer[pos:min(pos + chunk_len, end + 1)].tobytes()
-                pos += chunk_len
-                time.sleep(0.002)  # Slight delay to simulate progressive stream
+        # ✅ Use correct status based on Range
+        status_code = 206 if is_partial else 200
 
-        response = StreamingHttpResponse(
-            file_stream(),
+        # ✅ Send correct content type based on file extension (most reliable)
+        lower_filename = filename.lower()
+        if lower_filename.endswith((".mp4", ".m4v")):
+            content_type = "video/mp4"
+        elif lower_filename.endswith((".webm",)):
+            content_type = "video/webm"
+        elif lower_filename.endswith((".mov",)):
+            content_type = "video/quicktime"
+        elif lower_filename.endswith((".mkv", ".avi", ".flv", ".wmv")):
+            content_type = "video/mp4"  # Browser-friendly fallback
+        elif lower_filename.endswith((".mp3",)):
+            content_type = "audio/mpeg"
+        elif lower_filename.endswith((".m4a", ".aac")):
+            content_type = "audio/mp4"
+        elif lower_filename.endswith((".wav",)):
+            content_type = "audio/wav"
+        elif lower_filename.endswith((".flac",)):
+            content_type = "audio/flac"
+        elif lower_filename.endswith((".ogg", ".opus")):
+            content_type = "audio/ogg"
+        elif lower_filename.endswith((".wma",)):
+            content_type = "audio/x-ms-wma"
+
+        # ✅ Prepare response
+        resp = StreamingHttpResponse(
+            FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
+            status=status_code,
             content_type=content_type,
-            status=status_code
         )
-        response["Accept-Ranges"] = "bytes"
-        response["Content-Length"] = str(chunk_size)
-        response["Content-Disposition"] = f'inline; filename="{filename}"'
-        response["Last-Modified"] = http_date(time.time())
 
-        if status_code == 206:
-            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        # ✅ Critical headers for inline playback (NOT download)
+        resp["Accept-Ranges"] = "bytes"
+        resp["Content-Length"] = str(length)
+        
+        # 🔥 FIX: Use 'inline' WITHOUT filename to prevent download prompts
+        resp["Content-Disposition"] = "inline"
+        
+        # 🔥 FIX: Prevent MIME type sniffing that can break playback
+        resp["X-Content-Type-Options"] = "nosniff"
 
-        return response
+        if is_partial:
+            resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
 
+        # ✅ CORS + security
+        resp["Cross-Origin-Resource-Policy"] = "cross-origin"
+        resp["Access-Control-Allow-Origin"] = "*"
+        resp["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+
+        # 🔥 FIX: Allow caching for better streaming performance (scrubbing, seeking)
+        resp["Cache-Control"] = "private, max-age=3600"
+        
+        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+        resp["Content-Security-Policy"] = f"media-src *; frame-ancestors 'self' {frame_ancestors};"
+
+        return resp
+    
+    
     def get(self, request, s3_key, media_file_id):
         user = self.get_current_user(request)
         if user is None:
@@ -916,74 +762,139 @@ class ServeMedia(SecuredView):
             if not exp or not sig or int(exp) < int(time.time()):
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
-            media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user=user)
+            # Optimize: Only fetch needed fields from DB
+            media_file = MemoryRoomMediaFile.objects.only('id', 's3_key', 'user_id').get(
+                id=media_file_id, user=user
+            )
 
             if not verify_signature(media_file.s3_key, exp, sig):
                 return Response(status=status.HTTP_404_NOT_FOUND)
 
-            # Decrypt or fetch from S3
-            file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
-            if not file_bytes or not content_type:
-                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-            filename = media_file.s3_key.split("/")[-1]
+            s3_key = media_file.s3_key
+            filename = s3_key.split("/")[-1]
+            file_ext = s3_key.lower()
+            
+            # Check if it's an image first - fast path for images (excluding svg)
+            is_image = file_ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
+            is_svg = file_ext.endswith('.svg')
+            
+            # 🔥 Check if it's video/audio by extension
+            is_video = self._is_video_file(filename)
+            is_audio = self._is_audio_file(filename)
+            
+            # Cache decrypted file bytes to avoid repeated decryption
+            bytes_cache_key = f"media_bytes_{s3_key}"
+            
+            # For images, try cache first before any processing
+            if is_image or is_svg:
+                cached_data = cache.get(bytes_cache_key)
+                if cached_data:
+                    file_bytes, content_type = cached_data
+                    # SVG gets special secure handling
+                    if is_svg:
+                        return self._serve_svg_safely(file_bytes, filename)
+                    # Direct response for cached images - fastest path
+                    response = HttpResponse(file_bytes, content_type=content_type)
+                    response["Content-Length"] = str(len(file_bytes))
+                    response["Content-Disposition"] = f'inline; filename="{filename}"'
+                    response["Cache-Control"] = "private, max-age=3600"
+                    response["X-Content-Type-Options"] = "nosniff"
+                    frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                    response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                    return response
+            
+            # Get file bytes - check cache first
+            cached_data = cache.get(bytes_cache_key)
+            if cached_data:
+                file_bytes, content_type = cached_data
+            else:
+                # Decrypt or fetch from S3
+                file_bytes, content_type = decrypt_s3_file_chunked(media_file.s3_key)
+                if not file_bytes or not content_type:
+                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                # Cache the decrypted bytes for future requests
+                cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+            
+            # Fast path for SVG with security
+            if is_svg:
+                return self._serve_svg_safely(file_bytes, filename)
+            
+            # Fast path for regular images - use HttpResponse instead of StreamingHttpResponse
+            if is_image:
+                response = HttpResponse(file_bytes, content_type=content_type)
+                response["Content-Length"] = str(len(file_bytes))
+                response["Content-Disposition"] = f'inline; filename="{filename}"'
+                response["Cache-Control"] = "private, max-age=3600"
+                response["X-Content-Type-Options"] = "nosniff"
+                frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+                return response
 
             # Handle .doc (convert to docx)
-            if media_file.s3_key.lower().endswith(".doc"):
+            if file_ext.endswith(".doc"):
                 docx_bytes_cache_key = f'{media_file.id}_docx_preview'
                 docx_bytes = cache.get(docx_bytes_cache_key)
                 if not docx_bytes:
                     docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=60 * 60 * 2)
+                    cache.set(docx_bytes_cache_key, docx_bytes, timeout=self.CACHE_TIMEOUT)
 
                 response = HttpResponse(
                     docx_bytes,
                     content_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                 )
+                response["Content-Length"] = str(len(docx_bytes))
+                response["X-Content-Type-Options"] = "nosniff"
                 frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
                 response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
                 response["Content-Disposition"] = f'inline; filename="{filename.replace(".doc", ".docx")}"'
                 return response
 
             # Handle HEIC/HEIF to JPEG
-            if media_file.s3_key.lower().endswith((".heic", ".heif")):
-                jpeg_cache_key = f'{media_file.s3_key}_jpeg'
+            if file_ext.endswith((".heic", ".heif")):
+                jpeg_cache_key = f'{bytes_cache_key}_jpeg'
                 jpeg_file_bytes = cache.get(jpeg_cache_key)
                 if not jpeg_file_bytes:
                     jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
-                    cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=60 * 60 * 2)
+                    cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=self.CACHE_TIMEOUT)
 
+                # Fast HttpResponse for converted images
                 response = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
+                response["Content-Length"] = str(len(jpeg_file_bytes))
                 response["Content-Disposition"] = f'inline; filename="{filename.replace(".heic", ".jpg").replace(".heif", ".jpg")}"'
+                response["Cache-Control"] = "private, max-age=3600"
+                response["X-Content-Type-Options"] = "nosniff"
+                frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+                response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
                 return response
 
             # Handle MKV → MP4
-            if media_file.s3_key.lower().endswith(".mkv"):
-                cache_key = f'{media_file.s3_key}_mp4'
-                mp4_bytes = cache.get(cache_key)
+            if file_ext.endswith(".mkv"):
+                mp4_cache_key = f'{bytes_cache_key}_mp4'
+                mp4_bytes = cache.get(mp4_cache_key)
                 if not mp4_bytes:
                     mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
-                    content_type = "video/mp4"
-                    cache.set(cache_key, mp4_bytes, timeout=60 * 60 * 2)
+                    cache.set(mp4_cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
                 filename = filename.replace(".mkv", ".mp4")
-                return self._stream_file_with_range(request, mp4_bytes, content_type, filename)
+                return self._stream_file_with_range(request, mp4_bytes, "video/mp4", filename)
 
-            # Stream audio/video progressively with Range
-            if "video" in content_type or "audio" in content_type:
+            # 🔥 FIX: Stream audio/video by FILE EXTENSION (not content_type string check)
+            if is_video or is_audio:
                 return self._stream_file_with_range(request, file_bytes, content_type, filename)
 
             # Default file (normal response)
             response = HttpResponse(file_bytes, content_type=content_type)
+            response["Content-Length"] = str(len(file_bytes))
+            response["X-Content-Type-Options"] = "nosniff"
             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
             response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
             response["Content-Disposition"] = f'inline; filename="{filename.replace(".enc", "")}"'
             return response
 
+        except MemoryRoomMediaFile.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
             logger.warning(f'Exception while serving media file {s3_key} for user {user.email}: {e}')
             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-  
-                
 
 class RefreshMediaURL(SecuredView):
     """

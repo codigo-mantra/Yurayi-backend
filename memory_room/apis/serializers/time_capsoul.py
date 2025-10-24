@@ -283,12 +283,30 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         
 
     def get_status(self, obj):
-        if obj.status == 'sealed':
-            current_datetime = timezone.now()  
-            unlock_date = obj.unlock_date
-            if unlock_date and current_datetime > unlock_date:
-                obj.status = 'unlocked'
-                obj.save()
+        current_user = self.context.get('user')
+        if current_user == obj.user:
+            if obj.status == 'sealed':
+                current_datetime = timezone.now()  
+                recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj)
+                if recipients.count() > 0:
+                    all_is_opend = recipients.values_list('is_opened', flat=True)
+                    if False not in all_is_opend:
+                        obj.status = 'unlocked'
+                        obj.save()
+            return obj.get_status_display()
+            
+        else:
+            if obj.status == 'sealed':
+                return 'Sealed With Love'
+            elif obj.status == 'unlocked':
+                return 'Unlocked'
+            else:
+                'Being Crafted'
+                
+            # unlock_date = obj.unlock_date
+            # if unlock_date and current_datetime > unlock_date:
+            #     obj.status = 'unlocked'
+            #     obj.save()
         return obj.get_status_display()
 
     def get_is_default_template(self, obj):
@@ -799,8 +817,8 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                     for recipient in capsoul_recipients:
                         person_name = recipient.name
                         person_email = recipient.email
-                        # recipient.parent_media_refrences = media_ids
-                        # recipient.save()
+                        recipient.parent_media_refrences = media_ids
+                        recipient.save()
                         
                         # create notification at invited for tagged user if exists
                         try:
@@ -809,10 +827,12 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                             # skip if user not exists
                             pass
                         else:
+                            notification_msg = f"You’ve been invited to a capsoul. {time_cap_owner} special has saved a memory with you in mind — a surprise awaits."
                             notif = NotificationService.create_notification_with_key(
                                 notification_key='capsoul_invite_received',
                                 user=user,
-                                time_capsoul=time_capsoul
+                                time_capsoul=time_capsoul,
+                                custom_message=notification_msg
                             )
                         try: # sending email using celery task
                             send_html_email_task.apply_async(

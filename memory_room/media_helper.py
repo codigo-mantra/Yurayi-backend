@@ -537,3 +537,72 @@ def decrypt_s3_file_chunked(key: str):
                 del data_key
         except:
             pass
+        
+def decrypt_s3_file_chunked_range(key: str, start: int = 0, end: int | None = None):
+    """
+    Stream-decrypt only the requested byte range from an encrypted S3 file.
+    Works with files uploaded by upload_file_to_s3_kms_chunked().
+    """
+    data_key = None
+    try:
+        bucket = MEDIA_FILES_BUCKET
+
+        # Get metadata to retrieve chunk size and data key
+        head = s3.head_object(Bucket=bucket, Key=key)
+        metadata = head.get("Metadata", {})
+        total_size = head["ContentLength"]
+
+        if "edk" not in metadata:
+            raise ValueError("Missing encrypted data key (edk) in metadata")
+
+        # Decrypt data key
+        encrypted_data_key = base64.b64decode(metadata["edk"])
+        data_key = kms.decrypt(CiphertextBlob=encrypted_data_key)["Plaintext"]
+        aesgcm = AESGCM(data_key)
+
+        # Get stored chunk size (same used during encryption)
+        chunk_size = int(metadata.get("chunk-size", 10 * 1024 * 1024))  # default 10MB
+        ciphertext_chunk_size = chunk_size + 12 + 16  # nonce + ciphertext + tag
+
+        # Calculate chunk boundaries
+        start_chunk = start // chunk_size
+        end_chunk = (end // chunk_size) if end else (total_size // chunk_size)
+
+        decrypted_data = BytesIO()
+
+        for chunk_index in range(start_chunk, end_chunk + 1):
+            # Determine byte range in S3 for this chunk
+            chunk_start = chunk_index * ciphertext_chunk_size
+            chunk_end = min(chunk_start + ciphertext_chunk_size - 1, total_size - 1)
+            range_header = f"bytes={chunk_start}-{chunk_end}"
+
+            # Fetch encrypted chunk from S3
+            part = s3.get_object(Bucket=bucket, Key=key, Range=range_header)
+            encrypted_part = part["Body"].read()
+
+            # Extract nonce + ciphertext + tag
+            if len(encrypted_part) < 12 + 16:
+                continue  # incomplete chunk, skip
+            nonce = encrypted_part[:12]
+            ciphertext = encrypted_part[12:]
+            try:
+                decrypted_chunk = aesgcm.decrypt(nonce, ciphertext, None)
+            except Exception as e:
+                logger.error(f"Failed to decrypt chunk {chunk_index}: {e}")
+                continue
+
+            decrypted_data.write(decrypted_chunk)
+
+        decrypted_data.seek(0)
+        plaintext_bytes = decrypted_data.read()
+
+        content_type = metadata.get("orig-content-type", "application/octet-stream")
+        return plaintext_bytes, content_type
+
+    except Exception as e:
+        logger.error(f"Error decrypting S3 range for '{key}': {e}", exc_info=True)
+        return None, None
+
+    finally:
+        if data_key:
+            del data_key

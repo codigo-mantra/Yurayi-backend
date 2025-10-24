@@ -159,7 +159,7 @@ class MemoryRoomMediaFile(BaseModel):
     thumbnail_key = models.CharField(blank=True, null=True, max_length=255)
     file_size = models.CharField(blank=True, null=True, max_length=255, verbose_name='File size')
     s3_url = models.URLField(blank=True, null=True)
-    s3_key = models.CharField(blank=True, null=True,max_length=255)
+    s3_key = models.TextField(blank=True, null=True)
     media_file_duplicate = models.ForeignKey(
         "self",
         on_delete=models.CASCADE,   
@@ -306,8 +306,7 @@ class AbstractMediaFile(BaseModel):
         null=True,
         verbose_name="S3 URL"
     )
-    s3_key = models.CharField(
-        max_length=255,
+    s3_key = models.TextField(
         blank=True,
         null=True,
         verbose_name="S3 Key",
