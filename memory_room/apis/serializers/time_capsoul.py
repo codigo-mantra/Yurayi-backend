@@ -296,12 +296,9 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
             return obj.get_status_display()
             
         else:
-            if obj.status == 'sealed':
-                return 'Sealed With Love'
-            elif obj.status == 'unlocked':
-                return 'Unlocked'
-            else:
-                'Being Crafted'
+           
+            return 'Unlocked'
+           
                 
             # unlock_date = obj.unlock_date
             # if unlock_date and current_datetime > unlock_date:
