@@ -48,7 +48,7 @@ class NotificationService:
             return None
    
     @staticmethod
-    def create_notification_with_key(notification_key, user, memory_room=None, time_capsoul=None, custom_message=None):
+    def create_notification_with_key(notification_key, user, memory_room=None, time_capsoul=None, custom_message=None, allow_multiple=None):
         """
         Safely create a system-generated notification.
         Returns:
@@ -67,8 +67,9 @@ class NotificationService:
                 message = notification_data['message']
             else:
                 message = custom_message
-
-            notification, created = Notification.objects.get_or_create(
+            
+            if allow_multiple:
+                notification = Notification.objects.create(
                 user=user,
                 category=category,
                 category_type=category_type,
@@ -77,6 +78,16 @@ class NotificationService:
                 memory_room=memory_room,
                 time_capsoul=time_capsoul,
             )
+            else:
+                notification, created = Notification.objects.get_or_create(
+                    user=user,
+                    category=category,
+                    category_type=category_type,
+                    title=title,
+                    message=message,
+                    memory_room=memory_room,
+                    time_capsoul=time_capsoul,
+                )
             return notification
 
         except (ValidationError, DatabaseError, ValueError) as e:

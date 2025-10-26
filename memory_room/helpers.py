@@ -16,6 +16,7 @@ from memory_room.tasks import update_time_capsoul_occupied_storage
 from memory_room.crypto_utils import get_media_file_bytes_with_content_type,generate_capsoul_media_s3_key
 
 logger = logging.getLogger(__name__)
+from memory_room.s3_helpers import s3_helper
 
 from memory_room.media_helper import decrypt_s3_file_chunked,decrypt_upload_and_extract_audio_thumbnail_chunked
 
@@ -694,11 +695,16 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
             file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
             s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
             
-            upload_file_to_s3_kms_chunked(
-                key=s3_key,
-                plaintext_bytes=file_bytes,
-                content_type=content_type,
-                progress_callback=None
+            # upload_file_to_s3_kms_chunked(
+            #     key=s3_key,
+            #     plaintext_bytes=file_bytes,
+            #     content_type=content_type,
+            #     progress_callback=None
+            # )
+            
+            res = s3_helper.copy_s3_object_preserve_meta_kms(
+                source_key=old_media.s3_key,
+                destination_key=s3_key
             )
             
             thumbnail = old_media.thumbnail 

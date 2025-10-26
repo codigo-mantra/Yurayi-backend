@@ -55,8 +55,14 @@ from memory_room.notification_service import NotificationService
 from memory_room.notification_message import NOTIFICATIONS
 from userauth.tasks import send_html_email_task
 from userauth.helpers import (
-    create_tokens_for_user, set_auth_cookies
+    create_tokens_for_user, set_auth_cookies, get_profile_s3_key
 )
+from memory_room.media_helper import decrypt_s3_file_chunked
+from memory_room.s3_helpers import s3_helper
+from django.core.cache import cache
+from django.http import StreamingHttpResponse, Http404,HttpResponse, JsonResponse, HttpResponseNotFound
+from django.core.cache import cache
+import mimetypes
 
 # module logger
 logger = logging.getLogger(__name__)
@@ -1052,8 +1058,9 @@ class UserProfileUpdateView(SecuredView):
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def patch(self, request):
-        logger.info("UserProfileUpdateView.patch called")
         user = self.get_current_user(request)
+        logger.info(f"UserProfileUpdateView.patch called by {user.email}")
+        
         if user is None:
             raise NotAuthenticated()
         serializer = UserProfileUpdateSerializer(user, data=request.data, partial=True)
@@ -1063,8 +1070,9 @@ class UserProfileUpdateView(SecuredView):
             notif = NotificationService.create_notification_with_key(
                 notification_key='profile_updated',
                 user=user,
+                allow_multiple=True
             )
-            logger.info("Profile updated")
+            logger.info(f"Profile updated for {user.email}")
             return Response({
                 "message": "Profile updated successfully",
                 "data": serializer.data
@@ -1309,4 +1317,203 @@ class RevokeOldUserSession(APIView):
         except Exception as e:
             logger.error(f'Exception while logout user session for session-id: ')
             return Response(status=status.HTTP_400_BAD_REQUEST)
-        
+
+# class ServeProfileImage(SecuredView):
+#     """
+#     Serves profile images with intelligent caching strategy.
+#     - Downloads from S3 in memory-efficient chunks
+#     - Caches the final image bytes for fast repeated access
+#     - Optimized specifically for images (typically <10MB)
+#     """
+#     CACHE_TIMEOUT = 60 * 60 * 24  # 24 hours
+    
+#     def get_mime_type(self, filename):
+#         """Get MIME type from filename."""
+#         mime_type, _ = mimetypes.guess_type(filename)
+#         return mime_type or "application/octet-stream"
+
+#     def _serve_svg_safely(self, file_bytes, filename):
+#         """
+#         Secure SVG response with CSP to prevent script injection.
+#         """
+#         response = HttpResponse(file_bytes, content_type="image/svg+xml")
+#         response["Content-Length"] = str(len(file_bytes))
+#         response["Content-Disposition"] = f'inline; filename="{filename}"'
+#         response["Cache-Control"] = f"private, max-age={self.CACHE_TIMEOUT}"
+#         response["Content-Security-Policy"] = (
+#             "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+#         )
+#         response["X-Content-Type-Options"] = "nosniff"
+#         return response
+
+#     def _create_image_response(self, file_bytes, content_type, filename):
+#         """
+#         Create HTTP response for regular images.
+#         """
+#         response = HttpResponse(file_bytes, content_type=content_type)
+#         response["Content-Length"] = str(len(file_bytes))
+#         response["Content-Disposition"] = f'inline; filename="{filename}"'
+#         response["Cache-Control"] = f"private, max-age={self.CACHE_TIMEOUT}"
+#         response["X-Content-Type-Options"] = "nosniff"
+#         response["Content-Security-Policy"] = "frame-ancestors 'self';"
+#         return response
+
+#     def get(self, request, *args, **kwargs):
+#         try:
+#             user = self.get_current_user(request)
+#             base_s3_key = kwargs.get("s3_key")
+#             bytes_cache_key = get_profile_s3_key(user, base_s3_key=base_s3_key)
+            
+#             filename = bytes_cache_key.split("/")[-1].lower()
+            
+#             # === Step 1: Check for cached image bytes ===
+#             image_cache_key = f"profile_image_bytes:{bytes_cache_key}"
+#             cached_data = cache.get(image_cache_key)
+            
+#             if cached_data:
+#                 file_bytes, content_type = cached_data
+#                 logger.debug(f"✓ Serving cached image: {filename} ({len(file_bytes)/1024:.1f} KB)")
+                
+#                 # Create and return response from cache
+#                 if filename.endswith(".svg"):
+#                     return self._serve_svg_safely(file_bytes, filename)
+#                 else:
+#                     return self._create_image_response(file_bytes, content_type, filename)
+            
+#             file_data, content_type = s3_helper.decrypt_s3_file_chunked_streaming(
+#                 bytes_cache_key,
+#                 chunk_size=2*1024*1024  # 2MB chunks (good for images)
+#             )
+            
+#             if not file_data or not content_type:
+#                 logger.error(f"Failed to download {bytes_cache_key} from S3")
+#                 return Response(status=status.HTTP_404_NOT_FOUND)
+            
+#             # === Step 3: Read image bytes from BytesIO ===
+#             file_bytes = file_data.read()
+#             file_data.close()
+            
+#             # Override content type if needed
+#             content_type = self.get_mime_type(filename) or content_type
+            
+#             logger.info(f"✓ Downloaded image: {filename} ({len(file_bytes)/1024:.1f} KB)")
+            
+#             # === Step 4: Cache the image bytes ===
+#             cache.set(
+#                 image_cache_key, 
+#                 (file_bytes, content_type), 
+#                 timeout=self.CACHE_TIMEOUT
+#             )
+#             logger.debug(f"✓ Cached image bytes for {filename}")
+            
+#             # === Step 5: Create and return response ===
+#             if filename.endswith(".svg"):
+#                 response = self._serve_svg_safely(file_bytes, filename)
+#             else:
+#                 response = self._create_image_response(file_bytes, content_type, filename)
+            
+#             return response
+
+#         except Exception as e:
+#             logger.exception(f"Error serving profile image {base_s3_key}: {e}")
+#             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+class ServeProfileImage(SecuredView):
+    """
+    Serves profile images with intelligent caching strategy.
+    - Downloads from S3 in memory-efficient chunks
+    - Caches the complete HTTP response for fastest delivery
+    - Optimized specifically for images (typically <10MB)
+    """
+    CACHE_TIMEOUT = 60 * 60 * 24  # 24 hours
+    
+    def get_mime_type(self, filename):
+        """Get MIME type from filename."""
+        mime_type, _ = mimetypes.guess_type(filename)
+        return mime_type or "application/octet-stream"
+
+    def _serve_svg_safely(self, file_bytes, filename):
+        """
+        Secure SVG response with CSP to prevent script injection.
+        """
+        response = HttpResponse(file_bytes, content_type="image/svg+xml")
+        response["Content-Length"] = str(len(file_bytes))
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        response["Cache-Control"] = f"private, max-age={self.CACHE_TIMEOUT}"
+        response["Content-Security-Policy"] = (
+            "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+        )
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    def _create_image_response(self, file_bytes, content_type, filename):
+        """
+        Create HTTP response for regular images.
+        """
+        response = HttpResponse(file_bytes, content_type=content_type)
+        response["Content-Length"] = str(len(file_bytes))
+        response["Content-Disposition"] = f'inline; filename="{filename}"'
+        response["Cache-Control"] = f"private, max-age={self.CACHE_TIMEOUT}"
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Content-Security-Policy"] = "frame-ancestors 'self';"
+        return response
+
+    def get(self, request, *args, **kwargs):
+        try:
+            user = self.get_current_user(request)
+            base_s3_key = kwargs.get("s3_key")
+            bytes_cache_key = get_profile_s3_key(user, base_s3_key=base_s3_key)
+            
+            filename = bytes_cache_key.split("/")[-1].lower()
+            
+            # === Step 1: Check for cached response ===
+            response_cache_key = f"profile_image_response:{bytes_cache_key}"
+            cached_response = cache.get(response_cache_key)
+            
+            if cached_response:
+                logger.debug(f"✓ Serving cached response: {filename}")
+                return cached_response
+            
+            # === Step 2: Download from S3 (cache miss) ===
+            logger.info(f"📥 Downloading from S3: {filename}")
+            
+            file_data, content_type = s3_helper.decrypt_s3_file_chunked_streaming(
+                bytes_cache_key,
+                chunk_size=2*1024*1024  # 2MB chunks (good for images)
+            )
+            
+            if not file_data or not content_type:
+                logger.error(f"Failed to download {bytes_cache_key} from S3")
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            
+            # === Step 3: Read image bytes from BytesIO ===
+            file_bytes = file_data.read()
+            file_data.close()
+            
+            # Override content type if needed
+            content_type = self.get_mime_type(filename) or content_type
+            
+            logger.info(f"✓ Downloaded image: {filename} ({len(file_bytes)/1024:.1f} KB)")
+            
+            # === Step 4: Create response ===
+            if filename.endswith(".svg"):
+                response = self._serve_svg_safely(file_bytes, filename)
+            else:
+                response = self._create_image_response(file_bytes, content_type, filename)
+            
+            # === Step 5: Cache the complete response ===
+            cache.set(
+                response_cache_key, 
+                response, 
+                timeout=self.CACHE_TIMEOUT
+            )
+            logger.debug(f"✓ Cached complete response for {filename}")
+            
+            return response
+
+        except Exception as e:
+            logger.exception(f"Error serving profile image {base_s3_key}: {e}")
+            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+

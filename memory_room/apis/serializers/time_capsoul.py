@@ -285,27 +285,28 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
     def get_status(self, obj):
         current_user = self.context.get('user')
         if current_user == obj.user:
-            if obj.status == 'sealed':
-                current_datetime = timezone.now()  
-                recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj)
+            
+            unlock_date = obj.unlock_date
+            current_datetime = timezone.now()  
+            
+            if unlock_date and current_datetime > unlock_date:
+                obj.status = 'unlocked'
+                obj.save()
+            if obj.status == 'unlocked':
+                recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, is_deleted = False)
                 if recipients.count() > 0:
                     all_is_opend = recipients.values_list('is_opened', flat=True)
-                    if False not in all_is_opend:
-                        obj.status = 'unlocked'
-                        obj.save()
+                    if False in all_is_opend:
+                        return 'Sealed With Love'
             return obj.get_status_display()
-            
         else:
+            recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, email= current_user.email).first()
+            if  recipients:
+                if recipients.is_opened == False:
+                    return 'Sealed With Love'
+                else:
+                    return 'Unlocked'
            
-            return 'Unlocked'
-           
-                
-            # unlock_date = obj.unlock_date
-            # if unlock_date and current_datetime > unlock_date:
-            #     obj.status = 'unlocked'
-            #     obj.save()
-        return obj.get_status_display()
-
     def get_is_default_template(self, obj):
         return bool(getattr(obj.capsoul_template, "default_template", False))
 

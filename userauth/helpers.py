@@ -1,13 +1,17 @@
 
 from datetime import datetime, timedelta, timezone
 import jwt
-import uuid
+import uuid, logging
 from django.conf import settings
 from django.utils import timezone
 from django.http import HttpResponse
 from typing import Optional
-
+from userauth.models import UserProfile
 from userauth.jwt_utils import create_access_jwt_for_user
+
+
+# module logger
+logger = logging.getLogger(__name__)
 
 # def create_access_jwt_for_user(user, session_id):
 #     """
@@ -168,3 +172,17 @@ def create_tokens_for_user(user, session):
     
     return access_token, refresh_token
 
+def get_profile_s3_key(user, base_s3_key=None):
+    try:
+        s3_key = None
+        user_profile = UserProfile.objects.filter(user = user).first()
+        if user_profile and user_profile.profile_image:
+            
+            if base_s3_key:
+                s3_key = f'media/{user.s3_storage_id}/{base_s3_key}'
+            else:
+                s3_key = user_profile.profile_image.s3_key
+    except Exception as e:
+        logger.error(f'Exception while get profile image s3-key for user: {user.email} as {e}')
+    finally:
+        return s3_key

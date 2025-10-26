@@ -12,7 +12,7 @@ from django.core.exceptions import ValidationError
 from allauth.socialaccount.providers.google.provider import GoogleProvider
 from allauth.socialaccount.models import SocialApp, SocialAccount, SocialLogin, EmailAddress
 
-
+from memory_room.s3_helpers import s3_helper
 from django.core.exceptions import ValidationError as DjangoValidationError
 
 from userauth.apis.helpers.validators import CustomPasswordValidator, UsernameValidator
@@ -26,6 +26,7 @@ from dj_rest_auth.serializers import (
     PasswordResetConfirmSerializer,
     PasswordChangeSerializer
 )
+
 
 # Regex to check if identifier is an email
 EMAIL_REGEX = r"[^@]+@[^@]+\.[^@]+"
@@ -622,39 +623,67 @@ class AssetSerializer(serializers.ModelSerializer):
     
 
 class UserProfileDataSerializer(serializers.ModelSerializer):
-    profile_image = AssetSerializer(read_only=True)
-    profile_image_id = serializers.PrimaryKeyRelatedField(
-        queryset=Assets.objects.all(), source='profile_image', write_only=True, required=False
-    )
-    profile_cover_image = AssetSerializer(read_only=True)
-    profile_cover_image_id = serializers.PrimaryKeyRelatedField(
-        queryset=Assets.objects.all(), source='profile_cover_image', write_only=True, required=False
-    )
+    # profile_image = AssetSerializer(read_only=True)
+    profile_image = serializers.Serializer()
+    
+    # profile_image_id = serializers.PrimaryKeyRelatedField(
+    #     queryset=Assets.objects.all(), source='profile_image', write_only=True, required=False
+    # )
+    # profile_cover_image = AssetSerializer(read_only=True)
+    # profile_cover_image_id = serializers.PrimaryKeyRelatedField(
+    #     queryset=Assets.objects.all(), source='profile_cover_image', write_only=True, required=False
+    # )
 
     class Meta:
         model = UserProfile
+        # fields = [
+        #     "about",
+        #     "profile_image", "profile_image_id",
+        #     "profile_cover_image", "profile_cover_image_id"
+        # ]
         fields = [
-            "about",
-            "profile_image", "profile_image_id",
-            "profile_cover_image", "profile_cover_image_id"
+            'profile_image',
         ]
+    
+    def get_profile_image(self, obj):
+        s3_key = obj.profile_image.s3_key
+        if s3_key:
+            pass
+        
+        profile_image_url =  f'{settings.SITE_LIVE_URL}/{s3_key}'
+        return {
+            'image_url': profile_image_url
+        }
+        pass
 
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
     address = serializers.SerializerMethodField()
-    profile = UserProfileDataSerializer(required=False)
+    # profile = UserProfileDataSerializer(required=False)
     profile_image = serializers.ImageField(required=False, write_only=True)
+    profile_image_url = serializers.SerializerMethodField()
+
+    
 
 
     class Meta:
         model = User
         fields = [
             "id", "username", "first_name", "last_name", "email", "phone_number",
-            "gender", "profile",'profile_image','address', 'created_at'
+            "gender", 'profile_image','address', 'created_at','profile_image_url'
         ]
         read_only_fields = ["email",]
     
-    
+    def get_profile_image_url(self, obj):
+        prifile_url = None
+        user_profile = UserProfile.objects.filter(user  = obj).first()
+        if user_profile:
+            if user_profile.profile_image:
+                s3_key = user_profile.profile_image.s3_key.split('/')
+                if len(s3_key) >= 4:
+                    prifile_url = f'{settings.SITE_LIVE_URL}/api/v0/serve/profile-image/{s3_key[2]}/{s3_key[3]}'
+        return prifile_url
+            
     def validate_gender(self,value):
         allowed_values = ["male", "female", "other"]
         if value and value.lower() not in allowed_values:
@@ -737,17 +766,24 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
         profile_image_file = validated_data.get('profile_image')
         if profile_image_file:
+            s3_key  = profile_image_file.name
+            s3_key = f'media/{instance.s3_storage_id}/profile_images/{profile_image_file.name}'
+            res = s3_helper.upload_image_file_chunked(
+                key=s3_key,
+                file_obj=profile_image_file
+            )
             asset = Assets.objects.create(
-                image=profile_image_file,
+                # image=profile_image_file,
                 asset_types='Profile Image',
-                title=profile_image_file.name
+                title=profile_image_file.name,
+                s3_key = s3_key
             )
             profile.profile_image = asset
             profile.save()
 
         # Update or create related UserProfile
         if profile_data:
-            profile_instance, _ = UserProfile.objects.get_or_create(user=instance)
+            profile_instance= UserProfile.objects.get(user=instance)
             for attr, value in profile_data.items():
                 setattr(profile_instance, attr, value)
             profile_instance.save()

@@ -7,7 +7,7 @@ from userauth.apis.views.views import (
     LoginView, RegistrationView, LogoutView,
     GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,UserProfileUpdateView,
     CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView,UserAddressListCreateView,UserAddressDetailView, 
-    UserQueriesAPIView, YurayiPolicyView, SessionListAPIView, SessionDeleteAPIView, SessionClearOthersAPIView,RevokeOldUserSession
+    UserQueriesAPIView, YurayiPolicyView, SessionListAPIView, SessionDeleteAPIView, SessionClearOthersAPIView,RevokeOldUserSession, ServeProfileImage
     
 )
 from rest_framework_simplejwt.views import TokenVerifyView
@@ -42,6 +42,7 @@ urlpatterns = [
 
     path('user/addresses/', UserAddressListCreateView.as_view(), name='user-address-list-create'),
     path('user/addresses/<int:pk>/', UserAddressDetailView.as_view(), name='user-address-detail'),
+    path("serve/profile-image/<path:s3_key>/", ServeProfileImage.as_view(), name="serve_profile_image"),
     
     path("sessions/", SessionListAPIView.as_view(), name="session-list"),
     path("revoke/session/", RevokeOldUserSession.as_view(), name="revoke_old_session"),
