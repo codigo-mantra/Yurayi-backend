@@ -14,7 +14,7 @@ from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, generate_signature
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,generate_room_media_s3_key,clean_filename
 from django.core.files.base import ContentFile
-from memory_room.helpers import upload_file_to_s3_kms, upload_file_to_s3_kms_chunked
+from memory_room.helpers import upload_file_to_s3_kms, upload_file_to_s3_kms_chunked, generate_unique_file_name
 
 # AWS_KMS_REGION = settings.AWS_KMS_REGION
 # AWS_KMS_KEY_ID = settings.AWS_KMS_KEY_ID
@@ -343,6 +343,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         """Perform validation for file, IV, and type."""
         file = attrs.get('file')
         iv = attrs.get('iv')
+        memory_room = self.context.get('memory_room')
 
         if not file:
             raise serializers.ValidationError({"file": "No file provided."})
@@ -356,6 +357,14 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         attrs['file_type'] = file_type
 
         file_name = clean_filename(file.name)
+        capsoul_media = memory_room.memory_media_files.all()
+        keys = capsoul_media.values_list('s3_key', flat = True)
+        name =[k.split('/')[-1] for k in keys ]
+        if name:
+            unique_file_name = generate_unique_file_name(existing_file_name=name, base_name= file_name, memory_room=True)
+            attrs['unique_file_name'] = unique_file_name
+        else:
+            attrs['unique_file_name'] = file_name
         file.name = file_name
         attrs['title'] = file_name
 
@@ -374,6 +383,8 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         progress_callback = self.context.get('progress_callback')
         iv = validated_data.pop('iv')
         file = validated_data.pop('file', None)
+        unique_file_name = validated_data.pop('unique_file_name')
+
         file_name = file.name
         file_type = validated_data.get('file_type')
         
@@ -381,7 +392,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             progress_callback(15, "Initializing upload...")
             
         try:
-            s3_key = generate_room_media_s3_key(file_name, user.s3_storage_id, memory_room.id)
+            s3_key = generate_room_media_s3_key(unique_file_name, user.s3_storage_id, memory_room.id)
             if progress_callback:
                 progress_callback(20, "Preparing chunked decrypt & upload...")
 
@@ -418,7 +429,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         # Assign uploaded file details
         validated_data['file_type'] = file_type
         validated_data['s3_key'] = s3_key
-        validated_data['title'] = file_name
+        validated_data['title'] = unique_file_name
         validated_data['file_size'] = get_readable_file_size_from_bytes(result['uploaded_size'])
         
         # validated_data['file'] = file  # keep reference (but it's encrypted version)

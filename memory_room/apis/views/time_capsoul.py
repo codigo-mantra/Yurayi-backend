@@ -59,7 +59,7 @@ from memory_room.apis.serializers.time_capsoul import (
     TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimeCapSoulMediaFileReadOnlySerializer, TimeCapSoulRecipientSerializer
 )
 from memory_room.apis.serializers.notification import TimeCapSoulRecipientUpdateSerializer
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature,get_media_file_bytes_with_content_type,encrypt_and_upload_file_chunked,generate_capsoul_media_s3_key
+from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature,get_media_file_bytes_with_content_type,encrypt_and_upload_file_chunked,generate_capsoul_media_s3_key,clean_filename
 
 
 class TimeCapSoulCoverView(SecuredView):
@@ -285,6 +285,26 @@ class TimeCapSoulMediaFilesView(SecuredView):
         user = self.get_current_user(request) #
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         replica_instance = None
+        files = request.FILES.getlist('file')
+        created_objects = []
+        results = []
+        from rest_framework import serializers
+
+        if len(files) == 0: 
+            raise serializers.ValidationError({'file': "Media files are required"})
+
+        # Parse IVs from frontend
+        try:
+            ivs_json = request.POST.get('ivs', '[]')
+            ivs = json.loads(ivs_json)
+        except json.JSONDecodeError:
+            raise serializers.ValidationError({'ivs': "Invalid IVs format"})
+
+        # Ensure we have an IV for each file
+        if len(ivs) != len(files):
+            raise serializers.ValidationError({
+                'ivs': f"Number of IVs ({len(ivs)}) must match number of files ({len(files)})"
+            })
         
         if time_capsoul.status == 'unlocked':
             try:
@@ -310,7 +330,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                             id__in = parent_files_id,
                         )
                 new_media_count = 0
-                old_media_count = parent_media_files.count()   
+                old_media_count = parent_media_files.count() 
                 for parent_file in parent_media_files:
                     try:
                         is_media_created = create_time_capsoul_media_file(
@@ -333,28 +353,6 @@ class TimeCapSoulMediaFilesView(SecuredView):
         if replica_instance is not None:
             time_capsoul = replica_instance
             
-
-        files = request.FILES.getlist('file')
-        created_objects = []
-        results = []
-        from rest_framework import serializers
-
-        if len(files) == 0: 
-            raise serializers.ValidationError({'file': "Media files are required"})
-
-        # Parse IVs from frontend
-        try:
-            ivs_json = request.POST.get('ivs', '[]')
-            ivs = json.loads(ivs_json)
-        except json.JSONDecodeError:
-            raise serializers.ValidationError({'ivs': "Invalid IVs format"})
-
-        # Ensure we have an IV for each file
-        if len(ivs) != len(files):
-            raise serializers.ValidationError({
-                'ivs': f"Number of IVs ({len(ivs)}) must match number of files ({len(files)})"
-            })
-        
         # Dynamic worker calculation
         total_files = len(files)
         total_size = sum(f.size for f in files)
@@ -651,8 +649,6 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         """
         return get_object_or_404(TimeCapSoul, id=time_capsoul_id, user=user, is_deleted = False)
     
-    
-
 
     def delete(self, request, time_capsoul_id, media_file_id):
         """Delete time-capsoul media file"""
@@ -715,7 +711,7 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
     
     def patch(self, request, time_capsoul_id, media_file_id):
         user = self.get_current_user(request)
-        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id,is_deleted = False)
+        media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id)
         serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True, context={'is_owner': True if media_file.user == user else False, 'current_user': user})
         serializer.is_valid(raise_exception=True)
         update_media_file = serializer.save()
@@ -1360,7 +1356,7 @@ class TaggedCapsoulTracker(SecuredView):
             message = f"The wait is over! {user.username if user.username else user.email} has opened a moment you shared. Dive in and relive it."
             notif = NotificationService.create_notification_with_key(
                 notification_key='capsoul_unlocked',
-                user=user,
+                user=time_caspsoul.user,
                 time_capsoul=time_caspsoul,
                 custom_message = message
             )

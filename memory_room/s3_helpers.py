@@ -29,13 +29,13 @@ class S3FileHandler:
     def __init__(self):
         self.region = 'ap-south-1'
         self.bucket_name = 'yurayi-media'
-        self.s3_cleint = None
+        self.s3_client = None
         self.kms_client = None
         self.setup() # s3 setup here
     
     def setup(self):
         try:
-            self.s3_cleint = boto3.client("s3", region_name=self.region,
+            self.s3_client = boto3.client("s3", region_name=self.region,
                 aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
                 aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             )
@@ -50,49 +50,72 @@ class S3FileHandler:
         else:
             logger.info('S3 setup successfully')
 
-    def copy_s3_object_preserve_meta_kms(self, source_key: str,destination_key:str, destination_bucket = None, source_bucket=None):
+    def copy_s3_object_preserve_meta_kms(self, source_key: str, destination_key: str, destination_bucket=None, source_bucket=None):
         """
-        Copy an S3 object to a new key or bucket, keeping:
-         Same metadata
-         Same Content-Type
-         Same KMS encryption (if any)
+        Copy an S3 object to a new key or bucket, preserving:
+        - Metadata
+        - Content-Type
+        - Content-Disposition
+        - Cache-Control
+        - Content-Encoding
+        - KMS encryption
+        Automatically detects Content-Type if missing or generic.
         """
-        
+
         if source_bucket is None:
             source_bucket = self.bucket_name
-        
         if destination_bucket is None:
-            source_bucket = self.bucket_name
+            destination_bucket = source_bucket
 
         try:
-            # Get the source object's metadata first
-            head = self.s3_cleint.head_object(Bucket=source_bucket, Key=source_key)
-
-            # Build copy parameters
+            # Get the source object's metadata
+            head = self.s3_client.head_object(Bucket=source_bucket, Key=source_key)
             copy_source = {"Bucket": source_bucket, "Key": source_key}
+
+            # Preserve custom metadata
+            metadata = head.get("Metadata", {})
+
+            # Preserve headers
+            content_type = head.get("ContentType")
+            if not content_type or content_type == "application/octet-stream":
+                guessed_type, _ = mimetypes.guess_type(source_key)
+                content_type = guessed_type or "application/octet-stream"
+
+            content_disposition = head.get("ContentDisposition")
+            cache_control = head.get("CacheControl")
+            content_encoding = head.get("ContentEncoding")
 
             copy_args = {
                 "Bucket": destination_bucket,
                 "CopySource": copy_source,
                 "Key": destination_key,
-                "MetadataDirective": "COPY",  # preserve metadata
+                "Metadata": metadata,
+                "ContentType": content_type,
+                "MetadataDirective": "REPLACE",  # needed when replacing metadata
             }
 
-            # If the object was KMS-encrypted, preserve encryption
+            # Add optional headers if they exist
+            if content_disposition:
+                copy_args["ContentDisposition"] = content_disposition
+            if cache_control:
+                copy_args["CacheControl"] = cache_control
+            if content_encoding:
+                copy_args["ContentEncoding"] = content_encoding
+
+            # Preserve KMS encryption if present
             if head.get("ServerSideEncryption") == "aws:kms":
                 copy_args["ServerSideEncryption"] = "aws:kms"
                 copy_args["SSEKMSKeyId"] = head.get("SSEKMSKeyId")
 
-            #  Perform the copy
-            response = self.s3_cleint.copy_object(**copy_args)
-            print(f"✅ Copied (meta + KMS): s3://{source_bucket}/{source_key} → s3://{destination_bucket}/{destination_key}")
-
-            logger.info(f"Copied (meta + KMS): s3://{source_bucket}/{source_key} → s3://{destination_bucket}/{destination_key}")
+            # Perform the copy
+            response = self.s3_client.copy_object(**copy_args)
+            print(f"✅ Copied (meta + KMS + headers): s3://{source_bucket}/{source_key} → s3://{destination_bucket}/{destination_key}")
             return response
 
-        except ClientError as e:
-            logger.error(f"❌ Failed to copy object: s3://{source_bucket}/{source_key} → s3://{destination_bucket}/{destination_key}")
+        except Exception as e:
+            logger.error(f"❌ Failed to copy object: s3://{source_bucket}/{source_key} → s3://{destination_bucket}/{destination_key} | {e}")
             return None
+
     
     def upload_image_file_chunked(self,key: str,file_obj,content_type: str = None, progress_callback=None, base_chunk_size: int = 10 * 1024 * 1024):
         """
@@ -107,7 +130,7 @@ class S3FileHandler:
         uploaded_bytes = 0
         upload_error = None
         upload_id = None
-        s3 = self.s3_cleint
+        s3 = self.s3_client
         kms = self.kms_client
         bucket = self.bucket_name
 
@@ -277,7 +300,7 @@ class S3FileHandler:
             (data, content_type) - data is BytesIO if output_file is None, else file path
         """
         try:
-            s3 = self.s3_cleint
+            s3 = self.s3_client
             bucket = self.bucket_name
             
             # Get object metadata first to know file size

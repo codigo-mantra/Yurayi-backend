@@ -170,20 +170,20 @@ def testing_view(request):
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
     # email = 'krishnayadav.codigomantra@gmail.com'
-    email = 'krishnayadavpb07@gmail.com'
+    email = 'yadav2213@gmail.com'
     # email = "jaswinder.codigo@gmail.com"
     # email = "krishnayadav.codigomantra@gmail.com"
     # email = "gaheme9246@cnguopin.com"
     # email = 'wojaro52232390@bllibl.com'
     # email2 = 'jasvir.codigo@gmail.com'
     # import uuid
-    from userauth.models import User
-    user = User.objects.get(email = 'tapendrakaul@gmail.com')
-    is_pasword_set = user.has_usable_password()
-    user_password = user.password
-    if user_password == '' or user_password is None:
-        user.has_usable_password()
-    print(f'\n is_pasword_set: {is_pasword_set}')
+    # from userauth.models import User
+    # user = User.objects.get(email = 'tapendrakaul@gmail.com')
+    # is_pasword_set = user.has_usable_password()
+    # user_password = user.password
+    # if user_password == '' or user_password is None:
+    #     user.has_usable_password()
+    # print(f'\n is_pasword_set: {is_pasword_set}')
     # user.delete()
     # all_user = User.objects.all()
     # for user in all_user:
@@ -332,6 +332,10 @@ def testing_view(request):
         #             media.save()
         #             print(size)
         # res = generate_notification.apply_async()
+        
+        # delete user time-capsoul
+        user = User.objects.get(email = "amrita@gmail.com")
+        caps = TimeCapSoul.objects.filter(user = user, is_deleted = False, status = 'created').update(is_deleted = True)
     except:
         print('Not deleted')
     else:

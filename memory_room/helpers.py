@@ -624,6 +624,37 @@ def generate_unique_memory_room_name(user, base_name):
     unique_name = f"{base_name} ({next_counter})"
     return unique_name
 
+def generate_unique_file_name(existing_file_name, base_name, memory_room=False):
+    try:
+        existing_names = set(name.lower() for name in list(existing_file_name))
+
+
+        # If base_name not used, return directly
+        if memory_room == True:
+            if base_name.lower() not in existing_names:
+            # existing_names.append(base_name)
+                return base_name.lower()
+        else:
+            if base_name.lower().replace('.', '') not in existing_names:
+                # existing_names.append(base_name)
+                return base_name.lower()
+            
+
+        # Extract numeric suffixes like base_name_1, base_name_2
+        pattern = re.compile(rf"^{re.escape(base_name)} \((\d+)\)$", re.IGNORECASE)
+        counters = [
+            int(match.group(1))
+            for name in existing_names
+            if (match := pattern.match(name))
+        ]
+        next_counter = (max(counters) + 1) if counters else 1
+        # unique_name = f"{base_name} ({next_counter})"
+        full_name = base_name.split('.') 
+        unique_name =f' {full_name[0]}{next_counter}{full_name[-1]}'
+        return unique_name
+    except Exception as e:
+        return None
+   
 
 def create_time_capsoul(old_time_capsoul:TimeCapSoul, current_user:str, option_type='replica_creation', capsoul_name=None, capsoul_summary=None, cover_image=None):  
 
@@ -686,58 +717,51 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
         
         
         # file_bytes, content_type = get_media_file_bytes_with_content_type(old_media, current_user)
-        file_bytes, content_type = decrypt_s3_file_chunked(old_media.s3_key)
+        # file_bytes, content_type = decrypt_s3_file_chunked(old_media.s3_key)
         
-        if not file_bytes or not content_type:
-            raise Exception('File decryption failed')
-        else:
-            file_name  = f'{old_media.title.split(".", 1)[0].replace(" ", "_")}.{old_media.s3_key.split(".")[-1]}' # get file name 
-            file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
-            s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
+        # if not file_bytes or not content_type:
+            # raise Exception('File decryption failed')
+        # else:
+        file_name  = f'{old_media.title.split(".", 1)[0].replace(" ", "_")}.{old_media.s3_key.split(".")[-1]}' # get file name 
+        file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
+        s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
+        
+        res = s3_helper.copy_s3_object_preserve_meta_kms(
+            source_key=old_media.s3_key,
+            destination_key=s3_key
+        )
+        
+        thumbnail = old_media.thumbnail 
+        # if old_media.file_type == 'audio': # generate thumbnail for audio file
+        #     thumbnail = audio_thumbnail_generator(file_name=file_name, decrypted_bytes=file_bytes)
+        
+        from django.utils import timezone
+        created_at = timezone.localtime(timezone.now())
+        new_media = TimeCapSoulMediaFile.objects.create(
+            user = current_user,
+            time_capsoul = new_capsoul,
+            thumbnail = thumbnail,
+            media_refrence_replica = media_replica,
+            media_duplicate = media_duplicate,
+            # file = media.file,
+            file_type = old_media.file_type,
+            title = media_title,
+            description = media_description,
+            file_size = old_media.file_size,
+            s3_url = None,
+            s3_key = s3_key,
+            is_cover_image = set_as_cover_image,
+            created_at = created_at
+        )
             
-            # upload_file_to_s3_kms_chunked(
-            #     key=s3_key,
-            #     plaintext_bytes=file_bytes,
-            #     content_type=content_type,
-            #     progress_callback=None
-            # )
-            
-            res = s3_helper.copy_s3_object_preserve_meta_kms(
-                source_key=old_media.s3_key,
-                destination_key=s3_key
+        # new_media = create_media(media=old_media, new_capsoul=new_capsoul, current_user=current_user, thumbnail=thumbnail) # create media file in db
+        if new_media:
+            is_updated = update_users_storage(
+                operation_type='addition',
+                media_updation='capsoul', # update user storage
+                media_file=new_media
             )
-            
-            thumbnail = old_media.thumbnail 
-            # if old_media.file_type == 'audio': # generate thumbnail for audio file
-            #     thumbnail = audio_thumbnail_generator(file_name=file_name, decrypted_bytes=file_bytes)
-            
-            from django.utils import timezone
-            created_at = timezone.localtime(timezone.now())
-            new_media = TimeCapSoulMediaFile.objects.create(
-                user = current_user,
-                time_capsoul = new_capsoul,
-                thumbnail = thumbnail,
-                media_refrence_replica = media_replica,
-                media_duplicate = media_duplicate,
-                # file = media.file,
-                file_type = old_media.file_type,
-                title = media_title,
-                description = media_description,
-                file_size = old_media.file_size,
-                s3_url = None,
-                s3_key = s3_key,
-                is_cover_image = set_as_cover_image,
-                created_at = created_at
-            )
-                
-            # new_media = create_media(media=old_media, new_capsoul=new_capsoul, current_user=current_user, thumbnail=thumbnail) # create media file in db
-            if new_media:
-                update_users_storage(
-                    operation_type='addition',
-                    media_updation='capsoul', # update user storage
-                    media_file=new_media
-                )
-                is_created = True
+            is_created = True
     except Exception as e:
             logger.error(f'Exception while create media fiele {option_type} for media id: {old_media.id} user: {current_user.email} error-message: {e}')
             return None

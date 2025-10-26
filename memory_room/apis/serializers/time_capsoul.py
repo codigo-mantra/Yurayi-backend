@@ -8,7 +8,7 @@ from django.shortcuts import get_object_or_404
 from userauth.models import User
 from django.core.cache import cache
 from memory_room.helpers import (
-    upload_file_to_s3_kms,create_parent_media_files_replica_upload_to_s3_bucket,upload_file_to_s3_kms_chunked,create_time_capsoul,create_time_capsoul_media_file, generate_unique_capsoul_name,user_capsoul_name_list
+    upload_file_to_s3_kms,create_parent_media_files_replica_upload_to_s3_bucket,upload_file_to_s3_kms_chunked,create_time_capsoul,create_time_capsoul_media_file, generate_unique_capsoul_name,user_capsoul_name_list, generate_unique_file_name
 )
 
 from memory_room.signals import update_user_storage
@@ -470,6 +470,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
     
     def validate(self, attrs):
         """Perform validation for file, IV, and type."""
+        time_capsoul = self.context.get('time_capsoul')
         file = attrs.get('file')
         iv = attrs.get('iv')
 
@@ -485,6 +486,15 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         attrs['file_type'] = file_type
 
         file_name = clean_filename(file.name)
+        capsoul_media = time_capsoul.timecapsoul_media_files.all()
+        keys = capsoul_media.values_list('s3_key', flat = True)
+        name =[k.split('/')[-1] for k in keys ]
+        if name:
+            unique_file_name = generate_unique_file_name(existing_file_name=name, base_name= file_name)
+            attrs['unique_file_name'] = unique_file_name
+        else:
+            attrs['unique_file_name'] = file_name
+
         file.name = file_name
         attrs['title'] = file_name
 
@@ -503,9 +513,10 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         progress_callback = self.context.get('progress_callback')
 
         file = validated_data.pop('file')
-        file_name = file.name
+        # file_name = file.name
         iv = validated_data.pop('iv')
         file_type = validated_data.get('file_type')
+        file_name = validated_data.pop('unique_file_name')
 
         validated_data['user'] = user
         validated_data['time_capsoul'] = time_capsoul
@@ -686,12 +697,22 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
             old_media_count = parent_media_files.count()   
             for parent_file in parent_media_files:
                 try:
-                    is_media_created = create_time_capsoul_media_file(
-                        old_media=parent_file,
-                        new_capsoul=replica_instance,
-                        current_user = current_user,
-                        option_type = 'replica_creation',
-                    )
+                    if parent_file.id == instance.id:
+                        is_media_created = create_time_capsoul_media_file(
+                            old_media=parent_file,
+                            new_capsoul=replica_instance,
+                            current_user = current_user,
+                            option_type = 'replica_creation',
+                            updated_media_title=title,
+                            updated_media_description=description
+                        )
+                    else:
+                        is_media_created = create_time_capsoul_media_file(
+                            old_media=parent_file,
+                            new_capsoul=replica_instance,
+                            current_user = current_user,
+                            option_type = 'replica_creation',
+                        )
                 except Exception as e:
                     logger.exception(F'Exception while creating time-capsoul media-file replica for media-file id {parent_file.id} and user {user.email}')
                     pass
