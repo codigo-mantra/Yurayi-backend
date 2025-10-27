@@ -714,3 +714,138 @@ def auto_format_size(size_kb: float, round_digit=5):
         return value, unit
     except Exception:
         return 0, "KB"
+
+def convert_video_to_mp4_bytes(file_bytes, source_format):
+    """
+    Convert video bytes to MP4 format using ffmpeg.
+    Supports: MKV, AVI, WMV, FLV, WEBM, MOV, and other formats.
+    
+    Strategy:
+    1. Try fast container rewrap first (copy codecs) - works for compatible codecs
+    2. Fall back to re-encoding if rewrap fails - ensures compatibility
+    
+    Args:
+        file_bytes: Raw video file bytes
+        source_format: Original file extension (e.g., '.mkv', '.avi', '.wmv', 'mkv', 'avi')
+    
+    Returns:
+        (mp4_bytes, content_type) tuple
+    
+    Raises:
+        Exception if conversion fails completely
+    """
+    input_path = None
+    output_path = None
+    
+    # Normalize source format
+    if not source_format.startswith('.'):
+        source_format = f'.{source_format}'
+    source_format = source_format.lower()
+
+    try:
+        # Create temporary input file
+        with tempfile.NamedTemporaryFile(suffix=source_format, delete=False) as tmp_in:
+            tmp_in.write(file_bytes)
+            input_path = tmp_in.name
+
+        output_path = input_path.replace(source_format, ".mp4")
+
+        # Determine if we should skip fast rewrap for certain formats
+        # WMV, FLV, and AVI often have incompatible codecs, so skip straight to re-encoding
+        skip_rewrap_formats = ['.wmv', '.flv', '.avi']
+        should_try_rewrap = source_format not in skip_rewrap_formats
+        
+        # First attempt: Fast container rewrap (no re-encoding)
+        # This works when video/audio codecs are already MP4-compatible (e.g., MKV with H.264)
+        if should_try_rewrap:
+            try:
+                logger.info(f"Attempting fast rewrap for {source_format} to MP4")
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y", 
+                        "-i", input_path,
+                        "-c", "copy",  # Copy streams without re-encoding
+                        "-movflags", "+faststart",  # Enable web streaming
+                        output_path
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                    timeout=60  # 60 second timeout for rewrap
+                )
+                
+                # Read and return converted file
+                with open(output_path, "rb") as f:
+                    converted_bytes = f.read()
+                
+                logger.info(f"Fast rewrap successful: {source_format} -> MP4 ({len(converted_bytes)} bytes)")
+                return converted_bytes, "video/mp4"
+                
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as rewrap_error:
+                logger.info(f"Fast rewrap not compatible for {source_format}, using re-encoding")
+            
+                # Clean up failed output if exists
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+        else:
+            logger.info(f"Skipping rewrap for {source_format}, using direct re-encoding")
+        
+        # Re-encoding: Full conversion with compatible codecs
+        # This ensures maximum compatibility but takes longer
+        logger.info(f"Re-encoding {source_format} to MP4 with H.264/AAC")
+        
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                # Video: H.264 codec (universally supported)
+                "-c:v", "libx264",
+                "-preset", "fast",  # Balance speed vs compression
+                "-crf", "23",  # Quality (18-28, lower = better quality)
+                "-maxrate", "5M",  # Max bitrate
+                "-bufsize", "10M",  # Buffer size
+                # Audio: AAC codec (universally supported)
+                "-c:a", "aac",
+                "-b:a", "192k",  # Audio bitrate
+                "-ar", "48000",  # Sample rate
+                # MP4 optimization
+                "-movflags", "+faststart",  # Enable web streaming
+                "-pix_fmt", "yuv420p",  # Compatibility with older players
+                # Output
+                output_path
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            timeout=300  # 5 minute timeout for re-encoding
+        )
+        
+        # Read and return re-encoded file
+        with open(output_path, "rb") as f:
+            converted_bytes = f.read()
+        
+        logger.info(f"Re-encoding successful: {source_format} -> MP4 ({len(converted_bytes)} bytes)")
+        return converted_bytes, "video/mp4"
+
+    except subprocess.CalledProcessError as e:
+        error_output = e.stderr.decode(errors='ignore') if e.stderr else "No error output"
+        logger.error(f"ffmpeg conversion failed for {source_format}: {error_output}")
+        raise Exception(f"Video conversion failed: {error_output[:500]}")
+    
+    except subprocess.TimeoutExpired as e:
+        logger.error(f"ffmpeg conversion timed out for {source_format}")
+        raise Exception(f"Video conversion timed out after {e.timeout} seconds")
+    
+    except Exception as e:
+        logger.error(f"Unexpected error in {source_format} conversion: {e}")
+        raise Exception(f"Video conversion error: {str(e)}")
+    
+    finally:
+        # Cleanup temp files
+        cleanup_files = [input_path, output_path]
+        for file_path in cleanup_files:
+            try:
+                if file_path and os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to clean up {file_path}: {cleanup_err}")

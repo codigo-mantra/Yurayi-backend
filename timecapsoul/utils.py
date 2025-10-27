@@ -79,36 +79,105 @@ class MediaThumbnailExtractor:
         except Exception as e:
             logger.error("Thumbnail extraction failed")
         return None
+    # working one
+    # def extract_video_thumbnail_from_bytes(self, extension, decrypted_bytes):
+    #     """
+    #     Extract a thumbnail (JPEG bytes) from a decrypted video byte stream.
+    #     Works for common formats: .mp4, .mov, .avi, .mkv
+    #     """
+    #     if extension.lower() not in ['.mp4', '.mov', '.avi', '.mkv']:
+    #         return None
+
+    #     try:  
+            
+    #         # Write decrypted bytes to a temporary file
+    #         with tempfile.NamedTemporaryFile(suffix=extension, delete=True) as tmp_file:
+    #             tmp_file.write(decrypted_bytes)
+    #             tmp_file.flush()
+
+    #             # Load video
+    #             clip = VideoFileClip(tmp_file.name)
+    #             frame = clip.get_frame(0.5)  # frame at 0.5 sec (you can adjust)
+
+    #             # Convert frame (numpy array) → image bytes
+    #             img = Image.fromarray(frame)
+    #             img_bytes = BytesIO()
+    #             img.save(img_bytes, format="JPEG")
+    #             clip.close()
+
+    #             return img_bytes.getvalue()
+
+    #     except Exception as e:
+    #         logger.error(f"Video thumbnail extraction failed: {e}")
+    #         return None
     
     def extract_video_thumbnail_from_bytes(self, extension, decrypted_bytes):
         """
         Extract a thumbnail (JPEG bytes) from a decrypted video byte stream.
-        Works for common formats: .mp4, .mov, .avi, .mkv
+        Works for common formats: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v
         """
-        if extension.lower() not in ['.mp4', '.mov', '.avi', '.mkv']:
+        supported_extensions = ['.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.m4v']
+        
+        if extension.lower() not in supported_extensions:
             return None
 
-        try:  
-            
+        try:
             # Write decrypted bytes to a temporary file
-            with tempfile.NamedTemporaryFile(suffix=extension, delete=True) as tmp_file:
+            with tempfile.NamedTemporaryFile(suffix=extension, delete=False) as tmp_file:
                 tmp_file.write(decrypted_bytes)
-                tmp_file.flush()
+                tmp_file_path = tmp_file.name
 
-                # Load video
-                clip = VideoFileClip(tmp_file.name)
-                frame = clip.get_frame(0.5)  # frame at 0.5 sec (you can adjust)
-
+            try:
+                # Load video with error handling
+                clip = VideoFileClip(tmp_file_path, audio=False)  # Disable audio for faster loading
+                
+                # Get video duration and calculate safe frame position
+                duration = clip.duration
+                
+                # Try multiple frame positions in case one fails
+                frame_positions = [
+                    min(0.5, duration / 2),  # 0.5 sec or middle of short videos
+                    min(1.0, duration / 3),  # 1 sec or 1/3 of video
+                    min(2.0, duration / 4),  # 2 sec or 1/4 of video
+                    0.0  # First frame as last resort
+                ]
+                
+                frame = None
+                for position in frame_positions:
+                    try:
+                        frame = clip.get_frame(position)
+                        if frame is not None and frame.size > 0:
+                            break
+                    except Exception as frame_error:
+                        logger.warning(f"Failed to extract frame at {position}s: {frame_error}")
+                        continue
+                
+                if frame is None:
+                    raise Exception("Could not extract any frame from video")
+                
                 # Convert frame (numpy array) → image bytes
                 img = Image.fromarray(frame)
+                
+                # Resize if too large (optional optimization)
+                max_size = (800, 800)
+                img.thumbnail(max_size, Image.Resampling.LANCZOS)
+                
                 img_bytes = BytesIO()
-                img.save(img_bytes, format="JPEG")
+                img.save(img_bytes, format="JPEG", quality=85, optimize=True)
+                
                 clip.close()
-
+                
                 return img_bytes.getvalue()
+                
+            finally:
+                # Clean up temporary file
+                try:
+                    os.unlink(tmp_file_path)
+                except Exception as cleanup_error:
+                    logger.warning(f"Failed to cleanup temp file {tmp_file_path}: {cleanup_error}")
 
         except Exception as e:
-            logger.error(f"Video thumbnail extraction failed: {e}")
+            logger.error(f"Video thumbnail extraction failed for {extension}: {e}")
             return None
     
     def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):

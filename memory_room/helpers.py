@@ -650,7 +650,7 @@ def generate_unique_file_name(existing_file_name, base_name, memory_room=False):
         next_counter = (max(counters) + 1) if counters else 1
         # unique_name = f"{base_name} ({next_counter})"
         full_name = base_name.split('.') 
-        unique_name =f' {full_name[0]}{next_counter}{full_name[-1]}'
+        unique_name =f' {full_name[0]}{next_counter}.{full_name[-1]}'
         return unique_name
     except Exception as e:
         return None
@@ -722,8 +722,10 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
         # if not file_bytes or not content_type:
             # raise Exception('File decryption failed')
         # else:
-        file_name  = f'{old_media.title.split(".", 1)[0].replace(" ", "_")}.{old_media.s3_key.split(".")[-1]}' # get file name 
-        file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
+        # file_name  = f'{old_media.title.split(".", 1)[0].replace(" ", "_")}.{old_media.s3_key.split(".")[-1]}' # get file name 
+        file_name  = old_media.s3_key.split('/')[-1]
+        
+        # file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
         s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
         
         res = s3_helper.copy_s3_object_preserve_meta_kms(
