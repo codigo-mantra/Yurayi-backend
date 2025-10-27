@@ -52,6 +52,7 @@ from memory_room.utils import determine_download_chunk_size,convert_doc_to_docx_
 from memory_room.tasks import update_memory_room_occupied_storage
 
 logger = logging.getLogger(__name__)
+from memory_room.s3_helpers import s3_helper
 
 from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file,get_decrypt_file_bytes,get_media_file_bytes_with_content_type,generate_room_media_s3_key
 from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_file_size
@@ -963,21 +964,26 @@ def create_duplicate_room(room:MemoryRoom):
             
             for media in media_files:
                 try:
-                    file_bytes, content_type = get_media_file_bytes_with_content_type(media, user)
-                    if not file_bytes or not content_type:
-                        raise Exception('File decryption failed')
-                    else:
+                    # file_bytes, content_type = get_media_file_bytes_with_content_type(media, user)
+                    # if not file_bytes or not content_type:
+                        # raise Exception('File decryption failed')
+                    # else:
                         file_name  = f'{media.title.split(".", 1)[0].replace(" ", "_")}.{media.s3_key.split(".")[-1]}' # get file name 
                         file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
                         s3_key = generate_room_media_s3_key(file_name, user.s3_storage_id, room.id)
                         
-                        upload_file_to_s3_kms_chunked(
-                            key=s3_key,
-                            plaintext_bytes=file_bytes,
-                            content_type=content_type,
-                            progress_callback=None
-                        )
+                        # upload_file_to_s3_kms_chunked(
+                        #     key=s3_key,
+                        #     plaintext_bytes=file_bytes,
+                        #     content_type=content_type,
+                        #     progress_callback=None
+                        # )
                         
+                        res = s3_helper.copy_s3_object_preserve_meta_kms(
+                            source_key=media.s3_key,
+                            destination_key=s3_key
+                        )
+                                        
                         new_media = MemoryRoomMediaFile.objects.create(
                             user = media.user,
                             memory_room = new_room,
@@ -1007,7 +1013,7 @@ def create_duplicate_room(room:MemoryRoom):
                     
                 except Exception as e:
                     logger.error(f'Exception while creating media file duplicate for media: {media.id} and room: {room.id} user: {room.user.email}')
-            
+            print(f'Room duplication creation completed for user: {room.user.email} room-id: {room.id} old media files count: {old_files_count} duplicate file count: {duplicate_media_count}')
             logger.info(f'Room duplication creation completed for user: {room.user.email} room-id: {room.id} old media files count: {old_files_count} duplicate file count: {duplicate_media_count}')
             
         
