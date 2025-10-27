@@ -109,8 +109,8 @@ def get_file_category(file_name):
     extension = os.path.splitext(file_name)[1].lower()
 
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic', '.heif', '.svg', '.ico', '.raw', '.psd'}
-    video_extensions = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp', '.mpeg', '.mpg', '.ts', '.m4v'}
-    audio_extensions = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', '.aiff', '.m4a', '.opus', '.amr'}
+    video_extensions = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp',  '.mpg', '.ts', '.m4v'}
+    audio_extensions = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', '.aiff', '.m4a', '.opus', '.amr','.mpeg',}
     
     # Grouped as "other" valid type
     other_extensions = {'.txt', '.doc', '.docx', '.pdf', '.rtf', '.odt', '.md', '.tex',
@@ -839,6 +839,159 @@ def convert_video_to_mp4_bytes(file_bytes, source_format):
     except Exception as e:
         logger.error(f"Unexpected error in {source_format} conversion: {e}")
         raise Exception(f"Video conversion error: {str(e)}")
+    
+    finally:
+        # Cleanup temp files
+        cleanup_files = [input_path, output_path]
+        for file_path in cleanup_files:
+            try:
+                if file_path and os.path.exists(file_path):
+                    os.remove(file_path)
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to clean up {file_path}: {cleanup_err}")
+                
+                
+def convert_audio_to_mp3_bytes(file_bytes, source_format):
+    """
+    Convert audio bytes to MP3 format using ffmpeg.
+    Supports: WAV, FLAC, OGG, AAC, M4A, WMA, OPUS, AIFF, APE, MPEG audio, and other formats.
+    Also extracts audio from video files (MPEG, MPG, MP4, etc.) and converts to MP3.
+    
+    Strategy:
+    1. Try fast codec copy first for already-compatible formats
+    2. Fall back to re-encoding with high-quality MP3 settings
+    3. Extract audio from video files if needed
+    
+    Args:
+        file_bytes: Raw audio file bytes (or video file bytes for audio extraction)
+        source_format: Original file extension (e.g., '.wav', '.flac', '.mpeg', 'wav', 'flac', 'mpeg')
+    
+    Returns:
+        (mp3_bytes, content_type) tuple
+    
+    Raises:
+        Exception if conversion fails completely
+    """
+    input_path = None
+    output_path = None
+    
+    # Normalize source format
+    if not source_format.startswith('.'):
+        source_format = f'.{source_format}'
+    source_format = source_format.lower()
+
+    try:
+        # Create temporary input file
+        with tempfile.NamedTemporaryFile(suffix=source_format, delete=False) as tmp_in:
+            tmp_in.write(file_bytes)
+            input_path = tmp_in.name
+
+        output_path = input_path.replace(source_format, ".mp3")
+
+        # Most audio formats need re-encoding to MP3
+        # Only try codec copy for formats that are already MP3-based
+        mp3_compatible_formats = ['.mp3']
+        should_try_copy = source_format in mp3_compatible_formats
+        
+        # First attempt: Fast codec copy (only for MP3 files, e.g., fixing metadata)
+        if should_try_copy:
+            try:
+                logger.info(f"Attempting fast copy for {source_format}")
+                subprocess.run(
+                    [
+                        "ffmpeg", "-y", 
+                        "-i", input_path,
+                        "-c:a", "copy",  # Copy audio stream
+                        "-map_metadata", "0",  # Preserve metadata
+                        output_path
+                    ],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    check=True,
+                    timeout=30
+                )
+                
+                # Read and return file
+                with open(output_path, "rb") as f:
+                    converted_bytes = f.read()
+                
+                logger.info(f"Fast copy successful: {source_format} -> MP3 ({len(converted_bytes)} bytes)")
+                return converted_bytes, "audio/mpeg"
+                
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as copy_error:
+                logger.info(f"Fast copy failed for {source_format}, using re-encoding")
+                
+                # Clean up failed output if exists
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+        else:
+            logger.info(f"Re-encoding {source_format} to MP3")
+        
+        # Re-encoding: Convert to high-quality MP3
+        logger.info(f"Converting {source_format} to MP3 with high-quality settings")
+        
+        # Determine quality settings based on source format
+        # Lossless formats (FLAC, WAV, AIFF, APE) -> Higher bitrate
+        # Lossy formats (OGG, AAC, M4A, WMA, OPUS) -> Standard bitrate
+        # Video formats (MPEG, MPG, MP4, etc.) -> Extract audio with good quality
+        lossless_formats = ['.flac', '.wav', '.aiff', '.ape', '.alac']
+        video_formats = ['.mpeg', '.mpg', '.mp4', '.avi', '.mkv', '.mov', '.wmv', '.flv', '.webm', '.m2v', '.vob']
+        
+        if source_format in lossless_formats:
+            bitrate = "320k"  # Maximum quality for lossless sources
+            quality_mode = "CBR"  # Constant bitrate
+        elif source_format in video_formats:
+            bitrate = "256k"  # High quality for video audio extraction
+            quality_mode = "VBR"
+            logger.info(f"Extracting audio from video format {source_format}")
+        else:
+            bitrate = "192k"  # Good quality for already-lossy sources
+            quality_mode = "VBR"
+        
+        logger.info(f"Using {quality_mode} mode with bitrate {bitrate}")
+        
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                # MP3 codec with high quality
+                "-c:a", "libmp3lame",
+                "-b:a", bitrate,  # Audio bitrate
+                "-ar", "48000",  # Sample rate (48kHz for high quality)
+                "-ac", "2",  # Stereo
+                # Quality settings
+                "-q:a", "2",  # VBR quality (0-9, lower = better, 2 = high quality)
+                # Metadata preservation
+                "-map_metadata", "0",
+                "-id3v2_version", "3",  # ID3v2.3 tags (most compatible)
+                # Output
+                output_path
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            timeout=180  # 3 minute timeout
+        )
+        
+        # Read and return converted file
+        with open(output_path, "rb") as f:
+            converted_bytes = f.read()
+        
+        logger.info(f"MP3 conversion successful: {source_format} -> MP3 ({len(converted_bytes)} bytes)")
+        return converted_bytes, "audio/mpeg"
+
+    except subprocess.CalledProcessError as e:
+        error_output = e.stderr.decode(errors='ignore') if e.stderr else "No error output"
+        logger.error(f"ffmpeg audio conversion failed for {source_format}: {error_output}")
+        raise Exception(f"Audio conversion failed: {error_output[:500]}")
+    
+    except subprocess.TimeoutExpired as e:
+        logger.error(f"ffmpeg audio conversion timed out for {source_format}")
+        raise Exception(f"Audio conversion timed out after {e.timeout} seconds")
+    
+    except Exception as e:
+        logger.error(f"Unexpected error in {source_format} audio conversion: {e}")
+        raise Exception(f"Audio conversion error: {str(e)}")
     
     finally:
         # Cleanup temp files

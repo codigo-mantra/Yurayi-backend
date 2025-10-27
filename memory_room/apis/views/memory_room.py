@@ -55,7 +55,7 @@ logger = logging.getLogger(__name__)
 from memory_room.s3_helpers import s3_helper
 
 from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file,get_decrypt_file_bytes,get_media_file_bytes_with_content_type,generate_room_media_s3_key
-from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_file_size, convert_video_to_mp4_bytes
+from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_file_size, convert_video_to_mp4_bytes, convert_audio_to_mp3_bytes
 
 class MemoryRoomCoverView(SecuredView):
     """
@@ -1065,6 +1065,8 @@ class ServeMedia(SecuredView):
             is_mkv = file_ext.endswith('.mkv')
             is_avi = file_ext.endswith('.avi')
             is_wmv = file_ext.endswith('.wmv')
+            is_mpeg = file_ext.endswith('.mpeg')
+
             
             
             # Get file bytes from cache or decrypt
@@ -1107,16 +1109,22 @@ class ServeMedia(SecuredView):
                 content_type = "image/jpeg"
                 filename = filename.replace(".heic", ".jpg").replace(".heif", ".jpg")
             
-            elif is_mkv or is_wmv or is_avi:
+            elif is_mkv or is_wmv or is_avi or is_mpeg:
                 mp4_cache_key = f'{bytes_cache_key}_mp4'
                 mp4_bytes = cache.get(mp4_cache_key)
                 if not mp4_bytes:
                     try:
-                        # mp4_bytes, _ = convert_mkv_to_mp4_bytes(file_bytes)
-                        mp4_bytes, _ = convert_video_to_mp4_bytes(
+                        if is_mpeg :
+                            
+                            mp4_bytes, _ = convert_audio_to_mp3_bytes(
+                                source_format = f'.{extension}',
+                                file_bytes = file_bytes
+                            )
+                        else:
+                            mp4_bytes, _ = convert_video_to_mp4_bytes(
                             source_format = f'.{extension}',
                             file_bytes = file_bytes
-                        )
+                            )
                         cache.set(mp4_cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
                     except Exception as e:
                         logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")

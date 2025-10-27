@@ -116,7 +116,7 @@ class MediaThumbnailExtractor:
         Extract a thumbnail (JPEG bytes) from a decrypted video byte stream.
         Works for common formats: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v
         """
-        supported_extensions = ['.mp4', '.mov', '.avi', '.mkv', '.wmv', '.flv', '.webm', '.m4v']
+        supported_extensions = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp', '.mpeg', '.mpg', '.ts', '.m4v']
         
         if extension.lower() not in supported_extensions:
             return None
@@ -181,7 +181,7 @@ class MediaThumbnailExtractor:
             return None
     
     def extract_audio_thumbnail_from_bytes(self, extension, decrypted_bytes):
-        if extension  not in ['.mp3', '.m4a', '.mp4', '.flac']:
+        if extension  not in ['.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', '.aiff', '.m4a', '.opus', '.amr', '.mpeg',]:
             return None
         try:
             data = BytesIO(decrypted_bytes)

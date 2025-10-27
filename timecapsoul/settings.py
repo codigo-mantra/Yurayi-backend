@@ -38,8 +38,12 @@ if ENVIRONMENT_TYPE == 'PROD':
 else:
     DEBUG = True
 
-    
-ALLOWED_HOSTS = ["*"] 
+DEBUG = True
+
+ALLOWED_HOSTS = ["app.yurayi.com", "127.0.0.1", "localhost"]
+
+print(f'\n ---- Project running is env type: {ENVIRONMENT_TYPE}  and debug mode: {DEBUG} ---')
+
 
 # Application definition
 INSTALLED_APPS = [
@@ -145,8 +149,6 @@ else:
         }
     }
 
-    
-
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -186,6 +188,8 @@ if ENVIRONMENT_TYPE == 'PROD':
     COOKIE_DOMAIN = ".yurayi.com"
     SESSION_COOKIE_DOMAIN = ".yurayi.com"
     CSRF_COOKIE_DOMAIN = ".yurayi.com"
+    SameSite = None
+    Secure = True
     
     ACCESS_COOKIE_SECURE = True
     REFRESH_COOKIE_SECURE = True
@@ -210,6 +214,8 @@ if ENVIRONMENT_TYPE == 'PROD':
     DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
     MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
 else:
+    SameSite = None
+    Secure = True
     CSRF_COOKIE_DOMAIN = None
     COOKIE_DOMAIN = None
     ACCESS_COOKIE_SECURE = True
@@ -340,9 +346,9 @@ SIMPLE_JWT = {
     "REFRESH_TOKEN_LIFETIME": timedelta(days=15),
 
     "AUTH_COOKIE": "access",          # Cookie name
-    "AUTH_COOKIE_SECURE": False,      # True in prod
+    "AUTH_COOKIE_SECURE": True if DEBUG == False else False,      # True in prod
     "AUTH_COOKIE_HTTP_ONLY": True,
-    "AUTH_COOKIE_SAMESITE": "Lax",
+    "AUTH_COOKIE_SAMESITE": None if DEBUG == False else  "Lax",
 }
 
 ACCESS_TOKEN_TTL_MINUTES = 15
@@ -375,11 +381,15 @@ CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://yurayi.com",
+    "https://app.yurayi.com",
+
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
-    "https://yurayi.com"
+    "https://yurayi.com",
+    "https://app.yurayi.com",
+
 ]
 
 CACHES = {
@@ -406,7 +416,7 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 import urllib.parse
 from kombu import Queue
 # SQS Confuguration 
-if ENVIRONMENT_TYPE == "PROD":
+if ENVIRONMENT_TYPE == "DEV":
     aws_secret_escaped = urllib.parse.quote(AWS_SECRET_ACCESS_KEY, safe='')  # encode all special chars
     CELERY_BROKER_URL = f"sqs://{AWS_ACCESS_KEY_ID}:{aws_secret_escaped}@"
     CELERY_BROKER_TRANSPORT_OPTIONS = {
