@@ -116,7 +116,7 @@ class MediaThumbnailExtractor:
         Extract a thumbnail (JPEG bytes) from a decrypted video byte stream.
         Works for common formats: .mp4, .mov, .avi, .mkv, .wmv, .flv, .webm, .m4v
         """
-        supported_extensions = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp', '.mpeg', '.mpg', '.ts', '.m4v']
+        supported_extensions = ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp', '.mpeg', '.mpg', '.ts', '.m4v','.mpeg',]
         
         if extension.lower() not in supported_extensions:
             return None

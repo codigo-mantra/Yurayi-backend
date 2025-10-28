@@ -634,3 +634,19 @@ class MemoryRoomMediaFileDescriptionUpdateSerializer(serializers.ModelSerializer
     class Meta:
         model = MemoryRoomMediaFile
         fields = ['description', 'title']
+    
+    def validate(self, attrs):
+        instance = self.instance
+
+        title = attrs.get('title')
+
+        if instance and instance.s3_key:
+            file_extension = f".{instance.s3_key.split('/')[-1].split('.')[-1]}"
+        else:
+            file_extension = ""
+
+        if title and not str(title).endswith(file_extension):
+            attrs['title'] = f"{title}{file_extension}"
+
+        return attrs
+            

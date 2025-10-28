@@ -1508,3 +1508,131 @@ def decrypt_s3_file_chunked_range(key: str, start: int = 0, end: int | None = No
             del data_key
 
 
+
+
+
+class ChunkedDecryptor:
+    """
+    Generator-based decryptor that yields plaintext chunks on-demand.
+    Minimizes memory usage by streaming decryption.
+    """
+    def __init__(self, s3_key):
+        self.s3_key = s3_key
+        self.kms = kms
+        self.s3 = s3
+        self.bucket = MEDIA_FILES_BUCKET
+        self.data_key = None
+        self.aesgcm = None
+        self.chunk_size = None
+        self.total_size = 0
+        self.metadata = {}
+        
+    def __enter__(self):
+        """Initialize decryption context."""
+        try:
+            # Get metadata without reading body
+            obj = self.s3.get_object(Bucket=self.bucket, Key=self.s3_key)
+            self.metadata = obj.get("Metadata", {})
+            self.total_size = obj['ContentLength']
+            
+            if "edk" not in self.metadata:
+                raise ValueError("Missing encrypted data key (edk) in metadata")
+            
+            # Decrypt KMS data key
+            encrypted_data_key = base64.b64decode(self.metadata["edk"])
+            self.data_key = self.kms.decrypt(CiphertextBlob=encrypted_data_key)["Plaintext"]
+            self.aesgcm = AESGCM(self.data_key)
+            
+            # Get chunk size from metadata
+            chunk_size_str = self.metadata.get("chunk-size")
+            if chunk_size_str:
+                self.chunk_size = int(chunk_size_str)
+                logger.info(f"Using stored chunk size: {self.chunk_size}")
+            else:
+                # Default fallback
+                self.chunk_size = 10 * 1024 * 1024  # 10MB
+                logger.warning(f"No chunk-size in metadata, using default: {self.chunk_size}")
+            
+            # Store the streaming body for later use
+            self.s3_stream = obj["Body"]
+            
+            return self
+            
+        except Exception as e:
+            logger.error(f"Failed to initialize decryptor for {self.s3_key}: {e}")
+            self.cleanup()
+            raise
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """Cleanup resources."""
+        self.cleanup()
+    
+    def cleanup(self):
+        """Securely cleanup sensitive data."""
+        if hasattr(self, 's3_stream') and self.s3_stream:
+            self.s3_stream.close()
+        if self.data_key:
+            del self.data_key
+        if self.aesgcm:
+            del self.aesgcm
+    
+    def decrypt_chunks(self, start_byte=0, end_byte=None):
+        """
+        Generator that yields decrypted chunks.
+        
+        Args:
+            start_byte: Starting byte position in decrypted data (for Range requests)
+            end_byte: Ending byte position in decrypted data (for Range requests)
+        
+        Yields:
+            bytes: Decrypted plaintext chunks
+        """
+        if end_byte is None:
+            end_byte = float('inf')
+        
+        # Calculate encrypted chunk size (plaintext + 16-byte tag + 12-byte nonce)
+        encrypted_chunk_size = self.chunk_size + 16 + 12
+        
+        decrypted_offset = 0  # Track position in decrypted stream
+        chunk_num = 0
+        
+        # Read encrypted data in chunks from S3
+        while True:
+            chunk_num += 1
+            
+            # Read nonce (12 bytes)
+            nonce = self.s3_stream.read(12)
+            if len(nonce) < 12:
+                logger.debug(f"End of stream at chunk {chunk_num}")
+                break
+            
+            # Read ciphertext + tag
+            ciphertext_with_tag = self.s3_stream.read(self.chunk_size + 16)
+            if len(ciphertext_with_tag) < 16:
+                logger.warning(f"Insufficient data for auth tag at chunk {chunk_num}")
+                break
+            
+            try:
+                # Decrypt chunk
+                decrypted_chunk = self.aesgcm.decrypt(nonce, ciphertext_with_tag, None)
+                chunk_size = len(decrypted_chunk)
+                chunk_end = decrypted_offset + chunk_size
+                
+                # Check if this chunk overlaps with requested range
+                if chunk_end > start_byte and decrypted_offset < end_byte:
+                    # Calculate slice within this chunk
+                    slice_start = max(0, start_byte - decrypted_offset)
+                    slice_end = min(chunk_size, end_byte - decrypted_offset)
+                    
+                    yield decrypted_chunk[slice_start:slice_end]
+                
+                decrypted_offset = chunk_end
+                
+                # Stop if we've passed the requested end
+                if decrypted_offset >= end_byte:
+                    break
+                    
+            except InvalidTag as e:
+                logger.error(f"InvalidTag at chunk {chunk_num}: {e}")
+                raise ValueError(f"Decryption failed at chunk {chunk_num}")
+

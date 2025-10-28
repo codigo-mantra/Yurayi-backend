@@ -109,8 +109,8 @@ def get_file_category(file_name):
     extension = os.path.splitext(file_name)[1].lower()
 
     image_extensions = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', '.heic', '.heif', '.svg', '.ico', '.raw', '.psd'}
-    video_extensions = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp',  '.mpg', '.ts', '.m4v'}
-    audio_extensions = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', '.aiff', '.m4a', '.opus', '.amr','.mpeg',}
+    video_extensions = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', '.3gp',  '.mpg', '.ts', '.m4v','.mpeg'}
+    audio_extensions = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', '.aiff', '.m4a', '.opus', '.amr',}
     
     # Grouped as "other" valid type
     other_extensions = {'.txt', '.doc', '.docx', '.pdf', '.rtf', '.odt', '.md', '.tex',
@@ -1002,3 +1002,115 @@ def convert_audio_to_mp3_bytes(file_bytes, source_format):
                     os.remove(file_path)
             except Exception as cleanup_err:
                 logger.warning(f"Failed to clean up {file_path}: {cleanup_err}")
+
+
+
+
+def convert_mpeg_to_mp4_bytes(file_bytes):
+    """
+    Convert .MPEG video bytes to MP4 format using ffmpeg.
+    
+    Strategy:
+    1. Attempt fast container rewrap first (copy codecs)
+    2. Fall back to full re-encoding with H.264/AAC for compatibility
+    
+    Args:
+        file_bytes: Raw MPEG video bytes
+    
+    Returns:
+        (mp4_bytes, content_type)
+    
+    Raises:
+        Exception if conversion fails
+    """
+    input_path = None
+    output_path = None
+    
+    try:
+        # Create temporary input .mpeg file
+        with tempfile.NamedTemporaryFile(suffix=".mpeg", delete=False) as tmp_in:
+            tmp_in.write(file_bytes)
+            input_path = tmp_in.name
+        
+        output_path = input_path.replace(".mpeg", ".mp4")
+
+        # Step 1: Try fast container rewrap (no re-encoding)
+        try:
+            logger.info("Attempting fast rewrap for MPEG → MP4")
+            subprocess.run(
+                [
+                    "ffmpeg", "-y",
+                    "-i", input_path,
+                    "-c", "copy",
+                    "-movflags", "+faststart",
+                    output_path
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=True,
+                timeout=60
+            )
+
+            with open(output_path, "rb") as f:
+                converted_bytes = f.read()
+
+            logger.info(f"Fast rewrap successful for MPEG → MP4 ({len(converted_bytes)} bytes)")
+            return converted_bytes, "video/mp4"
+
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+            logger.info("Fast rewrap failed for MPEG, falling back to re-encoding")
+
+            if os.path.exists(output_path):
+                os.remove(output_path)
+
+        # Step 2: Full re-encode using H.264 and AAC
+        logger.info("Re-encoding MPEG → MP4 with H.264/AAC")
+        subprocess.run(
+            [
+                "ffmpeg", "-y",
+                "-i", input_path,
+                "-c:v", "libx264",
+                "-preset", "fast",
+                "-crf", "23",
+                "-maxrate", "5M",
+                "-bufsize", "10M",
+                "-c:a", "aac",
+                "-b:a", "192k",
+                "-ar", "48000",
+                "-movflags", "+faststart",
+                "-pix_fmt", "yuv420p",
+                output_path
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=True,
+            timeout=300
+        )
+
+        with open(output_path, "rb") as f:
+            converted_bytes = f.read()
+
+        logger.info(f"Re-encoding successful for MPEG → MP4 ({len(converted_bytes)} bytes)")
+        return converted_bytes, "video/mp4"
+
+    except subprocess.CalledProcessError as e:
+        err = e.stderr.decode(errors='ignore') if e.stderr else "No ffmpeg stderr output"
+        logger.error(f"MPEG → MP4 conversion failed: {err}")
+        raise Exception(f"ffmpeg conversion failed: {err[:500]}")
+
+    except subprocess.TimeoutExpired as e:
+        logger.error("MPEG → MP4 conversion timed out")
+        raise Exception(f"ffmpeg conversion timed out after {e.timeout} seconds")
+
+    except Exception as e:
+        logger.error(f"Unexpected error in MPEG → MP4 conversion: {e}")
+        raise Exception(f"MPEG to MP4 conversion error: {str(e)}")
+
+    finally:
+        # Clean up temp files
+        for path in [input_path, output_path]:
+            try:
+                if path and os.path.exists(path):
+                    os.remove(path)
+            except Exception as cleanup_err:
+                logger.warning(f"Failed to clean up {path}: {cleanup_err}")

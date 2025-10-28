@@ -1,4 +1,6 @@
 import os
+import time
+
 from django.utils import timezone
 from userauth.models import Assets
 from django.conf import settings
@@ -609,17 +611,49 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
         model = TimeCapSoulMediaFile
         fields = ('id', 'is_cover_image', 'created_at', 'updated_at','file_size', 'file_type', 's3_url', 'title', 'description', 'thumbnail')
 
+    # def get_s3_url(self, obj):
+    #     import time
+    #     exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS 
+    #     s3_key = obj.s3_key 
+    #     sig = generate_signature(s3_key, exp)
+
+    #     served_key = s3_key[37:]
+    #     if served_key.lower().endswith(".doc"):
+    #         served_key = served_key[:-4] + ".docx"  # change extension
+
+    #     return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
+    
     def get_s3_url(self, obj):
-        import time
-        exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS 
-        s3_key = obj.s3_key 
+
+        # --- Compute expiry ---
+        exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+        s3_key = obj.s3_key
+        cache_key = f"time_capsoul_media{obj.id}"
+
+        # --- Try fetching from cache ---
+        cached_url = cache.get(cache_key)
+        if cached_url:
+            return cached_url
+
+        # --- Generate fresh signed URL ---
         sig = generate_signature(s3_key, exp)
 
+        # Handle .doc → .docx extension
         served_key = s3_key[37:]
         if served_key.lower().endswith(".doc"):
-            served_key = served_key[:-4] + ".docx"  # change extension
+            served_key = served_key[:-4] + ".docx"
 
-        return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
+        # Build URL
+        url = f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
+
+        # --- Cache the URL until just before it expires ---
+        now = int(time.time())
+        ttl = max(0, exp - now - 5)  # expire 5s before real expiration
+        if ttl > 0:
+            cache.set(cache_key, url, timeout=ttl)
+
+        return url
+
     
     # def get_list_view_url(self, obj):
     #     s3_key = obj.s3_key 
@@ -655,6 +689,10 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
         cover_image =  time_capsoul.capsoul_template.cover_image
         title = validated_data.get('title', instance.title)
         description = validated_data.get('description', instance.description)
+        file_extension = f'.{instance.s3_key.split('/')[-1].split('.')[-1]}'
+        
+        if not str(title).endswith(f'{file_extension}'): 
+            title = f'{title}{file_extension}'
 
         if time_capsoul.status == 'unlocked':
             is_cover_image = False
@@ -727,15 +765,15 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
             if current_user != time_capsoul.user:
                 raise serializers.ValidationError({'user': "Dont have permission to perform that action"})
             
-            if time_capsoul.capsoul_template.default_template is None:
+            title =  title
+            description = description
             
-                title =  validated_data.get('title', None)
-                description = validated_data.get('description', None)
-                
-                if title:
-                    instance.title = title
-                if description:
-                    instance.description = description
+            if title:
+                instance.title = title
+            if description:
+                instance.description = description
+            
+            if time_capsoul.capsoul_template.default_template is None:
                     
                 if  bool(set_as_cover) == True and  instance.is_cover_image == False and media_file.file_type == "image":
                     if time_capsoul.capsoul_template.default_template is None:
@@ -757,7 +795,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                             instance.is_cover_image = True
                             other_media = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted=False, user = user).exclude(id = media_file.id)
                             other_media.update(is_cover_image = False)
-                instance.save()
+            instance.save()
         return instance
 
 
