@@ -1066,6 +1066,8 @@ class ServeMedia(SecuredView):
             is_avi = file_ext.endswith('.avi')
             is_wmv = file_ext.endswith('.wmv')
             is_mpeg = file_ext.endswith('.mpeg')
+            is_avi = file_ext.endswith('.avi')
+            
 
             
             
@@ -1129,6 +1131,14 @@ class ServeMedia(SecuredView):
                     except Exception as e:
                         logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                file_bytes = mp4_bytes
+                content_type = "video/mp4"
+                if is_mkv:
+                    filename = filename.replace(".mkv", ".mp4")
+                elif is_wmv:
+                    filename = filename.replace(".wmv", ".mp4")
+                else:
+                    filename = filename.replace(".avi", ".mp4")
             
             
             # Return appropriate response based on file type
