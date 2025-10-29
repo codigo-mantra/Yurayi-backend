@@ -286,14 +286,16 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
 
     def get_status(self, obj):
         current_user = self.context.get('user')
-        if current_user == obj.user:
-            
+        if obj.status == 'sealed':
             unlock_date = obj.unlock_date
             current_datetime = timezone.now()  
             
             if unlock_date and current_datetime > unlock_date:
                 obj.status = 'unlocked'
                 obj.save()
+            
+        if current_user == obj.user:
+            
             if obj.status == 'unlocked':
                 recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, is_deleted = False)
                 if recipients.count() > 0:
