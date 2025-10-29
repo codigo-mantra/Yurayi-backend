@@ -148,6 +148,8 @@ else:
             }
         }
     }
+    
+    
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -213,6 +215,9 @@ if ENVIRONMENT_TYPE == 'PROD':
     DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
     MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
 else:
+    COOKIE_DOMAIN = None
+    SESSION_COOKIE_DOMAIN = None
+    CSRF_COOKIE_DOMAIN = None
     ACCESS_COOKIE_SECURE = False  
     REFRESH_COOKIE_SECURE = False  
     SESSION_COOKIE_SECURE = False
