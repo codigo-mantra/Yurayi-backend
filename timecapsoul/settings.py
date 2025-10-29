@@ -149,7 +149,7 @@ else:
         }
     }
     
-    
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -215,18 +215,18 @@ if ENVIRONMENT_TYPE == 'PROD':
     DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
     MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
 else:
-    COOKIE_DOMAIN = None
-    SESSION_COOKIE_DOMAIN = None
+    SameSite = None
+    Secure = True
     CSRF_COOKIE_DOMAIN = None
-    ACCESS_COOKIE_SECURE = False  
-    REFRESH_COOKIE_SECURE = False  
+    COOKIE_DOMAIN = None
+    ACCESS_COOKIE_SECURE = True
+    REFRESH_COOKIE_SECURE = True
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
-
-    ACCESS_COOKIE_SAMESITE = "Lax"  
-    REFRESH_COOKIE_SAMESITE = "Lax"
-    SESSION_COOKIE_SAMESITE = "Lax"
-    CSRF_COOKIE_SAMESITE = "Lax"
+    ACCESS_COOKIE_SAMESITE = "None"
+    REFRESH_COOKIE_SAMESITE = "None"
+    SESSION_COOKIE_SAMESITE = "None"
+    CSRF_COOKIE_SAMESITE = "None"
     MEDIA_URL = '/media/'
     STATICFILES_DIRS = [BASE_DIR / "static"]
     AWS_STORAGE_BUCKET_NAME = "time-capsoul-files"
@@ -343,13 +343,13 @@ CORS_ALLOW_HEADERS = [
 
 SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("JWT", "Bearer"),
-    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(days=7),   # keep session alive 7 days
     "REFRESH_TOKEN_LIFETIME": timedelta(days=15),
-    "AUTH_COOKIE": "access",
-    "AUTH_COOKIE_SECURE": ENVIRONMENT_TYPE == 'PROD',  # Use consistent logic
+
+    "AUTH_COOKIE": "access",          # Cookie name
+    "AUTH_COOKIE_SECURE": True if DEBUG == False else False,      # True in prod
     "AUTH_COOKIE_HTTP_ONLY": True,
-    "AUTH_COOKIE_SAMESITE": "None" if ENVIRONMENT_TYPE == 'PROD' else "Lax",
-    "AUTH_COOKIE_DOMAIN": COOKIE_DOMAIN,  # Add this for consistency
+    "AUTH_COOKIE_SAMESITE": None if DEBUG == False else  "Lax",
 }
 
 ACCESS_TOKEN_TTL_MINUTES = 15
@@ -362,7 +362,6 @@ SESSION_EXPIRE_TIME = 7*60*60*24 # 7 days
 REFRESH_COOKIE_NAME = "refresh_token"
 REFRESH_COOKIE_HTTPONLY = True
 REFRESH_COOKIE_PATH = "/"
-SESSION_SAVE_EVERY_REQUEST = True  # Keep session alive
 
 # Access token cookie
 ACCESS_COOKIE_NAME = "access_token"
