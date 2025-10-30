@@ -21,6 +21,7 @@ from io import BytesIO
 from django.http import StreamingHttpResponse
 from PIL import Image
 from wsgiref.util import FileWrapper
+from django.utils import timezone
 
 
 from memory_room.helpers import (
@@ -318,6 +319,16 @@ class TimeCapSoulMediaFilesView(SecuredView):
             raise serializers.ValidationError({
                 'ivs': f"Number of IVs ({len(ivs)}) must match number of files ({len(files)})"
             })
+        
+        if time_capsoul.status == "sealed":
+            from django.utils import timezone
+
+            unlock_date = time_capsoul.unlock_date
+            current_datetime = timezone.now()  
+            
+            if unlock_date and current_datetime > unlock_date:
+                time_capsoul.status = 'unlocked'
+                time_capsoul.save()
         
         if time_capsoul.status == 'unlocked':
             try:

@@ -50,7 +50,8 @@ class S3FileHandler:
         else:
             logger.info('S3 setup successfully')
     
-    def copy_s3_object_preserve_meta_kms(self, source_key: str, destination_key: str,
+    # working one
+    def copy_s3_object_preserve_meta_kms3(self, source_key: str, destination_key: str,
                                      destination_bucket=None, source_bucket=None,
                                      part_size=30 * 1024 * 512):  # 512 MB per part
         """
@@ -151,19 +152,13 @@ class S3FileHandler:
                 )
             return None
 
-    
-    
-
-    def copy_s3_object_preserve_meta_kms2(self, source_key: str, destination_key: str, destination_bucket=None, source_bucket=None):
+    def copy_s3_object_preserve_meta_kms(self, source_key: str, destination_key: str,
+        destination_bucket=None, source_bucket=None,
+        part_size=30 * 1024 * 512):  # 512 MB per part
         """
         Copy an S3 object to a new key or bucket, preserving:
-        - Metadata
-        - Content-Type
-        - Content-Disposition
-        - Cache-Control
-        - Content-Encoding
-        - KMS encryption
-        Automatically detects Content-Type if missing or generic.
+        - Metadata, headers, and KMS encryption
+        - Automatically uses multipart copy for files >= 100 MB
         """
 
         if source_bucket is None:
@@ -175,51 +170,90 @@ class S3FileHandler:
             # Get the source object's metadata
             head = self.s3_client.head_object(Bucket=source_bucket, Key=source_key)
             copy_source = {"Bucket": source_bucket, "Key": source_key}
+            size = head["ContentLength"]
 
-            # Preserve custom metadata
+            # Preserve metadata and headers
             metadata = head.get("Metadata", {})
-
-            # Preserve headers
-            content_type = head.get("ContentType")
-            if not content_type or content_type == "application/octet-stream":
-                guessed_type, _ = mimetypes.guess_type(source_key)
-                content_type = guessed_type or "application/octet-stream"
-
+            content_type = head.get("ContentType") or mimetypes.guess_type(source_key)[0] or "application/octet-stream"
             content_disposition = head.get("ContentDisposition")
             cache_control = head.get("CacheControl")
             content_encoding = head.get("ContentEncoding")
 
-            copy_args = {
+            # Common arguments (valid for both copy_object and create_multipart_upload)
+            common_args = {
                 "Bucket": destination_bucket,
-                "CopySource": copy_source,
                 "Key": destination_key,
                 "Metadata": metadata,
                 "ContentType": content_type,
-                "MetadataDirective": "REPLACE",  # needed when replacing metadata
             }
-
-            # Add optional headers if they exist
             if content_disposition:
-                copy_args["ContentDisposition"] = content_disposition
+                common_args["ContentDisposition"] = content_disposition
             if cache_control:
-                copy_args["CacheControl"] = cache_control
+                common_args["CacheControl"] = cache_control
             if content_encoding:
-                copy_args["ContentEncoding"] = content_encoding
+                common_args["ContentEncoding"] = content_encoding
 
             # Preserve KMS encryption if present
             if head.get("ServerSideEncryption") == "aws:kms":
-                copy_args["ServerSideEncryption"] = "aws:kms"
-                copy_args["SSEKMSKeyId"] = head.get("SSEKMSKeyId")
+                common_args["ServerSideEncryption"] = "aws:kms"
+                if head.get("SSEKMSKeyId"):
+                    common_args["SSEKMSKeyId"] = head["SSEKMSKeyId"]
 
-            # Perform the copy
-            response = self.s3_client.copy_object(**copy_args)
-            print(f"✅ Copied (meta + KMS + headers): s3://{source_bucket}/{source_key} → s3://{destination_bucket}/{destination_key}")
-            return response
+            # For small files (<100 MB)
+            if size < 100 * 1024 * 1024:
+                # MetadataDirective is ONLY valid for copy_object, not create_multipart_upload
+                copy_args = {**common_args, "MetadataDirective": "REPLACE"}
+                response = self.s3_client.copy_object(CopySource=copy_source, **copy_args)
+                logger.info(f"Simple copy completed: {source_key} → {destination_key}")
+                return response
 
-        except Exception as e:
-            logger.error(f"❌ Failed to copy object: s3://{source_bucket}/{source_key} → s3://{destination_bucket}/{destination_key} | {e}")
+            # For large files (>=100 MB) — use multipart copy
+            logger.info(f"Large file detected ({size / 1024 / 1024:.2f} MB). Using multipart copy...")
+
+            # create_multipart_upload does NOT accept MetadataDirective
+            mpu = self.s3_client.create_multipart_upload(**common_args)
+            upload_id = mpu["UploadId"]
+
+            num_parts = math.ceil(size / part_size)
+            parts = []
+
+            for i in range(num_parts):
+                start = i * part_size
+                end = min(start + part_size - 1, size - 1)
+                part_num = i + 1
+
+                logger.info(f"Copying part {part_num}/{num_parts} (bytes {start}-{end})")
+
+                part = self.s3_client.upload_part_copy(
+                    Bucket=destination_bucket,
+                    Key=destination_key,
+                    CopySource=copy_source,
+                    CopySourceRange=f"bytes={start}-{end}",
+                    PartNumber=part_num,
+                    UploadId=upload_id,
+                )
+
+                parts.append({"PartNumber": part_num, "ETag": part["CopyPartResult"]["ETag"]})
+
+            self.s3_client.complete_multipart_upload(
+                Bucket=destination_bucket,
+                Key=destination_key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+
+            logger.info(f"Multipart copy completed successfully: {source_key} → {destination_key}")
+            return True
+
+        except ClientError as e:
+            logger.error(f"S3 copy failed: {e}")
+            if "upload_id" in locals():
+                self.s3_client.abort_multipart_upload(
+                    Bucket=destination_bucket,
+                    Key=destination_key,
+                    UploadId=upload_id,
+                )
             return None
-
     
     def upload_image_file_chunked(self,key: str,file_obj,content_type: str = None, progress_callback=None, base_chunk_size: int = 10 * 1024 * 1024):
         """
