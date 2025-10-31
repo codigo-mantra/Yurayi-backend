@@ -656,15 +656,51 @@ class UserProfileDataSerializer(serializers.ModelSerializer):
         }
         pass
 
+from rest_framework import serializers
+from PIL import Image, UnidentifiedImageError
+import os
+
+class UniversalImageField(serializers.ImageField):
+    """
+    ImageField that supports HEIC/HEIF/AVIF/SVG and all major raster formats.
+    """
+    def to_internal_value(self, data):
+        if not hasattr(data, "name"):
+            return super().to_internal_value(data)
+
+        ext = os.path.splitext(data.name)[-1].lower()
+
+        # Register HEIC/HEIF/AVIF support only when needed
+        if ext in (".heic", ".heif", ".avif"):
+            try:
+                import pillow_heif
+                pillow_heif.register_heif_opener()
+            except ImportError:
+                raise serializers.ValidationError(
+                    {"profile_image": "HEIC/HEIF/AVIF support requires pillow-heif to be installed."}
+                )
+
+        # Handle SVG separately since Pillow cannot process it
+        if ext == ".svg" or getattr(data, "content_type", "") == "image/svg+xml":
+            try:
+                import xml.etree.ElementTree as ET
+                data.file.seek(0)
+                ET.parse(data.file)
+                data.file.seek(0)
+            except ET.ParseError:
+                raise serializers.ValidationError({"profile_image": "Invalid SVG file (corrupted or malformed XML)."})
+            return data
+
+        # Default Pillow-based validation for other formats
+        return super().to_internal_value(data)
+
 
 class UserProfileUpdateSerializer(serializers.ModelSerializer):
     address = serializers.SerializerMethodField()
     # profile = UserProfileDataSerializer(required=False)
-    profile_image = serializers.ImageField(required=False, write_only=True)
+    # profile_image = serializers.ImageField(required=False, write_only=True)
+    profile_image = UniversalImageField(required=False, write_only=True)
     profile_image_url = serializers.SerializerMethodField()
-
-    
-
 
     class Meta:
         model = User
@@ -700,29 +736,86 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
     #         raise serializers.ValidationError("Upload a valid image. Unsupported or corrupted file.")
     #     return image
 
-    def validate_profile_image(self, image):
-        import pillow_heif
-        from PIL import Image, UnidentifiedImageError
+    # def validate_profile_image(self, image):
+    #     import pillow_heif
+    #     from PIL import Image, UnidentifiedImageError
 
-        # Register HEIF/HEIC support (once per process)
-        pillow_heif.register_heif_opener()
+    #     # Register HEIF/HEIC support (once per process)
+    #     pillow_heif.register_heif_opener()
 
-        # Check if image object is valid
-        if not image or not hasattr(image, 'file') or not image.file:
-            raise serializers.ValidationError("No image file provided.")
+    #     # Check if image object is valid
+    #     if not image or not hasattr(image, 'file') or not image.file:
+    #         raise serializers.ValidationError("No image file provided.")
 
-        # Try to open and verify the image
-        try:
-            img = Image.open(image)
-            img.verify()  # Checks for corruption
-        except UnidentifiedImageError:
-            raise serializers.ValidationError("Upload a valid image. Unsupported or corrupted file.")
-        except Exception as e:
-            raise serializers.ValidationError(f"Image validation failed: {str(e)}")
+    #     # Try to open and verify the image
+    #     try:
+    #         img = Image.open(image)
+    #         img.verify()  # Checks for corruption
+    #     except UnidentifiedImageError:
+    #         raise serializers.ValidationError("Upload a valid image. Unsupported or corrupted file.")
+    #     except Exception as e:
+    #         raise serializers.ValidationError(f"Image validation failed: {str(e)}")
 
-        return image
+    #     return image
 
+    # def validate(self, attrs):
+    #     """
+    #     Validate uploaded profile images.
+    #     Supports all major formats (JPEG, PNG, WEBP, AVIF, HEIC, etc.).
+    #     Registers HEIC/HEIF/AVIF support only when needed.
+    #     """
+    #     from PIL import Image, UnidentifiedImageError
+    #     import os
+        
+    #     image  = attrs.get('profile_image', None)
+    #     if image:
+
+    #         # Basic file presence check
+    #         if not image or not hasattr(image, 'file') or not image.file:
+    #             raise serializers.ValidationError("No image file provided.")
+
+    #         # Infer file extension (safe even if missing)
+    #         ext = os.path.splitext(getattr(image.name, '', '') or '')[-1].lower()
+
+    #         # Register HEIC/HEIF/AVIF support only if needed
+    #         if ext in ('.heic', '.heif', '.avif'):
+    #             import pillow_heif
+    #             pillow_heif.register_heif_opener()
+
+    #         # Optional MIME type validation
+    #         valid_mime_prefixes = ("image/",)
+    #         content_type = getattr(image, "content_type", "")
+    #         if not content_type.startswith(valid_mime_prefixes):
+    #             raise serializers.ValidationError("Upload a valid image file (JPEG, PNG, WEBP, HEIC, etc.).")
+
+    #         # Try to open and verify image
+    #         try:
+    #             with Image.open(image) as img:
+    #                 img.verify()  # Detect corruption
+    #         except UnidentifiedImageError:
+    #             raise serializers.ValidationError("Upload a valid image. Unsupported or corrupted file.")
+    #         except OSError as e:
+    #             raise serializers.ValidationError(f"Invalid image file: {str(e)}")
+    #         except Exception as e:
+    #             raise serializers.ValidationError(f"Image validation failed: {str(e)}")
+
+    #         attrs['profile_image'] =  image
+    #     return attrs
     
+    def validate(self, attrs):
+        image = attrs.get("profile_image")
+
+        # Skip SVGs since they are XML-based
+        if image and not image.name.lower().endswith(".svg"):
+            try:
+                with Image.open(image) as img:
+                    img.verify()
+            except UnidentifiedImageError:
+                raise serializers.ValidationError({"profile_image": "Upload a valid image. Unsupported or corrupted file."})
+            except Exception as e:
+                raise serializers.ValidationError({"profile_image": f"Image validation failed: {str(e)}"})
+
+        return attrs
     
     def get_address(self, obj):
         address_instance = obj.address.first() 

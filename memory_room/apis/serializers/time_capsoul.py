@@ -373,11 +373,11 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
             new_capsoul_name = validated_data.get('name')
             if new_capsoul_name:
                 room_exists = TimeCapSoul.objects.filter(
-                    user=instance.user,
+                    user=current_user,
                     is_deleted = False,
                     capsoul_template__name__iexact=new_capsoul_name
                 ).exclude(id = time_capsoul.id)
-                recipient_capsouls =  TimeCapSoulRecipient.objects.filter(email = user.email, is_deleted = False, time_capsoul__capsoul_template__name__iexact=new_capsoul_name).exclude(time_capsoul__id = time_capsoul.id)
+                recipient_capsouls =  TimeCapSoulRecipient.objects.filter(email = current_user.email, is_deleted = False, time_capsoul__capsoul_template__name__iexact=new_capsoul_name).exclude(time_capsoul__id = time_capsoul.id)
                 if room_exists or recipient_capsouls.exists():
                     raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
             
