@@ -371,15 +371,18 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
             
             # create custom template for replica
             new_capsoul_name = validated_data.get('name')
-            if new_capsoul_name:
-                room_exists = TimeCapSoul.objects.filter(
-                    user=current_user,
-                    is_deleted = False,
-                    capsoul_template__name__iexact=new_capsoul_name
-                ).exclude(id = time_capsoul.id)
-                recipient_capsouls =  TimeCapSoulRecipient.objects.filter(email = current_user.email, is_deleted = False, time_capsoul__capsoul_template__name__iexact=new_capsoul_name).exclude(time_capsoul__id = time_capsoul.id)
-                if room_exists or recipient_capsouls.exists():
-                    raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
+            existing_capsouls = TimeCapSoul.objects.filter(
+                user=current_user,
+                is_deleted=False,
+            ).exclude(id = time_capsoul.id).values_list("capsoul_template__name", flat=True)
+            
+            recipient_capsouls = TimeCapSoulRecipient.objects.filter(
+                email=current_user.email,
+            ).exclude(id = time_capsoul.id).values_list("time_capsoul__capsoul_template__name", flat=True)
+            existing_names = set(name.lower() for name in list(existing_capsouls) + list(recipient_capsouls))
+
+            if new_capsoul_name in  existing_names:
+                raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
             
             replica_instance = create_time_capsoul(
                 old_time_capsoul = time_capsoul, # create time-capsoul replica
@@ -388,7 +391,6 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 capsoul_name = new_capsoul_name,
                 capsoul_summary = summary,
                 cover_image = cover_image,
-
             )
             if user.id == time_capsoul.user.id: # if user is owner of the capsoul
                 parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
