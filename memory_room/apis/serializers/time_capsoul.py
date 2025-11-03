@@ -379,7 +379,11 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
             recipient_capsouls = TimeCapSoulRecipient.objects.filter(
                 email=current_user.email,
             ).exclude(id = time_capsoul.id).values_list("time_capsoul__capsoul_template__name", flat=True)
-            existing_names = set(name.lower() for name in list(existing_capsouls) + list(recipient_capsouls))
+            
+            # existing_names = set(name.lower() for name in list(existing_capsouls) + list(recipient_capsouls))
+            existing_names = set(
+                (name.lower() for name in list(existing_capsouls) + list(recipient_capsouls) if name)
+            )
 
             if new_capsoul_name in  existing_names:
                 raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
@@ -430,15 +434,24 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 if instance.capsoul_template.default_template is None: # create from scratch
                     template = instance.capsoul_template
                     new_capsoul_name = validated_data.get('name')
-                    if new_capsoul_name:
-                        room_exists = TimeCapSoul.objects.filter(
-                            user=instance.user,
-                            is_deleted = False,
-                            capsoul_template__name__iexact=new_capsoul_name
-                        ).first()
-                        if room_exists and room_exists.id != instance.id:
-                            raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
+                   
+                    existing_capsouls = TimeCapSoul.objects.filter(
+                        user=current_user,
+                        is_deleted=False,
+                    ).exclude(id = time_capsoul.id).values_list("capsoul_template__name", flat=True)
+            
+                    recipient_capsouls = TimeCapSoulRecipient.objects.filter(
+                        email=current_user.email,
+                        is_capsoul_deleted = False,
+                    ).exclude(id = time_capsoul.id).values_list("time_capsoul__capsoul_template__name", flat=True)
+                    
+                    existing_names = set(
+                        (name.lower() for name in list(existing_capsouls) + list(recipient_capsouls) if name)
+                    )
 
+                    if new_capsoul_name in  existing_names:
+                        raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
+                            
                     template.name = name
                     template.summary = summary
                     if cover_image:

@@ -572,7 +572,10 @@ def generate_unique_capsoul_name(user, base_name):
         # time_capsoul__is_deleted=False,
         # time_capsoul__capsoul_template__name__iexact=base_name,
     ).values_list("time_capsoul__capsoul_template__name", flat=True)
-    existing_names = set(name.lower() for name in list(existing_capsouls) + list(recipient_capsouls))
+    # existing_names = set(name.lower() for name in list(existing_capsouls) + list(recipient_capsouls))
+    existing_names = set(
+        (name.lower() for name in list(existing_capsouls) + list(recipient_capsouls) if name)
+    )
 
 
     # If base_name not used, return directly
@@ -605,7 +608,11 @@ def generate_unique_memory_room_name(user, base_name):
     ).values_list("room_template__name", flat=True)
     
     
-    existing_names = set(name.lower() for name in list(existing_capsouls))
+    # existing_names = set(name.lower() for name in list(existing_capsouls))
+    existing_names = set(
+        name.lower() for name in list(existing_capsouls) if name
+    )
+
 
 
     # If base_name not used, return directly
