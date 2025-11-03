@@ -576,7 +576,7 @@ def generate_unique_capsoul_name(user, base_name):
 
 
     # If base_name not used, return directly
-    if base_name.lower() not in existing_names:
+    if base_name not in existing_names:
         # existing_names.append(base_name)
         return base_name
 
@@ -609,7 +609,7 @@ def generate_unique_memory_room_name(user, base_name):
 
 
     # If base_name not used, return directly
-    if base_name.lower() not in existing_names:
+    if base_name not in existing_names:
         # existing_names.append(base_name)
         return base_name
 
