@@ -288,13 +288,13 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
             unlock_date = obj.unlock_date
             current_datetime = timezone.now()  
             
-            if unlock_date and current_datetime > unlock_date:
-                obj.status = 'unlocked'
-                obj.save()
-                recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, is_deleted = False)
-                media_ids = list(obj.timecapsoul_media_files.filter(is_deleted=False).values_list('id', flat=True))
-                print(f'\n media_ids to be updated in recipients: {media_ids}')
-                recipients.update(parent_media_refrences = media_ids)
+        if unlock_date and current_datetime > unlock_date:
+            obj.status = 'unlocked'
+            obj.save()
+            recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, is_deleted = False)
+            media_ids = list(obj.timecapsoul_media_files.filter(is_deleted=False).values_list('id', flat=True))
+            print(f'\n media_ids to be updated in recipients: {media_ids}')
+            recipients.update(parent_media_refrences = media_ids)
 
             
         if current_user == obj.user:
