@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404
 from userauth.models import User
 from django.core.cache import cache
 from memory_room.helpers import (
-    upload_file_to_s3_kms,create_parent_media_files_replica_upload_to_s3_bucket,upload_file_to_s3_kms_chunked,create_time_capsoul,create_time_capsoul_media_file, generate_unique_capsoul_name,user_capsoul_name_list, generate_unique_file_name
+    upload_file_to_s3_kms,create_parent_media_files_replica_upload_to_s3_bucket,upload_file_to_s3_kms_chunked,create_time_capsoul,create_time_capsoul_media_file, generate_unique_capsoul_name,user_capsoul_name_list, generate_unique_file_name, get_recipient_capsoul_ids
 )
 
 from memory_room.signals import update_user_storage
@@ -270,12 +270,10 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
         count = 0
         user = self.context.get('user', None)  
         if obj.user != user:
-            recipient = TimeCapSoulRecipient.objects.get(time_capsoul = obj, email = user.email)
-            parent_files_id = (
-                    [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                    if recipient.parent_media_refrences else []
-                )
+            recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, email = user.email).first()
+            parent_files_id = get_recipient_capsoul_ids(recipient)
             count = len(parent_files_id)
+
         else:
             try:
                 count =  obj.timecapsoul_media_files.filter(is_deleted=False).count()
@@ -293,6 +291,11 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
             if unlock_date and current_datetime > unlock_date:
                 obj.status = 'unlocked'
                 obj.save()
+                recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, is_deleted = False)
+                media_ids = list(obj.timecapsoul_media_files.filter(is_deleted=False).values_list('id', flat=True))
+                print(f'\n media_ids to be updated in recipients: {media_ids}')
+                recipients.update(parent_media_refrences = media_ids)
+
             
         if current_user == obj.user:
             
@@ -396,18 +399,19 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                 capsoul_summary = summary,
                 cover_image = cover_image,
             )
-            if user.id == time_capsoul.user.id: # if user is owner of the capsoul
+            if current_user == time_capsoul.user: # if user is owner of the capsoul
                 parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
             else:
-                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
+                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = current_user.email).first()
                 if not recipient:
-                    logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
+                    logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {current_user.email}")
                     raise serializers.ValidationError({'detail': 'You do not have access to this time-capsoul.'})
                 else:
-                    parent_files_id = (
-                        [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                        if recipient.parent_media_refrences else []
-                    )
+                    # parent_files_id = (
+                    #     [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                    #     if recipient.parent_media_refrences else []
+                    # )
+                    parent_files_id = get_recipient_capsoul_ids(recipient)
                     parent_media_files = TimeCapSoulMediaFile.objects.filter(
                         time_capsoul=time_capsoul,
                         id__in = parent_files_id,
@@ -740,10 +744,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
                     raise serializers.ValidationError({'detail': 'You do not have access to this time-capsoul.'})
                 else:
-                    parent_files_id = (
-                        [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                        if recipient.parent_media_refrences else []
-                    )
+                    parent_files_id = get_recipient_capsoul_ids(recipient)
                     parent_media_files = TimeCapSoulMediaFile.objects.filter(
                         time_capsoul=time_capsoul,
                         id__in = parent_files_id,
@@ -851,7 +852,7 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
         if time_capsoul.status == 'created':
             capsoul_recipients = TimeCapSoulRecipient.objects.filter(
                 time_capsoul=time_capsoul,
-                is_deleted = False
+                is_capsoul_deleted = False
             )
 
             if  capsoul_recipients.count() < 1:
@@ -881,18 +882,16 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             # send email here tagged 
             time_cap_owner = time_capsoul.user.first_name if time_capsoul.user.first_name else time_capsoul.user.email
             try:
-                capsoul_media_files = time_capsoul.timecapsoul_media_files.filter(is_deleted=False)
-                media_ids = ','.join(str(m.id) for m in time_capsoul.timecapsoul_media_files.filter(is_deleted=False))
+                # capsoul_media_ids = list(time_capsoul.timecapsoul_media_files.filter( is_deleted=False).values_list('id', flat=True))
+
 
                 if capsoul_recipients:
-                    tagged_recipients = capsoul_recipients.values_list("name", "email")
-
                     
                     for recipient in capsoul_recipients:
                         person_name = recipient.name
                         person_email = recipient.email
-                        recipient.parent_media_refrences = media_ids
-                        recipient.save()
+                        # recipient.parent_media_refrences = capsoul_media_ids
+                        # recipient.save()
                         
                         # create notification at invited for tagged user if exists
                         try:

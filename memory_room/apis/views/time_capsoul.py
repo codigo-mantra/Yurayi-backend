@@ -28,7 +28,7 @@ from memory_room.helpers import (
     upload_file_to_s3_kms,
     create_duplicate_time_capsoul,
     create_parent_media_files_replica_upload_to_s3_bucket, generate_unique_capsoul_name,
-    create_time_capsoul,create_time_capsoul_media_file
+    create_time_capsoul,create_time_capsoul_media_file, get_recipient_capsoul_ids
     )
 
 logger = logging.getLogger(__name__)
@@ -140,19 +140,19 @@ class CreateTimeCapSoulView(SecuredView):
         """Time CapSoul list"""
         user = self.get_current_user(request)
         
-        time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False).order_by('-created_at') # owner capsoul
+        time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False).order_by('-updated_at') # owner capsoul
         try: 
             # tagged capsoul
             tagged_time_capsouls = TimeCapSoul.objects.filter(
                 recipient_detail__email=user.email,
                 recipient_detail__is_capsoul_deleted=False
-            ).exclude(user = user)
+            ).exclude(user = user).order_by('-updated_at')
             
             tagged_time_capsouls_replica = TimeCapSoul.objects.filter(
                 user=user,
                 capsoul_replica_refrence__in=tagged_time_capsouls,
                 is_deleted = False
-            )
+            ).order_by('-updated_at')
             if tagged_time_capsouls and tagged_time_capsouls_replica:
                 tagged_time_capsouls = tagged_time_capsouls.union(tagged_time_capsouls_replica)
             
@@ -166,7 +166,7 @@ class CreateTimeCapSoulView(SecuredView):
             capsoul_replica_refrence__in=time_capsouls,
             is_deleted = False
             
-        )
+        ).order_by('-updated_at')
         if tagged_time_capsouls:
             time_capsouls = time_capsouls.union(tagged_time_capsouls)
         
@@ -262,7 +262,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 if time_capsoul.is_deleted == True:
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul,user=user, is_deleted =False)
+                media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul,user=user, is_deleted =False).order_by('-updated_at')
             else:
                 recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
                 if not recipient:
@@ -278,17 +278,23 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     logger.info(f'User is not owner and capsoul is locked for tagged capsoul {time_capsoul.id} and user {user.email}')
                     return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-                parent_files_id = (
-                    [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                    if recipient.parent_media_refrences else []
-                )
+                # parent_files_id = (
+                #     [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                #     if recipient.parent_media_refrences else []
+                # )
+                parent_files_id = get_recipient_capsoul_ids(recipient)
                 media_files = TimeCapSoulMediaFile.objects.filter(
                     time_capsoul=time_capsoul,
                     id__in = parent_files_id,
                 )
                 
         serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files, many=True)
-        return Response({"media_files": serializer.data})
+        capsoul_data = TimeCapSoulSerializer(time_capsoul, context={'user': user}).data
+        response = {
+            'time_capsoul': capsoul_data,
+            'media_files': serializer.data
+        }
+        return Response(response)
 
     
     def post(self, request, time_capsoul_id):
@@ -345,10 +351,11 @@ class TimeCapSoulMediaFilesView(SecuredView):
                         logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
                         return Response(status=status.HTTP_404_NOT_FOUND)
                     else:
-                        parent_files_id = (
-                            [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                            if recipient.parent_media_refrences else []
-                        )
+                        # parent_files_id = (
+                        #     [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                        #     if recipient.parent_media_refrences else []
+                        # )
+                        parent_files_id =  get_recipient_capsoul_ids(recipient)
                         parent_media_files = TimeCapSoulMediaFile.objects.filter(
                             time_capsoul=time_capsoul,
                             id__in = parent_files_id,
@@ -429,12 +436,21 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     if serializer.is_valid():
                         media_file = serializer.save()
                         time_capsoul = media_file.time_capsoul
-                        if time_capsoul.status == 'sealed':
-                            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
-                            if capsoul_recipients.count() >0:
-                                existing_media_ids = capsoul_recipients[0].parent_media_refrences
-                                updated_media_ids = existing_media_ids +  f',{media_file.id}'
-                                capsoul_recipients.update(parent_media_refrences = updated_media_ids)
+                        # if time_capsoul.status == 'sealed':
+                        #     capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+                        #     if capsoul_recipients.count() >0:
+                        #         try:
+                        #             existing_media_ids = eval(capsoul_recipients[0].parent_media_refrences)
+                        #             if  existing_media_ids and  type(existing_media_ids) is list:
+                        #                 existing_media_ids.append(media_file.id)
+                        #                 capsoul_recipients.update(parent_media_refrences = existing_media_ids)
+                        #         except Exception as e:
+                        #             logger.error(f'Error while updating parent media references list: {e} for user {user.email} and capsoul id {time_capsoul.id}')
+                                
+
+                                
+                                # updated_media_ids = existing_media_ids +  f',{media_file.id}'
+                                # capsoul_recipients.update(parent_media_refrences = updated_media_ids)
                             
                         
                         is_updated = update_users_storage(
@@ -684,14 +700,7 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
                 media_file.is_deleted = True
                 media_file.save()
                 
-                
                 time_capsoul = media_file.time_capsoul
-                if time_capsoul.status == 'sealed':
-                    capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
-                    if capsoul_recipients.count() >0:
-                        existing_media_ids = capsoul_recipients[0].parent_media_refrences
-                        updated_media_ids = existing_media_ids.replace(f'{media_file_id}', '')
-                        capsoul_recipients.update(parent_media_refrences = updated_media_ids)
                 
                 update_users_storage(
                     operation_type='remove',
@@ -716,10 +725,8 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
                 logger.info("Recipient not found for tagged capsoul")
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-            parent_files_id = (
-                [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                if recipient.parent_media_refrences else []
-            )
+            
+            parent_files_id = get_recipient_capsoul_ids(recipient)
             if media_file_id not in parent_files_id:
                 return Response(status=status.HTTP_400_BAD_REQUEST)
             
@@ -729,8 +736,9 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
             except Exception as e:
                 logger.error(f'Erorr while removing media id from parent list: {e} for user {user.email} and media_file_id {media_file_id}')
             else:
-              recipient.parent_media_refrences  = ','.join(map(str, parent_files_id)) if parent_files_id else None
-              recipient.save()
+            #   recipient.parent_media_refrences  = ','.join(map(str, parent_files_id)) if parent_files_id else None
+                recipient.parent_media_refrences  = parent_files_id if parent_files_id else []
+                recipient.save()
             return Response(status=status.HTTP_204_NO_CONTENT)
     
     def patch(self, request, time_capsoul_id, media_file_id):
@@ -3443,10 +3451,11 @@ class TimeCapsoulDuplicationApiView(SecuredView):
                     current_user = user,
                     option_type = 'duplicate_time_capsoul',
             )
-            parent_files_id = (
-                [int(i.strip()) for i in is_recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
-                if is_recipient.parent_media_refrences else []
-            )
+            # parent_files_id = (
+            #     [int(i.strip()) for i in is_recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+            #     if is_recipient.parent_media_refrences else []
+            # )
+            parent_files_id = get_recipient_capsoul_ids(is_recipient)
             parent_media_files = TimeCapSoulMediaFile.objects.filter(
                 time_capsoul=time_capsoul,
                 id__in = parent_files_id,
