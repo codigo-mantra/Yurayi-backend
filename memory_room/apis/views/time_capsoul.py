@@ -436,16 +436,16 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     if serializer.is_valid():
                         media_file = serializer.save()
                         time_capsoul = media_file.time_capsoul
-                        # if time_capsoul.status == 'sealed':
-                        #     capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
-                        #     if capsoul_recipients.count() >0:
-                        #         try:
-                        #             existing_media_ids = eval(capsoul_recipients[0].parent_media_refrences)
-                        #             if  existing_media_ids and  type(existing_media_ids) is list:
-                        #                 existing_media_ids.append(media_file.id)
-                        #                 capsoul_recipients.update(parent_media_refrences = existing_media_ids)
-                        #         except Exception as e:
-                        #             logger.error(f'Error while updating parent media references list: {e} for user {user.email} and capsoul id {time_capsoul.id}')
+                        if time_capsoul.status == 'sealed':
+                            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+                            if capsoul_recipients.count() >0:
+                                try:
+                                    existing_media_ids = eval(capsoul_recipients[0].parent_media_refrences)
+                                    if  existing_media_ids and  type(existing_media_ids) is list:
+                                        existing_media_ids.append(media_file.id)
+                                        capsoul_recipients.update(parent_media_refrences = existing_media_ids)
+                                except Exception as e:
+                                    logger.error(f'Error while updating parent media references list: {e} for user {user.email} and capsoul id {time_capsoul.id}')
                                 
 
                                 
@@ -701,7 +701,17 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
                 media_file.save()
                 
                 time_capsoul = media_file.time_capsoul
-                
+                if time_capsoul.status == 'sealed':
+                    capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+                    if capsoul_recipients.count() >0:
+                        try:
+                            existing_media_ids = eval(capsoul_recipients[0].parent_media_refrences)
+                            if  existing_media_ids and  type(existing_media_ids) is list:
+                                existing_media_ids.remove(media_file.id)
+                                capsoul_recipients.update(parent_media_refrences = existing_media_ids)
+                        except Exception as e:
+                            logger.error(f'Error while updating parent media references list: {e} for user {user.email} and capsoul id {time_capsoul.id}')
+        
                 update_users_storage(
                     operation_type='remove',
                     media_updation='capsoul',

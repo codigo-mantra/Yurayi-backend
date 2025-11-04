@@ -288,13 +288,13 @@ class TimeCapSoulSerializer(serializers.ModelSerializer):
             unlock_date = obj.unlock_date
             current_datetime = timezone.now()  
             
-        if unlock_date and current_datetime > unlock_date:
-            obj.status = 'unlocked'
-            obj.save()
-            recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, is_deleted = False)
-            media_ids = list(obj.timecapsoul_media_files.filter(is_deleted=False).values_list('id', flat=True))
-            print(f'\n media_ids to be updated in recipients: {media_ids}')
-            recipients.update(parent_media_refrences = media_ids)
+            if unlock_date and current_datetime > unlock_date:
+                obj.status = 'unlocked'
+                obj.save()
+                # recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = obj, is_deleted = False)
+                # media_ids = list(obj.timecapsoul_media_files.filter(is_deleted=False).values_list('id', flat=True))
+                # print(f'\n media_ids to be updated in recipients: {media_ids}')
+                # recipients.update(parent_media_refrences = media_ids)
 
             
         if current_user == obj.user:
@@ -882,7 +882,7 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
             # send email here tagged 
             time_cap_owner = time_capsoul.user.first_name if time_capsoul.user.first_name else time_capsoul.user.email
             try:
-                # capsoul_media_ids = list(time_capsoul.timecapsoul_media_files.filter( is_deleted=False).values_list('id', flat=True))
+                capsoul_media_ids = list(time_capsoul.timecapsoul_media_files.filter( is_deleted=False).values_list('id', flat=True))
 
 
                 if capsoul_recipients:
@@ -890,8 +890,8 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                     for recipient in capsoul_recipients:
                         person_name = recipient.name
                         person_email = recipient.email
-                        # recipient.parent_media_refrences = capsoul_media_ids
-                        # recipient.save()
+                        recipient.parent_media_refrences = capsoul_media_ids
+                        recipient.save()
                         
                         # create notification at invited for tagged user if exists
                         try:
