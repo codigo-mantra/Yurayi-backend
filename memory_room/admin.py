@@ -21,7 +21,7 @@ from .models import (
 
 @admin.register(TimeCapSoulMediaFile)
 class TimeCapSoulMediaFileAdmin(admin.ModelAdmin):
-    list_display = ("id", "user", "time_capsoul",)
+    list_display = ("id", "user", "time_capsoul", 'file_size')
 
 
 @admin.register(Notification)
@@ -52,7 +52,7 @@ class MemoryRoomAdmin(admin.ModelAdmin):
 
 @admin.register(MemoryRoomMediaFile)
 class MemoryRoomMediaFilesAdmin(admin.ModelAdmin):
-    list_display = ('id', 'memory_room_id','file_type',  "file", "is_cover_image", "created_at")
+    list_display = ('id', 'memory_room_id','file_type', 'file_size',  "file", "is_cover_image", "created_at")
     list_filter = ("file_type", "is_cover_image")
     search_fields = ("file", "description")
 

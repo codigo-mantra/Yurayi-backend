@@ -333,7 +333,7 @@ def testing_view(request):
         #             print(size)
         # res = generate_notification.apply_async()
         
-        # delete user time-capsoul
+        # delete user time-capsoul # Yurayi@2025 yurayiadmin
         user = User.objects.get(email = "amrita@gmail.com")
         caps = TimeCapSoul.objects.filter(user = user, is_deleted = False, status = 'created').update(is_deleted = True)
     except:

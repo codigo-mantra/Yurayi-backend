@@ -554,11 +554,19 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
             yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
 
-        return StreamingHttpResponse(
+        # return StreamingHttpResponse(
+        #     file_upload_stream(),
+        #     content_type='text/event-stream',
+        #     status=status.HTTP_200_OK
+        # )
+        response = StreamingHttpResponse(
             file_upload_stream(),
             content_type='text/event-stream',
-            status=status.HTTP_200_OK
         )
+        response['Cache-Control'] = 'no-cache'
+        response['X-Accel-Buffering'] = 'no'  # disables buffering in nginx
+        # response['Connection'] = 'keep-alive'
+        return response
 
 
 class SetTimeCapSoulCover(SecuredView):
