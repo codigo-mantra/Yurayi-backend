@@ -50,6 +50,22 @@ class S3FileHandler:
         else:
             logger.info('S3 setup successfully')
     
+    def calculate_part_size(self,file_size):
+        """
+        Dynamically choose S3 multipart copy/upload part size.
+        Keeps parts between 5MB and 5GB, under 10,000 parts.
+        """
+        MIN_PART_SIZE = 5 * 1024 * 1024       # 5 MB
+        MAX_PART_SIZE = 5 * 1024 * 1024 * 1024  # 5 GB
+        MAX_PARTS = 10000
+
+        # Start small (100 MB), increase if file is huge
+        part_size = max(MIN_PART_SIZE, file_size // MAX_PARTS)
+        part_size = min(max(part_size, 100 * 1024 * 1024), MAX_PART_SIZE)
+
+        return part_size
+
+    
     # working one
     def copy_s3_object_preserve_meta_kms3(self, source_key: str, destination_key: str,
                                      destination_bucket=None, source_bucket=None,
@@ -152,25 +168,28 @@ class S3FileHandler:
                 )
             return None
 
-    def copy_s3_object_preserve_meta_kms(self, source_key: str, destination_key: str,
-        destination_bucket=None, source_bucket=None,
-        part_size=30 * 1024 * 512):  # 512 MB per part
+    def copy_s3_object_preserve_meta_kms(self, source_key: str, destination_key: str, destination_bucket=None, source_bucket=None, user_email=None,):  # 512 MB per part
         """
         Copy an S3 object to a new key or bucket, preserving:
         - Metadata, headers, and KMS encryption
         - Automatically uses multipart copy for files >= 100 MB
         """
+        
 
         if source_bucket is None:
             source_bucket = self.bucket_name
         if destination_bucket is None:
             destination_bucket = source_bucket
+        
 
         try:
             # Get the source object's metadata
             head = self.s3_client.head_object(Bucket=source_bucket, Key=source_key)
             copy_source = {"Bucket": source_bucket, "Key": source_key}
             size = head["ContentLength"]
+            part_size = self.calculate_part_size(size)
+            logger.info(f'S3 object copying started for user {user_email}  where media s3-key: {source_key} file size: {size}')
+            
 
             # Preserve metadata and headers
             metadata = head.get("Metadata", {})
@@ -242,17 +261,20 @@ class S3FileHandler:
                 MultipartUpload={"Parts": parts},
             )
 
-            logger.info(f"Multipart copy completed successfully: {source_key} → {destination_key}")
+            logger.info(f'S3 object copying completed successfully for user {user_email}  where media s3-key: {source_key} → {destination_key} file size: {size}')
             return True
 
         except ClientError as e:
-            logger.error(f"S3 copy failed: {e}")
+            logger.info(f'S3 object copying failed  for user {user_email}  where media s3-key: {source_key}  file size: {size} as /n {e}')
+            
             if "upload_id" in locals():
                 self.s3_client.abort_multipart_upload(
                     Bucket=destination_bucket,
                     Key=destination_key,
                     UploadId=upload_id,
                 )
+            raise e
+            
             return None
     
     def upload_image_file_chunked(self,key: str,file_obj,content_type: str = None, progress_callback=None, base_chunk_size: int = 10 * 1024 * 1024):

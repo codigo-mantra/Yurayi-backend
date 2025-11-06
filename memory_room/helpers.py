@@ -701,9 +701,10 @@ def create_time_capsoul(old_time_capsoul:TimeCapSoul, current_user:str, option_t
             room_duplicate = duplicate_capsoul,
             created_at = created_at
         )
+        logger.info(f'Time-capsoul duplicate created for user {current_user.email} capsoul-id: {old_time_capsoul.id} duplicate-capsoul id: {new_capsoul.id}')
         return new_capsoul
     except Exception as e:
-        logger.error(f'Exception while creating {option_type}  for time-capsoul for  user {current_user.email} capsoul id: {old_capsoul_template.id}')
+        logger.error(f'Exception while creating Time-capsoul duplicate user {current_user.email} capsoul id: {old_capsoul_template.id} as \n {e}')
         return None
 
 
@@ -723,12 +724,7 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
         set_as_cover_image = set_as_cover if set_as_cover else old_media.is_cover_image
         
         
-        # file_bytes, content_type = get_media_file_bytes_with_content_type(old_media, current_user)
-        # file_bytes, content_type = decrypt_s3_file_chunked(old_media.s3_key)
         
-        # if not file_bytes or not content_type:
-            # raise Exception('File decryption failed')
-        # else:
         # file_name  = f'{old_media.title.split(".", 1)[0].replace(" ", "_")}.{old_media.s3_key.split(".")[-1]}' # get file name 
         file_name  = old_media.s3_key.split('/')[-1]
         
@@ -737,12 +733,11 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
         
         res = s3_helper.copy_s3_object_preserve_meta_kms(
             source_key=old_media.s3_key,
-            destination_key=s3_key
+            destination_key=s3_key,
+            user_email = current_user.email,
         )
         
         thumbnail = old_media.thumbnail 
-        # if old_media.file_type == 'audio': # generate thumbnail for audio file
-        #     thumbnail = audio_thumbnail_generator(file_name=file_name, decrypted_bytes=file_bytes)
         
         from django.utils import timezone
         created_at = timezone.localtime(timezone.now())
@@ -773,6 +768,7 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
             is_created = True
     except Exception as e:
             logger.error(f'Exception while create media fiele {option_type} for media id: {old_media.id} user: {current_user.email} error-message: {e}')
+            raise e
             return None
     finally:
         return is_created

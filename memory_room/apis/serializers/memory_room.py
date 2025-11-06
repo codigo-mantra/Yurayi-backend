@@ -8,7 +8,7 @@ from userauth.models import Assets
 from memory_room.models import (
     MemoryRoomTemplateDefault, MemoryRoom, CustomMemoryRoomTemplate, MemoryRoomMediaFile
 )
-
+from memory_room.s3_uploader_helpers import decrypt_upload_and_extract_audio_thumbnail_chunked_updated
 from memory_room.media_helper import decrypt_upload_and_extract_audio_thumbnail_chunked
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, generate_signature
@@ -405,7 +405,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                         overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
                         progress_callback(min(overall_progress, 80), message)
             
-            result = decrypt_upload_and_extract_audio_thumbnail_chunked(
+            result = decrypt_upload_and_extract_audio_thumbnail_chunked_updated(
                 file_type = file_type,
                 key=s3_key,
                 encrypted_file=file,

@@ -2050,7 +2050,8 @@ def create_duplicate_room(room:MemoryRoom):
                         
                         res = s3_helper.copy_s3_object_preserve_meta_kms(
                             source_key=media.s3_key,
-                            destination_key=s3_key
+                            destination_key=s3_key,
+                            user_email = user.email,
                         )
                                         
                         new_media = MemoryRoomMediaFile.objects.create(
