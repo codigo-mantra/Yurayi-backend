@@ -207,14 +207,16 @@ class GoogleAuthView(APIView):
             logger.error(f'Exception while creating user sesion as {e} for user: {user.email}')
             raise
 
-        access = create_access_jwt_for_user(user, session_id=session.id)
-        refresh_value = _gen_refresh_value()
-        from django.utils import timezone 
-        expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
-        RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+        # access = create_access_jwt_for_user(user, session_id=session.id)
+        # refresh_value = _gen_refresh_value()
+        # from django.utils import timezone 
+        # expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
+        # RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+        access_token, refresh_token = create_tokens_for_user(user, session)
+        
 
         resp = Response({
-            "access": access,
+            "access": access_token,
             "user": {
                 "username": user.username,
                 "email": user.email,
@@ -225,29 +227,33 @@ class GoogleAuthView(APIView):
             
             
         })
+        
+        # Set authentication cookies using utility functionk
+        resp = set_auth_cookies(resp, access_token, refresh_token)
+        
 
-        resp.set_cookie(
-            settings.REFRESH_COOKIE_NAME,
-            refresh_value,
-            httponly=settings.REFRESH_COOKIE_HTTPONLY,
-            secure=settings.REFRESH_COOKIE_SECURE,
-            samesite=settings.REFRESH_COOKIE_SAMESITE,
-            max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
-            domain=settings.COOKIE_DOMAIN,
-            path=settings.REFRESH_COOKIE_PATH,
-        )
+        # resp.set_cookie(
+        #     settings.REFRESH_COOKIE_NAME,
+        #     refresh_value,
+        #     httponly=settings.REFRESH_COOKIE_HTTPONLY,
+        #     secure=settings.REFRESH_COOKIE_SECURE,
+        #     samesite=settings.REFRESH_COOKIE_SAMESITE,
+        #     max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
+        #     domain=settings.COOKIE_DOMAIN,
+        #     path=settings.REFRESH_COOKIE_PATH,
+        # )
 
-        #  Set access cookie
-        resp.set_cookie(
-            settings.ACCESS_COOKIE_NAME,
-            access,
-            httponly=settings.ACCESS_COOKIE_HTTPONLY,
-            secure=settings.ACCESS_COOKIE_SECURE,
-            samesite=settings.ACCESS_COOKIE_SAMESITE,
-            max_age=settings.ACCESS_TOKEN_LIFETIME,
-            domain=settings.COOKIE_DOMAIN,
-            path=settings.ACCESS_COOKIE_PATH,
-        )
+        # #  Set access cookie
+        # resp.set_cookie(
+        #     settings.ACCESS_COOKIE_NAME,
+        #     access,
+        #     httponly=settings.ACCESS_COOKIE_HTTPONLY,
+        #     secure=settings.ACCESS_COOKIE_SECURE,
+        #     samesite=settings.ACCESS_COOKIE_SAMESITE,
+        #     max_age=settings.ACCESS_TOKEN_LIFETIME,
+        #     domain=settings.COOKIE_DOMAIN,
+        #     path=settings.ACCESS_COOKIE_PATH,
+        # )
         logger.info(f"User successfully login via google auth user email: {user.email}")
         return resp
 
@@ -317,15 +323,17 @@ class RegistrationView(APIView):
             latitude = latitude,
             longitude = longitude
         )
+        
+        access_token, refresh_token = create_tokens_for_user(user, session)
 
-        access = create_access_jwt_for_user(user, session_id=session.id)
-        refresh_value = _gen_refresh_value()
-        from django.utils import timezone 
-        expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
-        RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+        # access = create_access_jwt_for_user(user, session_id=session.id)
+        # refresh_value = _gen_refresh_value()
+        # from django.utils import timezone 
+        # expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
+        # RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
 
         resp = Response({
-            "access": access,
+            "access": access_token,
             "user": {
                 "username": user.username,
                 "email": user.email,
@@ -333,29 +341,32 @@ class RegistrationView(APIView):
                 "last_name": user.last_name,
             },
         })
+        resp = set_auth_cookies(resp, access_token, refresh_token)
+        
 
-        resp.set_cookie(
-            settings.REFRESH_COOKIE_NAME,
-            refresh_value,
-            httponly=settings.REFRESH_COOKIE_HTTPONLY,
-            secure=settings.REFRESH_COOKIE_SECURE,
-            samesite=settings.REFRESH_COOKIE_SAMESITE,
-            max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
-            domain=settings.COOKIE_DOMAIN,
-            path=settings.REFRESH_COOKIE_PATH,
-        )
+        # resp.set_cookie(
+        #     settings.REFRESH_COOKIE_NAME,
+        #     refresh_value,
+        #     httponly=settings.REFRESH_COOKIE_HTTPONLY,
+        #     secure=settings.REFRESH_COOKIE_SECURE,
+        #     samesite=settings.REFRESH_COOKIE_SAMESITE,
+        #     # max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
+        #     max_age = settings.ACCESS_TOKEN_LIFETIME,
+        #     domain=settings.COOKIE_DOMAIN,
+        #     path=settings.REFRESH_COOKIE_PATH,
+        # )
 
-        #  Set access cookie
-        resp.set_cookie(
-            settings.ACCESS_COOKIE_NAME,
-            access,
-            httponly=settings.ACCESS_COOKIE_HTTPONLY,
-            secure=settings.ACCESS_COOKIE_SECURE,
-            samesite=settings.ACCESS_COOKIE_SAMESITE,
-            max_age=settings.ACCESS_TOKEN_LIFETIME,
-            domain=settings.COOKIE_DOMAIN,
-            path=settings.ACCESS_COOKIE_PATH,
-        )
+        # #  Set access cookie
+        # resp.set_cookie(
+        #     settings.ACCESS_COOKIE_NAME,
+        #     access,
+        #     httponly=settings.ACCESS_COOKIE_HTTPONLY,
+        #     secure=settings.ACCESS_COOKIE_SECURE,
+        #     samesite=settings.ACCESS_COOKIE_SAMESITE,
+        #     max_age=settings.ACCESS_TOKEN_LIFETIME,
+        #     domain=settings.COOKIE_DOMAIN,
+        #     path=settings.ACCESS_COOKIE_PATH,
+        # )
         logger.info(f'RegistrationView response data served to {user.email}')
         return resp
         
@@ -970,14 +981,17 @@ class PasswordResetConfirmView(APIView):
         ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
         session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
 
-        access = create_access_jwt_for_user(user, session_id=session.id)
-        refresh_value = _gen_refresh_value()
-        from django.utils import timezone 
-        expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
-        RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+        # access = create_access_jwt_for_user(user, session_id=session.id)
+        # refresh_value = _gen_refresh_value()
+        # from django.utils import timezone 
+        # expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
+        # RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
+        
+        access_token, refresh_token = create_tokens_for_user(user, session)
+        
 
         resp = Response({
-            "access": access,
+            "access": access_token,
             "user": {
                 "username": user.username,
                 "email": user.email,
@@ -986,28 +1000,33 @@ class PasswordResetConfirmView(APIView):
             },
         })
 
-        resp.set_cookie(
-            settings.REFRESH_COOKIE_NAME,
-            refresh_value,
-            httponly=settings.REFRESH_COOKIE_HTTPONLY,
-            secure=settings.REFRESH_COOKIE_SECURE,
-            samesite=settings.REFRESH_COOKIE_SAMESITE,
-            max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
-            domain=settings.COOKIE_DOMAIN,
-            path=settings.REFRESH_COOKIE_PATH,
-        )
+        # resp.set_cookie(
+        #     settings.REFRESH_COOKIE_NAME,
+        #     refresh_value,
+        #     httponly=settings.REFRESH_COOKIE_HTTPONLY,
+        #     secure=settings.REFRESH_COOKIE_SECURE,
+        #     samesite=settings.REFRESH_COOKIE_SAMESITE,
+        #     # max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
+        #     max_age=settings.ACCESS_TOKEN_LIFETIME,
+        #     domain=settings.COOKIE_DOMAIN,
+        #     path=settings.REFRESH_COOKIE_PATH,
+        # )
 
-        #  Set access cookie
-        resp.set_cookie(
-            settings.ACCESS_COOKIE_NAME,
-            access,
-            httponly=settings.ACCESS_COOKIE_HTTPONLY,
-            secure=settings.ACCESS_COOKIE_SECURE,
-            samesite=settings.ACCESS_COOKIE_SAMESITE,
-            max_age=settings.ACCESS_TOKEN_LIFETIME,
-            domain=settings.COOKIE_DOMAIN,
-            path=settings.ACCESS_COOKIE_PATH,
-        )
+        # #  Set access cookie
+        # resp.set_cookie(
+        #     settings.ACCESS_COOKIE_NAME,
+        #     access,
+        #     httponly=settings.ACCESS_COOKIE_HTTPONLY,
+        #     secure=settings.ACCESS_COOKIE_SECURE,
+        #     samesite=settings.ACCESS_COOKIE_SAMESITE,
+        #     max_age=settings.ACCESS_TOKEN_LIFETIME,
+        #     domain=settings.COOKIE_DOMAIN,
+        #     path=settings.ACCESS_COOKIE_PATH,
+        # )
+        
+        # Set authentication cookies using utility functionk
+        resp = set_auth_cookies(resp, access_token, refresh_token)
+        
         logger.info("Password updated and tokens issued")
         return resp
 
