@@ -405,7 +405,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                         overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
                         progress_callback(min(overall_progress, 80), message)
             
-            result = decrypt_upload_and_extract_audio_thumbnail_chunked_updated(
+            result = decrypt_upload_and_extract_audio_thumbnail_chunked(
                 file_type = file_type,
                 key=s3_key,
                 encrypted_file=file,

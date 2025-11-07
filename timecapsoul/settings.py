@@ -340,13 +340,14 @@ CORS_ALLOW_HEADERS = [
     'x-csrftoken',
     'x-requested-with',
 ]
+LOGOUT_TIME = 60 * 60 * 24 * 7
 
 SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("JWT", "Bearer"),
     # "ACCESS_TOKEN_LIFETIME": timedelta(days=7),   # keep session alive 7 days
     # "REFRESH_TOKEN_LIFETIME": timedelta(days=15),
-    "ACCESS_TOKEN_LIFETIME": timedelta(seconds=60*5),
-    "REFRESH_TOKEN_LIFETIME": timedelta(seconds=60*5),
+    "ACCESS_TOKEN_LIFETIME": timedelta(seconds=LOGOUT_TIME),
+    "REFRESH_TOKEN_LIFETIME": timedelta(seconds=LOGOUT_TIME),
 
     "AUTH_COOKIE": "access",          # Cookie name
     "AUTH_COOKIE_SECURE": True if DEBUG == False else False,      # True in prod
@@ -370,8 +371,9 @@ ACCESS_COOKIE_NAME = "access_token"
 ACCESS_COOKIE_HTTPONLY = True        # Prevent JS access (XSS protection)
 ACCESS_COOKIE_PATH = "/"
 
-ACCESS_TOKEN_LIFETIME = 60 * 3      # 15 minutes (example)
-REFRESH_TOKEN_LIFETIME = 60*3       # 3 minutes
+
+ACCESS_TOKEN_LIFETIME = LOGOUT_TIME     # 15 minutes (example)
+REFRESH_TOKEN_LIFETIME = LOGOUT_TIME      # 3 minutes
 # ACCESS_TOKEN_LIFETIME = 60 * 60 * 24 * 7  # 7 days
 # Refresh token cookie
 REFRESH_COOKIE_NAME = "refresh_token"
