@@ -224,6 +224,8 @@ class GoogleAuthView(APIView):
                 "last_name": user.last_name,
             },
             'is_new_user': is_new_user,
+            'is_password_set': result['is_password_set'],
+
             
             
         })
