@@ -530,7 +530,6 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         return attrs
 
 
-    
     def create(self, validated_data):
         user = self.context['user']
         time_capsoul = self.context['time_capsoul']
@@ -550,18 +549,6 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         
         try:
             s3_key = generate_capsoul_media_s3_key(file_name, user.s3_storage_id, time_capsoul.id)
-            if progress_callback:
-                progress_callback(13, "Preparing chunked decrypt & upload...")
-
-            # Progress wrapper for upload
-            # def upload_progress_callback(upload_percentage, message):
-            #     if progress_callback:
-            #         if upload_percentage == -1:
-            #             progress_callback(-1, message)
-            #         else:
-            #             overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
-            #             progress_callback(min(overall_progress, 80), message)
-
             result = media_uploader(
                 file_type = file_type,
                 key=s3_key,
@@ -596,7 +583,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         
 
         if progress_callback:
-            progress_callback(87, "Generating thumbnails...")
+            progress_callback(85, "Generating thumbnails...")
 
         try:
             if  result.get('thumbnail_data'):
@@ -611,7 +598,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             logger.exception('Exception while extracting thumbnail')
 
         if progress_callback:
-            progress_callback(85, "Finalizing...")
+            progress_callback(88, "Finalizing...")
 
         instance = super().create(validated_data)
 

@@ -391,7 +391,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         file_type = validated_data.get('file_type')
         
         if progress_callback:
-            progress_callback(7, "Initializing upload...")
+            progress_callback(5, "Initializing upload...")
             
         try:
             s3_key = generate_room_media_s3_key(unique_file_name, user.s3_storage_id, memory_room.id)
@@ -399,13 +399,13 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                 progress_callback(10, "Preparing chunked decrypt & upload...")
 
             # Progress wrapper for upload
-            def upload_progress_callback(upload_percentage, message):
-                if progress_callback:
-                    if upload_percentage == -1:
-                        progress_callback(-1, message)
-                    else:
-                        overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
-                        progress_callback(min(overall_progress, 80), message)
+            # def upload_progress_callback(upload_percentage, message):
+            #     if progress_callback:
+            #         if upload_percentage == -1:
+            #             progress_callback(-1, message)
+            #         else:
+            #             overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
+            #             progress_callback(min(overall_progress, 80), message)
             
             # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
             #     file_type = file_type,

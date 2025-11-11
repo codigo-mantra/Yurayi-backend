@@ -399,7 +399,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         # Thread-safe progress tracking
         progress_lock = threading.Lock()
         file_progress = {
-            i: {'progress': 0, 'message': 'Queued', 'status': 'pending'}
+            i: {'progress': 1, 'message': 'Queued', 'status': 'pending'}
             for i in range(total_files)
         }
 
@@ -410,6 +410,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     'message': message,
                     'status': status
                 }
+                print(f"\n File {file_progress}")
 
         def file_upload_stream():
             def process_single_file(file_index, uploaded_file, file_iv, time_capsoul):
@@ -465,7 +466,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                             'result': {
                                 "file": uploaded_file.name,
                                 "status": "success",
-                                "progress": 100,
+                                "progress": 99,
                                 "data": TimeCapSoulMediaFileReadOnlySerializer(media_file).data
                             },
                             'media_file': media_file

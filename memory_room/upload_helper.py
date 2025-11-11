@@ -97,8 +97,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
     
     try:
         s3_key = key
-        if progress_callback:
-            progress_callback(14, "Initializing decryption...")
+        
 
         # Parse IV
         try:
@@ -125,6 +124,8 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
         encrypted_file.seek(encrypted_data_size)
         auth_tag = encrypted_file.read(16)
         encrypted_file.seek(0)
+        if progress_callback:
+            progress_callback(15, "Initializing decryption...")
 
         # OPTIMIZED: Adaptive chunk size and threading strategy
         if encrypted_data_size <= 5 * 1024 * 1024:  # < 5MB
@@ -149,7 +150,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
         decryptor = cipher.decryptor()
 
         if progress_callback:
-            progress_callback(18, "Starting chunked decrypt & upload...")
+            progress_callback(20, "Starting chunked decrypt & upload...")
 
         # Generate KMS data key & AESGCM encryptor for S3
         resp = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
@@ -222,8 +223,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                                     uploaded_bytes += decrypted_len
 
                                 upload_succeeded = True
-                                if progress_callback:
-                                    progress_callback(45, 'File upload completed')
+                                
                                 break  # Success, exit retry loop
                                 
                             except Exception as e:
@@ -238,13 +238,17 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                                             upload_error = e
                         
                         # If upload failed after all retries, stop processing
+                        
                         if not upload_succeeded:
                             break
                             
                     finally:
                         # CRITICAL: Only call task_done() if we successfully got an item
+                        
                         if item is not None:
                             upload_queue.task_done()
+                if progress_callback:
+                    progress_callback(45, 'File upload completed')
 
             # Start multiple worker threads
             for _ in range(max_workers):
@@ -286,7 +290,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                     thumbnail_attempts += 1
                     try:
                         if progress_callback:
-                            progress_callback(65, 'Thumbnail extraction started')
+                            progress_callback(35, 'Thumbnail extraction started')
                         
                         extractor = MediaThumbnailExtractor(file='', file_ext=file_ext)
                         buffer_data = buffer_for_thumbnail.getvalue()
@@ -396,7 +400,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
         )
 
         if progress_callback:
-            progress_callback(70, "Upload completed. Finalizing thumbnail...")
+            progress_callback(65, "Upload completed. Finalizing thumbnail...")
 
         # FALLBACK: If thumbnail not extracted during streaming, try from temp file
         if not thumbnail_data and temp_decrypted_path and os.path.exists(temp_decrypted_path):
@@ -458,7 +462,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                 if not thumbnail_data:
                     try:
                         if progress_callback:
-                            progress_callback(73, "Extracting thumbnail (fallback: from S3)...")
+                            progress_callback(70, "Extracting thumbnail (fallback: from S3)...")
                         
                         temp_s3_path = tempfile.mktemp(suffix=f"_s3{file_ext}")
                         
@@ -510,6 +514,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
         raise RuntimeError(f"Decrypt/upload failed: {e}")
 
     finally:
+        # FIX: Comprehensive cleanup to prevent memory leaks
         try:
             if 'data_key_plain' in locals():
                 del data_key_plain
@@ -518,10 +523,16 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
         try:
             if buffer_for_thumbnail:
                 buffer_for_thumbnail.close()
+                buffer_for_thumbnail = None
         except Exception:
             pass
         try:
-            if temp_decrypted_path and os.path.exists(temp_decrypted_path):
-                os.remove(temp_decrypted_path)
-        except Exception as e:
-            logger.warning(f"Failed to cleanup temp file: {e}")
+            # Free any remaining large objects
+            if 'decrypted_chunk' in locals():
+                del decrypted_chunk
+            if 'ciphertext_chunk' in locals():
+                del ciphertext_chunk
+            if 'body' in locals():
+                del body
+        except Exception:
+            pass

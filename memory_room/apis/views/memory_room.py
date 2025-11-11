@@ -292,7 +292,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
         # Thread-safe progress tracking
         progress_lock = threading.Lock()
-        file_progress = {i: {'progress': 0, 'message': 'Queued', 'status': 'pending'} for i in range(total_files)}
+        file_progress = {i: {'progress': 1, 'message': 'Queued', 'status': 'pending'} for i in range(total_files)}
         
         def update_file_progress(file_index, progress, message, status='processing'):
             with progress_lock:
@@ -301,6 +301,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                     'message': message,
                     'status': status
                 }
+                print(f'\n File {file_progress}')
 
         def calculate_overall_progress():
             with progress_lock:
@@ -342,13 +343,14 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                         #     cache_key=f'user_storage_id_{user.id}',
                         #     operation_type='addition'
                         # )
-                        update_file_progress(file_index, 95, 'Upload completed successfully', 'success')
+                        update_file_progress(file_index, 90, 'Upload completed successfully', 'success')
                         
                         is_updated = update_users_storage(
                             operation_type='addition',
                             media_updation='memory_room',
                             media_file=media_file
                         )
+
                         update_file_progress(file_index, 98, 'Upload completed successfully', 'success')
                         
                         return {
@@ -356,7 +358,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                             'result': {
                                 "file": uploaded_file.name,
                                 "status": "success",
-                                "progress": 100,
+                                "progress": 99,
                                 "data": MemoryRoomMediaFileSerializer(media_file).data
                             },
                             'media_file': media_file
