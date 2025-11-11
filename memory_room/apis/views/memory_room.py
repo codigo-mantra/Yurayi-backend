@@ -262,7 +262,6 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         files = request.FILES.getlist('file')
         created_objects = []
         results = []
-        from rest_framework import serializers
 
         if len(files) == 0: 
             raise serializers.ValidationError({'file': "Media files is required"})
@@ -343,12 +342,14 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                         #     cache_key=f'user_storage_id_{user.id}',
                         #     operation_type='addition'
                         # )
+                        update_file_progress(file_index, 95, 'Upload completed successfully', 'success')
+                        
                         is_updated = update_users_storage(
                             operation_type='addition',
                             media_updation='memory_room',
                             media_file=media_file
                         )
-                        update_file_progress(file_index, 100, 'Upload completed successfully', 'success')
+                        update_file_progress(file_index, 98, 'Upload completed successfully', 'success')
                         
                         return {
                             'index': file_index,

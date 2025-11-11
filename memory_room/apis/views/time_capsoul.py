@@ -256,18 +256,18 @@ class TimeCapSoulMediaFilesView(SecuredView):
             time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         except Exception as e:
             logger.error(f"Error fetching time_capsoul: {e} for user {user.email} for time_capsoul_id {time_capsoul_id}")
-            return Response({"media_files": []}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         else:
             if time_capsoul.user == user:
                 if time_capsoul.is_deleted == True:
-                    return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+                    return Response(status=status.HTTP_404_NOT_FOUND)
 
                 media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul,user=user, is_deleted =False).order_by('-updated_at')
             else:
                 recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
                 if not recipient:
                     logger.info(f'User is not owner and recipient not found for tagged capsoul {time_capsoul.id} and user {user.email}')
-                    return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+                    return Response(status=status.HTTP_404_NOT_FOUND)
                 
                 # if time_capsoul.unlock_date and timezone.now() < time_capsoul.unlock_date:
                 current_date = timezone.now()
@@ -276,7 +276,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 )
                 if not is_unlocked:
                     logger.info(f'User is not owner and capsoul is locked for tagged capsoul {time_capsoul.id} and user {user.email}')
-                    return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+                    return Response(status=status.HTTP_404_NOT_FOUND)
 
                 # parent_files_id = (
                 #     [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
@@ -308,7 +308,6 @@ class TimeCapSoulMediaFilesView(SecuredView):
         files = request.FILES.getlist('file')
         created_objects = []
         results = []
-        from rest_framework import serializers
 
         if len(files) == 0: 
             raise serializers.ValidationError({'file': "Media files are required"})
@@ -451,6 +450,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                                 
                                 # updated_media_ids = existing_media_ids +  f',{media_file.id}'
                                 # capsoul_recipients.update(parent_media_refrences = updated_media_ids)
+                        update_file_progress(file_index, 93, 'Upload completed successfully', 'success')
                             
                         
                         is_updated = update_users_storage(
@@ -458,7 +458,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                             media_updation='capsoul',
                             media_file=media_file
                         )
-                        update_file_progress(file_index, 100, 'Upload completed successfully', 'success')
+                        update_file_progress(file_index, 98, 'Upload completed successfully', 'success')
 
                         return {
                             'index': file_index,

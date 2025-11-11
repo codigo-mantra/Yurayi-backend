@@ -17,6 +17,7 @@ from memory_room.signals import update_user_storage
 from memory_room.tasks import capsoul_almost_unlock,capsoul_unlocked,update_parent_media_refrences_task
 
 from memory_room.media_helper import decrypt_upload_and_extract_audio_thumbnail_chunked
+from memory_room.upload_helper import decrypt_upload_and_extract_audio_thumbnail_chunked as media_uploader
 
 from django.core.files.images import ImageFile 
 from timecapsoul.utils import MediaThumbnailExtractor
@@ -545,39 +546,48 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         validated_data['time_capsoul'] = time_capsoul
 
         if progress_callback:
-            progress_callback(15, "Initializing upload...")
+            progress_callback(10, "Initializing upload...")
         
         try:
             s3_key = generate_capsoul_media_s3_key(file_name, user.s3_storage_id, time_capsoul.id)
             if progress_callback:
-                progress_callback(20, "Preparing chunked decrypt & upload...")
+                progress_callback(13, "Preparing chunked decrypt & upload...")
 
             # Progress wrapper for upload
-            def upload_progress_callback(upload_percentage, message):
-                if progress_callback:
-                    if upload_percentage == -1:
-                        progress_callback(-1, message)
-                    else:
-                        overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
-                        progress_callback(min(overall_progress, 80), message)
+            # def upload_progress_callback(upload_percentage, message):
+            #     if progress_callback:
+            #         if upload_percentage == -1:
+            #             progress_callback(-1, message)
+            #         else:
+            #             overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
+            #             progress_callback(min(overall_progress, 80), message)
 
-            result = decrypt_upload_and_extract_audio_thumbnail_chunked(
+            result = media_uploader(
                 file_type = file_type,
                 key=s3_key,
                 encrypted_file=file,
                 iv_str=iv,
                 # content_type="audio/mpeg",
-                progress_callback=upload_progress_callback,
+                progress_callback=progress_callback,
                 file_ext=os.path.splitext(file.name)[1].lower(),
             )
+            # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
+            #     file_type = file_type,
+            #     key=s3_key,
+            #     encrypted_file=file,
+            #     iv_str=iv,
+            #     # content_type="audio/mpeg",
+            #     progress_callback=upload_progress_callback,
+            #     file_ext=os.path.splitext(file.name)[1].lower(),
+            # )
         except Exception as e:
             logger.error('Chunked Decrypt/Upload Error', exc_info=True)
-            if progress_callback:
-                progress_callback(0, f"Chunked decryption/upload failed: {str(e)}")
+            # if progress_callback:
+            #     progress_callback(0, f"Chunked decryption/upload failed: {str(e)}")
             raise serializers.ValidationError({'upload_error': f"Chunked decryption/upload failed: {str(e)}"})
 
         if progress_callback:
-            progress_callback(85, "File uploaded successfully, generating thumbnails...")
+            progress_callback(80, "File uploaded successfully, generating thumbnails...")
 
         validated_data['title'] = file_name
         validated_data['file_type'] = file_type
@@ -586,7 +596,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         
 
         if progress_callback:
-            progress_callback(86, "Generating thumbnails...")
+            progress_callback(87, "Generating thumbnails...")
 
         try:
             if  result.get('thumbnail_data'):
@@ -601,12 +611,12 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             logger.exception('Exception while extracting thumbnail')
 
         if progress_callback:
-            progress_callback(90, "Finalizing...")
+            progress_callback(85, "Finalizing...")
 
         instance = super().create(validated_data)
 
         if progress_callback:
-            progress_callback(92, "File processed successfully!")
+            progress_callback(90, "File processed successfully!")
 
         return instance
 
