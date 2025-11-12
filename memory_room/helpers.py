@@ -778,9 +778,10 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
 def get_recipient_capsoul_ids(capsoul_recipients):
     capsoul_ids = []
     try:
-        existing_media_ids =  eval(capsoul_recipients.parent_media_refrences)
-        if existing_media_ids and  type(existing_media_ids) is list:
-            return existing_media_ids
+        if capsoul_recipients.parent_media_refrences:
+            existing_media_ids =  eval(capsoul_recipients.parent_media_refrences)
+            if existing_media_ids and  type(existing_media_ids) is list:
+                return existing_media_ids
     except Exception as e:
         logger.error(f'Exception while getting recipient capsoul ids for recipient id: {capsoul_recipients.id}')
     return capsoul_ids

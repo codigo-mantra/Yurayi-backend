@@ -813,7 +813,6 @@ def get_media_file_bytes_with_content_type(media_file, user):
         content_type_cache_key = f'{bytes_cache_key}_type'
         content_type = cache.get(content_type_cache_key)
         file_bytes, content_type = None, None
-
         
         if not file_bytes or  not content_type:
             try:
@@ -836,6 +835,96 @@ def get_media_file_bytes_with_content_type(media_file, user):
             
     except Exception as e:
         logger.error(f'Exception while fetching media file from cache or decrypting: {e} s3-key: {media_file.s3_key} for user: {user.email}')
+        return None, None
+
+def get_file_bytes(s3_key):
+    """
+    Unified function to get and decrypt file bytes from S3.
+    Handles three encryption methods based on metadata structure:
+    1. Nonce in metadata (standard encryption)
+    2. Nonce prepended to data (replicated files)
+    3. Chunked encryption with nonces prepended to each chunk
+    """
+    try:
+        bytes_cache_key = str(s3_key)
+        file_bytes = cache.get(bytes_cache_key)
+        
+        content_type_cache_key = f'{bytes_cache_key}_type'
+        content_type = cache.get(content_type_cache_key)
+        
+        # If both cached, return immediately
+        if file_bytes and content_type:
+            return file_bytes, content_type
+        
+        # Fetch object from S3
+        try:
+            obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=str(s3_key))
+        except Exception as e:
+            logger.error(f'Error fetching object from S3: {e}')
+            return None, None
+        
+        encrypted_blob = obj["Body"].read()
+        metadata = obj["Metadata"]
+        
+        # Get common metadata
+        encrypted_data_key_b64 = metadata.get("edk")
+        orig_content_type = metadata.get("orig-content-type", "application/octet-stream")
+        
+        if not encrypted_data_key_b64:
+            logger.error(f'Missing encryption metadata for key: {s3_key}')
+            return None, None
+        
+        # Decrypt data key
+        encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
+        data_key = kms.decrypt(CiphertextBlob=encrypted_data_key)["Plaintext"]
+        aesgcm = AESGCM(data_key)
+        
+        # Method 1: Nonce in metadata (standard encryption)
+        if "nonce" in metadata:
+            nonce = base64.b64decode(metadata["nonce"])
+            plaintext = aesgcm.decrypt(nonce, encrypted_blob, None)
+        
+        # Method 2 & 3: Nonce prepended (determine by trying chunked first)
+        else:
+            # Try chunked decryption (Method 3)
+            chunk_size = 10 * 1024 * 1024 + 28
+            
+            # Heuristic: if file is larger than chunk_size, likely chunked
+            if len(encrypted_blob) > chunk_size:
+                try:
+                    plaintext = bytearray()
+                    offset = 0
+                    
+                    while offset < len(encrypted_blob):
+                        nonce = encrypted_blob[offset:offset + 12]
+                        ciphertext_chunk = encrypted_blob[offset + 12:offset + chunk_size]
+                        offset += len(nonce) + len(ciphertext_chunk)
+                        
+                        chunk_plaintext = aesgcm.decrypt(nonce, ciphertext_chunk, None)
+                        plaintext.extend(chunk_plaintext)
+                    
+                    plaintext = bytes(plaintext)
+                except Exception as e:
+                    logger.warning(f'Chunked decryption failed, trying single nonce: {e}')
+                    # Fall back to Method 2
+                    nonce = encrypted_blob[:12]
+                    ciphertext = encrypted_blob[12:]
+                    plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+            else:
+                # Method 2: Single nonce prepended
+                nonce = encrypted_blob[:12]
+                ciphertext = encrypted_blob[12:]
+                plaintext = aesgcm.decrypt(nonce, ciphertext, None)
+        
+        # Cache the results
+        if plaintext and orig_content_type:
+            cache.set(bytes_cache_key, plaintext, timeout=60*60*2)
+            cache.set(content_type_cache_key, orig_content_type, timeout=60*60*2)
+        
+        return plaintext, orig_content_type
+        
+    except Exception as e:
+        logger.error(f'Exception during file decryption: {e}')
         return None, None
 
 

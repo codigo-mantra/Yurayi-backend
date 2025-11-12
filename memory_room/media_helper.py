@@ -1543,15 +1543,24 @@ class ChunkedDecryptor:
             self.data_key = self.kms.decrypt(CiphertextBlob=encrypted_data_key)["Plaintext"]
             self.aesgcm = AESGCM(self.data_key)
             
-            # Get chunk size from metadata
+            # # Get chunk size from metadata
+            # chunk_size_str = self.metadata.get("chunk-size")
+            # if chunk_size_str:
+            #     self.chunk_size = int(chunk_size_str)
+            #     logger.info(f"Using stored chunk size: {self.chunk_size}")
+            # else:
+            #     # Default fallback
+            #     self.chunk_size = 10 * 1024 * 1024  # 10MB
+            #     logger.warning(f"No chunk-size in metadata, using default: {self.chunk_size}")
+            
+            # 3️⃣ Detect chunked vs non-chunked
             chunk_size_str = self.metadata.get("chunk-size")
             if chunk_size_str:
                 self.chunk_size = int(chunk_size_str)
-                logger.info(f"Using stored chunk size: {self.chunk_size}")
+                logger.info(f"[{self.s3_key}] Using chunked decryption with chunk size: {self.chunk_size}")
             else:
-                # Default fallback
-                self.chunk_size = 10 * 1024 * 1024  # 10MB
-                logger.warning(f"No chunk-size in metadata, using default: {self.chunk_size}")
+                logger.info(f"[{self.s3_key}] Non-chunked AES-GCM file detected (single nonce mode)")
+
             
             # Store the streaming body for later use
             self.s3_stream = obj["Body"]
@@ -1591,7 +1600,7 @@ class ChunkedDecryptor:
             end_byte = float('inf')
         
         # Calculate encrypted chunk size (plaintext + 16-byte tag + 12-byte nonce)
-        encrypted_chunk_size = self.chunk_size + 16 + 12
+        # encrypted_chunk_size = self.chunk_size + 16 + 12
         
         decrypted_offset = 0  # Track position in decrypted stream
         chunk_num = 0
@@ -1633,6 +1642,5 @@ class ChunkedDecryptor:
                     break
                     
             except InvalidTag as e:
-                logger.error(f"InvalidTag at chunk {chunk_num}: {e}")
+                logger.error(f"InvalidTag at chunk {chunk_num}: {e} for media file: {self.s3_key}")
                 raise ValueError(f"Decryption failed at chunk {chunk_num}")
-

@@ -66,7 +66,7 @@ from memory_room.apis.serializers.time_capsoul import (
     TimeCapsoulUnlockSerializer, TimeCapsoulUnlockSerializer,RecipientsDetailSerializer,TimeCapSoulMediaFileReadOnlySerializer, TimeCapSoulRecipientSerializer
 )
 from memory_room.apis.serializers.notification import TimeCapSoulRecipientUpdateSerializer
-from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature,get_media_file_bytes_with_content_type,encrypt_and_upload_file_chunked,generate_capsoul_media_s3_key,clean_filename
+from memory_room.crypto_utils import get_file_bytes, encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature,get_media_file_bytes_with_content_type,encrypt_and_upload_file_chunked,generate_capsoul_media_s3_key,clean_filename
 
 
 MEDIA_FILES_BUCKET = 'yurayi-media'
@@ -2607,7 +2607,8 @@ class ServeTimeCapSoulMedia(SecuredView):
             length = (end - start) if end else total_size
             response["Content-Length"] = str(length)
         elif not streaming:
-            response["Content-Length"] = str(len(content))
+            if content:
+                response["Content-Length"] = str(len(content))
         
         # Range headers
         if range_support:
@@ -2641,11 +2642,29 @@ class ServeTimeCapSoulMedia(SecuredView):
     def _stream_chunked_decrypt(self, s3_key, start_byte=0, end_byte=None):
         """Generator that streams decrypted chunks."""
         with ChunkedDecryptor(s3_key) as decryptor:
-            for decrypted_chunk in decryptor.decrypt_chunks(start_byte, end_byte):
-                chunk_offset = 0
-                while chunk_offset < len(decrypted_chunk):
-                    yield decrypted_chunk[chunk_offset:chunk_offset + self.STREAMING_CHUNK_SIZE]
-                    chunk_offset += self.STREAMING_CHUNK_SIZE
+        
+            # If no chunk-size present in metadata => full decryption mode
+            if not decryptor.metadata.get("chunk-size"):
+                # full_plaintext = decryptor.decrypt_full()
+                full_plaintext, content = get_file_bytes(s3_key)
+
+
+                # Yield in streamable pieces
+                offset = 0
+                while offset < len(full_plaintext):
+                    yield full_plaintext[offset:offset + self.STREAMING_CHUNK_SIZE]
+                    offset += self.STREAMING_CHUNK_SIZE
+
+            else:
+                # Chunked mode (large files)
+                for decrypted_chunk in decryptor.decrypt_chunks(start_byte, end_byte):
+                    if not decrypted_chunk:
+                        continue
+                    
+                    offset = 0
+                    while offset < len(decrypted_chunk):
+                        yield decrypted_chunk[offset:offset + self.STREAMING_CHUNK_SIZE]
+                        offset += self.STREAMING_CHUNK_SIZE
     
     def _get_file_size_from_metadata(self, s3_key):
         """Calculate decrypted file size from S3 metadata."""
@@ -2657,6 +2676,13 @@ class ServeTimeCapSoulMedia(SecuredView):
         try:
             obj = s3.head_object(Bucket=MEDIA_FILES_BUCKET, Key=s3_key)
             encrypted_size = obj['ContentLength']
+            metadata =  obj['Metadata']
+            chunk_size = metadata.get('chunk-size')
+            if not chunk_size:
+                meta_cache_key = f'meta_cache_key_{s3_key}'
+                cache.set(meta_cache_key, metadata, 60*60*24)
+                
+            
             chunk_size = int(obj['Metadata'].get('chunk-size', 10 * 1024 * 1024))
             
             num_chunks = (encrypted_size + chunk_size + 27) // (chunk_size + 28)
@@ -2863,77 +2889,6 @@ class ServeTimeCapSoulMedia(SecuredView):
             # For non-converted files, return simple response
             return self._create_response(file_bytes, content_type, filename)
 
-# class TimeCapSoulMediaFileDownloadView(SecuredView):
-#     def get(self, request, timecapsoul_id, media_file_id):
-#         """
-#         Download a media file from a TimeCapSoul securely.
-#         """
-#         user = self.get_current_user(request)
-#         if user is None:
-#             return Response(status=status.HTTP_401_UNAUTHORIZED)
-#         try:
-#             media_file =  TimeCapSoulMediaFile.objects.get(id = media_file_id, user=user)
-#         except TimeCapSoulMediaFile.DoesNotExist:
-#             try:
-#                 media_file =  TimeCapSoulMediaFile.objects.get(id = media_file_id)
-#             except Exception as e:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
-#             else:
-#                 time_capsoul = media_file.time_capsoul
-                
-#                 if time_capsoul:
-#                     capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul=time_capsoul, email = user.email).first()
-#                     if not capsoul_recipients:
-#                         return Response(status=status.HTTP_404_NOT_FOUND)
-
-#                     # recipients_data = list(capsoul_recipients.recipients.values_list("email", flat=True))
-#                     # if user.email not in recipients_data:
-#                     #     return Response(status=status.HTTP_404_NOT_FOUND)
-                    
-#         # file_name = media_file.s3_key.split('/')[-1]
-#         file_name  = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}'
-#         # print(f'\nfile-name: {file_name}  {media_file.title.split(".", 1)[0].replace(" ", "_")}.{media_file.s3_key.split(".")[-1]}')
-        
-        
-#         file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
-#         if not file_bytes or not content_type:
-#             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-        
-#         if file_bytes and content_type:
-#             try:
-#                 file_size = len(file_bytes)
-#                 chunk_size = determine_download_chunk_size(file_size)
-#                 file_stream = io.BytesIO(file_bytes)
-
-#                 mime_type = (
-#                     content_type
-#                     or mimetypes.guess_type(file_name)[0]
-#                     or 'application/octet-stream'
-#                 )
-
-#                 def file_iterator():
-#                     while True:
-#                         chunk = file_stream.read(chunk_size)
-#                         if not chunk:
-#                             break
-#                         yield chunk
-
-#                 response = StreamingHttpResponse(
-#                     streaming_content=file_iterator(),
-#                     content_type=mime_type
-#                 )
-#                 response['Content-Disposition'] = f'attachment; filename="{file_name}"'
-#                 response['Content-Length'] = str(file_size)
-#                 response['Accept-Ranges'] = 'bytes'
-#                 response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-#                 response['Access-Control-Expose-Headers'] = 'Content-Length, Content-Disposition'
-#                 return response
-
-#             except ClientError as e:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
-#         else:
-#             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 class MediaFileDownloadView(SecuredView):
     """
     Securely stream media file downloads from S3 without loading full file into memory.
@@ -2943,12 +2898,36 @@ class MediaFileDownloadView(SecuredView):
     
     def _stream_chunked_decrypt_download(self, s3_key):
         """Generator that streams decrypted chunks for download."""
+        # with ChunkedDecryptor(s3_key) as decryptor:
+        #     for decrypted_chunk in decryptor.decrypt_chunks():
+        #         chunk_offset = 0
+        #         while chunk_offset < len(decrypted_chunk):
+        #             yield decrypted_chunk[chunk_offset:chunk_offset + self.DOWNLOAD_CHUNK_SIZE]
+        #             chunk_offset += self.DOWNLOAD_CHUNK_SIZE
+        
         with ChunkedDecryptor(s3_key) as decryptor:
-            for decrypted_chunk in decryptor.decrypt_chunks():
-                chunk_offset = 0
-                while chunk_offset < len(decrypted_chunk):
-                    yield decrypted_chunk[chunk_offset:chunk_offset + self.DOWNLOAD_CHUNK_SIZE]
-                    chunk_offset += self.DOWNLOAD_CHUNK_SIZE
+        
+            # If no chunk-size present in metadata => full decryption mode
+            if not decryptor.metadata.get("chunk-size"):
+                full_plaintext, content = get_file_bytes(s3_key)
+
+
+                # Yield in streamable pieces
+                offset = 0
+                while offset < len(full_plaintext):
+                    yield full_plaintext[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
+                    offset += self.DOWNLOAD_CHUNK_SIZE
+
+            else:
+                # Chunked mode (large files)
+                for decrypted_chunk in decryptor.decrypt_chunks():
+                    if not decrypted_chunk:
+                        continue
+                    
+                    offset = 0
+                    while offset < len(decrypted_chunk):
+                        yield decrypted_chunk[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
+                        offset += self.DOWNLOAD_CHUNK_SIZE
     
     def _get_file_size_from_metadata(self, s3_key):
         """Calculate decrypted file size from S3 metadata."""
@@ -3061,12 +3040,36 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
     
     def _stream_chunked_decrypt_download(self, s3_key):
         """Generator that streams decrypted chunks for download."""
+        # with ChunkedDecryptor(s3_key) as decryptor:
+        #     for decrypted_chunk in decryptor.decrypt_chunks():
+        #         chunk_offset = 0
+        #         while chunk_offset < len(decrypted_chunk):
+        #             yield decrypted_chunk[chunk_offset:chunk_offset + self.DOWNLOAD_CHUNK_SIZE]
+        #             chunk_offset += self.DOWNLOAD_CHUNK_SIZE
+        
         with ChunkedDecryptor(s3_key) as decryptor:
-            for decrypted_chunk in decryptor.decrypt_chunks():
-                chunk_offset = 0
-                while chunk_offset < len(decrypted_chunk):
-                    yield decrypted_chunk[chunk_offset:chunk_offset + self.DOWNLOAD_CHUNK_SIZE]
-                    chunk_offset += self.DOWNLOAD_CHUNK_SIZE
+        
+            # If no chunk-size present in metadata => full decryption mode
+            if not decryptor.metadata.get("chunk-size"):
+                full_plaintext, content = get_file_bytes(s3_key)
+
+
+                # Yield in streamable pieces
+                offset = 0
+                while offset < len(full_plaintext):
+                    yield full_plaintext[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
+                    offset += self.DOWNLOAD_CHUNK_SIZE
+
+            else:
+                # Chunked mode (large files)
+                for decrypted_chunk in decryptor.decrypt_chunks():
+                    if not decrypted_chunk:
+                        continue
+                    
+                    offset = 0
+                    while offset < len(decrypted_chunk):
+                        yield decrypted_chunk[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
+                        offset += self.DOWNLOAD_CHUNK_SIZE
     
     def _get_file_size_from_metadata(self, s3_key):
         """Calculate decrypted file size from S3 metadata."""

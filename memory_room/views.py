@@ -9,6 +9,13 @@ from userauth.models import User
 import logging
 logger = logging.getLogger(__name__)
 
+# u = User.objects.get(email ="krishnayadavpb07@gmail.com")
+# u.set_password("Test@1234")
+# u.save()
+# caps = TimeCapSoul.objects.filter(user = u, is_deleted =True)
+# caps.update(is_deleted = False)
+# print(f'Updated capsoul : {caps}')
+
 def backfill_time_capsoul_recipient_media_ids():
     time_capsouls = TimeCapSoul.objects.filter(status ='unlocked')
     
@@ -167,6 +174,8 @@ from userauth.models import User
 
 def testing_view(request):
     logger.info('testing_view called')
+    from memory_room.crypto_utils import get_decrypt_file_bytes,decrypt_and_get_image,decrypt_and_replicat_files
+    
     # media = MediaThumbnailExtractor()
     # return HttpResponse('<h1>All good</h1>')
     # email = 'krishnayadav.codigomantra@gmail.com'
@@ -334,8 +343,8 @@ def testing_view(request):
         # res = generate_notification.apply_async()
         
         # delete user time-capsoul # Yurayi@2025 yurayiadmin
-        user = User.objects.get(email = "amrita@gmail.com")
-        caps = TimeCapSoul.objects.filter(user = user, is_deleted = False, status = 'created').update(is_deleted = True)
+        # user = User.objects.get(email = "amrita@gmail.com")
+        # caps = TimeCapSoul.objects.filter(user = user, is_deleted = False, status = 'created').update(is_deleted = True)
     except:
         print('Not deleted')
     else:
