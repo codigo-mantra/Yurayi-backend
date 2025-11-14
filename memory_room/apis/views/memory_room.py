@@ -39,7 +39,7 @@ import queue
 import time
 
 import tempfile
-from moviepy.editor import VideoFileClip
+# from moviepy.editor import VideoFileClip
 from memory_room.media_helper import decrypt_s3_file_chunked,decrypt_s3_file_chunked_range,ChunkedDecryptor
 from django.core.cache import cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -198,22 +198,24 @@ class SetMemoryRoomCoverImageAPIView(SecuredView):
         user = self.get_current_user(request)
         logger.info(f"SetMemoryRoomCoverImageAPIView.post called by {user.email} room: {memory_room_id} media-id: {media_file_id}")
         user = self.get_current_user(request)
-        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+        # memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
+        media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user = user)
+        memory_room= media_file.memory_room
+        
         if memory_room.room_template.default_template is None:
-            media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user = user, memory_room = memory_room)
+            # media_file = get_object_or_404(MemoryRoomMediaFile, id=media_file_id, user = user, memory_room = memory_room)
             if media_file.file_type == 'image' and media_file.is_cover_image == False:
                 logger.info(f"SetMemoryRoomCoverImageAPIView.post cover setting started by {user.email} room: {memory_room_id} media-id: {media_file_id}")
                 
                 # now images as cover image here
                 from userauth.models import Assets
                 media_s3_key =  str(media_file.s3_key)
-                file_name = media_s3_key.split('/')[-1]
-                file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
-                if not file_bytes or not content_type:
-                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
-                assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
-                
+                # file_name = media_s3_key.split('/')[-1]
+                # file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                # if not file_bytes or not content_type:
+                #     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                # s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                assets_obj = Assets.objects.create(s3_key=media_s3_key)
                 room_template = memory_room.room_template
                 room_template.cover_image = assets_obj
                 room_template.save()

@@ -761,6 +761,7 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
             return Response(status=status.HTTP_204_NO_CONTENT)
     
     def patch(self, request, time_capsoul_id, media_file_id):
+        """Set As Cover """
         user = self.get_current_user(request)
         media_file = get_object_or_404(TimeCapSoulMediaFile, id=media_file_id)
         serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True, context={'is_owner': True if media_file.user == user else False, 'current_user': user})
@@ -3512,9 +3513,223 @@ class TimeCapsoulDuplicationApiView(SecuredView):
         
 
 
-class GetMediaThumbnailPreview(SecuredView):
+# class GetMediaThumbnailPreview(SecuredView):
     
-    def get(self, request, path, media_file_id=None):
-        return Response()
+#     def get(self, request, path, media_file_id=None):
+#         return Response()
         
-        pass
+#         pass
+
+class ServeCoverTimecapsoulImages(SecuredView):
+    """
+    Securely serve decrypted images from S3 via Django.
+    Streaming responses with lazy loading for all image types.
+    """
+    
+    CACHE_TIMEOUT = 60 * 60 * 24 * 7  # 7 days
+    STREAMING_CHUNK_SIZE = 64 * 1024  # 64KB chunks
+    
+    # Image file extensions
+    IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', 
+                        '.heic', '.heif', '.svg', '.ico', '.raw', '.psd'}
+    
+    def _get_file_extension(self, filename):
+        """Extract file extension from filename."""
+        return '.' + filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
+    
+    def _guess_content_type(self, filename):
+        """Guess content type from filename extension for better browser compatibility."""
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(filename)
+        
+        ext = self._get_file_extension(filename)
+        
+        # Quick lookup for common image types
+        type_map = {
+            '.jpg': 'image/jpeg',
+            '.jpeg': 'image/jpeg',
+            '.png': 'image/png',
+            '.gif': 'image/gif',
+            '.webp': 'image/webp',
+            '.svg': 'image/svg+xml',
+            '.bmp': 'image/bmp',
+            '.tiff': 'image/tiff',
+            '.ico': 'image/x-icon',
+        }
+        
+        return type_map.get(ext, content_type or 'application/octet-stream')
+    
+    def _create_response(self, content, content_type, filename, streaming=False):
+        """
+        Unified response creator for image files.
+        
+        Args:
+            content: File bytes or generator for streaming
+            content_type: MIME type
+            filename: Original filename
+            streaming: Whether to use StreamingHttpResponse
+        """
+        # Create appropriate response type
+        if streaming:
+            response = StreamingHttpResponse(content, content_type=content_type)
+        else:
+            response = HttpResponse(content, content_type=content_type)
+        
+        # Set content length for non-streaming responses
+        if not streaming and content:
+            response["Content-Length"] = str(len(content))
+        
+        # Security headers
+        response["Content-Disposition"] = "inline"
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, max-age=3600"
+        
+        # Special CSP for SVG
+        if content_type == "image/svg+xml":
+            response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+        else:
+            frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+            response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+        
+        # CORS headers
+        response["Cross-Origin-Resource-Policy"] = "cross-origin"
+        response["Access-Control-Allow-Origin"] = "*"
+        
+        return response
+    
+    def _stream_chunked_decrypt(self, s3_key):
+        """Generator that streams decrypted chunks."""
+        with ChunkedDecryptor(s3_key) as decryptor:
+            
+            # If no chunk-size present in metadata => full decryption mode
+            if not decryptor.metadata.get("chunk-size"):
+                full_plaintext, content = get_file_bytes(s3_key)
+                
+                # Yield in streamable pieces
+                offset = 0
+                while offset < len(full_plaintext):
+                    yield full_plaintext[offset:offset + self.STREAMING_CHUNK_SIZE]
+                    offset += self.STREAMING_CHUNK_SIZE
+            
+            else:
+                # Chunked mode (large files)
+                for decrypted_chunk in decryptor.decrypt_chunks():
+                    if not decrypted_chunk:
+                        continue
+                    
+                    offset = 0
+                    while offset < len(decrypted_chunk):
+                        yield decrypted_chunk[offset:offset + self.STREAMING_CHUNK_SIZE]
+                        offset += self.STREAMING_CHUNK_SIZE
+    
+    def _get_file_size_from_metadata(self, s3_key):
+        """Calculate decrypted file size from S3 metadata."""
+        cache_key = f"media_size_{s3_key}"
+        cached_size = cache.get(cache_key)
+        if cached_size:
+            return cached_size
+        
+        try:
+            obj = s3.head_object(Bucket=MEDIA_FILES_BUCKET, Key=s3_key)
+            encrypted_size = obj['ContentLength']
+            metadata = obj['Metadata']
+            chunk_size = metadata.get('chunk-size')
+            
+            if not chunk_size:
+                meta_cache_key = f'meta_cache_key_{s3_key}'
+                cache.set(meta_cache_key, metadata, 60*60*24)
+            
+            chunk_size = int(obj['Metadata'].get('chunk-size', 10 * 1024 * 1024))
+            
+            num_chunks = (encrypted_size + chunk_size + 27) // (chunk_size + 28)
+            overhead = num_chunks * 28
+            decrypted_size = encrypted_size - overhead
+            
+            cache.set(cache_key, decrypted_size, timeout=self.CACHE_TIMEOUT)
+            return decrypted_size
+        except Exception as e:
+            logger.error(f"Failed to calculate file size for {s3_key}: {e}")
+            return None
+
+    def get(self, request, cover_image_id):
+        user = self.get_current_user(request)
+        if user is None:
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
+
+        # Optimize: Only get s3_key and file_type from DB (minimal data)
+        try:
+            # media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
+            #     id=media_file_id
+            # )
+            assets = Assets.objects.get(id = cover_image_id)
+            
+        except Assets.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        
+        # else:
+        #     if user != media_file.user:
+        #         time_capsoul = media_file.time_capsoul
+        #         capsoul_recipients = TimeCapSoulRecipient.objects.filter(
+        #             time_capsoul=time_capsoul, email=user.email
+        #         ).first()
+            
+        #         if not capsoul_recipients:
+        #             return Response(status=status.HTTP_404_NOT_FOUND)
+
+        #         from django.utils import timezone
+        #         current_date = timezone.now()
+        #         is_unlocked = (
+        #             bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
+        #         )
+        #         if not is_unlocked:
+        #             logger.info("Recipient not found for tagged capsoul")
+        #             return Response(status=status.HTTP_404_NOT_FOUND)
+
+        s3_key = assets.s3_key
+        filename = s3_key.split("/")[-1]
+        extension = self._get_file_extension(filename)
+        content_type = self._guess_content_type(filename)
+        
+        # Check for special image formats that need conversion
+        needs_conversion = extension in {'.heic', '.heif'}
+        is_svg = extension == '.svg'
+        
+        # Route 1: Progressive streaming (standard images, no special handling)
+        if not needs_conversion and not is_svg:
+            file_size = self._get_file_size_from_metadata(s3_key)
+            if not file_size:
+                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            logger.info(f"Progressive image streaming: {filename}")
+            return self._create_response(
+                self._stream_chunked_decrypt(s3_key),
+                content_type, filename,
+                streaming=True
+            )
+        
+        # Route 2: Full file with conversions (HEIC/HEIF, SVG)
+        else:
+            logger.info(f"Full decrypt for image: {filename}")
+            
+            # Get or decrypt full file
+            bytes_cache_key = f"media_bytes_{s3_key}"
+            cached_data = cache.get(bytes_cache_key)
+            
+            if cached_data:
+                file_bytes, _ = cached_data
+            else:
+                file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+                if not file_bytes:
+                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+            
+            # Handle HEIC/HEIF conversion
+            if needs_conversion:
+                cache_key = f'{bytes_cache_key}_jpeg'
+                file_bytes = cache.get(cache_key) or convert_heic_to_jpeg_bytes(file_bytes)[0]
+                cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+                content_type = "image/jpeg"
+                filename = filename.rsplit('.', 1)[0] + '.jpg'
+            
+            # Return simple response
+            return self._create_response(file_bytes, content_type, filename)

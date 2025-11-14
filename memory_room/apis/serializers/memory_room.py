@@ -39,7 +39,10 @@ class AssetSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'image_url']
 
     def get_image_url(self, obj):
-        return obj.s3_url
+        image_url = obj.s3_url
+        if not image_url:
+            image_url = f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
+        return image_url
 
 
 class MemoryRoomTemplateDefaultSerializer(serializers.ModelSerializer):

@@ -2,7 +2,7 @@ from django.urls import path
 from memory_room.apis.views.time_capsoul import (
     TimeCapSoulCoverView, TimeCapSoulDefaultTemplateAPI, CreateTimeCapSoulView,TimeCapSoulUpdationView,
     TimeCapSoulMediaFilesView, TimeCapSoulMediaFileUpdationView, TimeCapSoulUnlockView, MoveTimeCapSoulMediaFile,TimeCapSoulMediaFileDownloadView,RecipientsDetailCreateOrUpdateView,TimeCapsoulMediaFileFilterView, TimeCapsoulFilterView,
-    ServeTimeCapSoulMedia,SetTimeCapSoulCover,TaggedCapsoulTracker, UserStorageTracker, TimeCapsoulDuplicationApiView, GetMediaThumbnailPreview,
+    ServeTimeCapSoulMedia,SetTimeCapSoulCover,TaggedCapsoulTracker, UserStorageTracker, TimeCapsoulDuplicationApiView, ServeCoverTimecapsoulImages,
 )
 
 urlpatterns = [
@@ -22,7 +22,7 @@ urlpatterns = [
     path('media/filter/', TimeCapsoulMediaFileFilterView.as_view(), name='timecapsoul-media-filter'),
     path('filter/', TimeCapsoulFilterView.as_view(), name='timecapsoul-filter'),
     path("api/media/time-capsoul/<int:media_file_id>/serve/<path:s3_key>/", ServeTimeCapSoulMedia.as_view(), name="serve-media"),
-    path("api/media-id/<int:id>/<path:s3_key>/",  GetMediaThumbnailPreview.as_view(), name="serve-media-list-view"),
+    path("api/serve/cover-image/<int:cover_image_id>/",  ServeCoverTimecapsoulImages.as_view(), name="serve-media-list-view"),
     
     path('recipients/tracker/<int:capsoul_id>/', TaggedCapsoulTracker.as_view()),
     path('user/storage/tracker/', UserStorageTracker.as_view()),

@@ -717,14 +717,16 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
             if  time_capsoul.capsoul_template.default_template is None and bool(set_as_cover) == True and  media_file.is_cover_image == False and media_file.file_type == "image":
                 from userauth.models import Assets
                 media_s3_key =  str(media_file.s3_key)
-                file_name = media_s3_key.split('/')[-1]
-                file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
-                if not file_bytes or not content_type:
-                    raise serializers.ValidationError({'detail': "Media file not found on s3"})
+                cover_image = Assets.objects.create(s3_key=media_s3_key)
+                
+                # file_name = media_s3_key.split('/')[-1]
+                # file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                # if not file_bytes or not content_type:
+                #     raise serializers.ValidationError({'detail': "Media file not found on s3"})
                             
                 # here uploading plain file  without any encryption to s3 with public access
-                s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
-                cover_image = Assets.objects.create(image = media_file.file, s3_key = s3_key, s3_url = url)
+                # s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
+                # cover_image = Assets.objects.create(s3_key = s3_key)
                 is_cover_image = True
                 
             replica_instance = create_time_capsoul(
@@ -794,22 +796,22 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                     if time_capsoul.capsoul_template.default_template is None:
                         from userauth.models import Assets
                         media_s3_key =  str(media_file.s3_key)
-                        file_name = media_s3_key.split('/')[-1]
-                        cover_s3_key = f'{media_s3_key[0:62]}cover/{file_name}'
-                        assets_obj = Assets.objects.filter(s3_key = cover_s3_key).first()
-                        if not assets_obj:
-                            file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, current_user)
-                            if not file_bytes or not content_type:
-                                logger.error(f'Media file decryption failed while set as cover media-id: {media_file.id} for user {current_user.email}')
-                                raise serializers.ValidationError({'file': 'media file decryption failed'})
-                            s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type, s3_key=cover_s3_key)
-                            assets_obj = Assets.objects.create(image = media_file.file, s3_url=url, s3_key=s3_key)
-                            custom_template = time_capsoul.capsoul_template 
-                            custom_template.cover_image = assets_obj
-                            custom_template.save()
-                            instance.is_cover_image = True
-                            other_media = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted=False, user = user).exclude(id = media_file.id)
-                            other_media.update(is_cover_image = False)
+                        # file_name = media_s3_key.split('/')[-1]
+                        # cover_s3_key = f'{media_s3_key[0:62]}cover/{file_name}'
+                        assets_obj = Assets.objects.create(s3_key=media_s3_key)
+
+                            
+                            # file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, current_user)
+                            # if not file_bytes or not content_type:
+                            #     logger.error(f'Media file decryption failed while set as cover media-id: {media_file.id} for user {current_user.email}')
+                            #     raise serializers.ValidationError({'file': 'media file decryption failed'})
+                            # s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type, s3_key=cover_s3_key)
+                        custom_template = time_capsoul.capsoul_template 
+                        custom_template.cover_image = assets_obj
+                        custom_template.save()
+                        instance.is_cover_image = True
+                        other_media = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted=False, user = user).exclude(id = media_file.id)
+                        other_media.update(is_cover_image = False)
             instance.save()
         return instance
 
