@@ -39,7 +39,7 @@ import queue
 import time
 
 import tempfile
-# from moviepy.editor import VideoFileClip
+from moviepy.editor import VideoFileClip
 from memory_room.media_helper import decrypt_s3_file_chunked,decrypt_s3_file_chunked_range,ChunkedDecryptor
 from django.core.cache import cache
 from concurrent.futures import ThreadPoolExecutor, as_completed
