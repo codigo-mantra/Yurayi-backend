@@ -222,6 +222,8 @@ class SetMemoryRoomCoverImageAPIView(SecuredView):
                 memory_room.save()
                 media_file.is_cover_image = True
                 media_file.save()
+                other_media = MemoryRoomMediaFile.objects.filter(memory_room = memory_room, is_deleted=False, user = user).exclude(id = media_file.id)
+                other_media.update(is_cover_image = False)
                 logger.info(f'Memory Room cover set successfully by {user.email} room: {memory_room_id} media id: {media_file_id} ')
             else:
                 logger.info(f'Memory Room cover already set by {user.email} room: {memory_room_id} media id: {media_file_id} ')

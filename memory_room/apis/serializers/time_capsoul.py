@@ -728,6 +728,8 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 # s3_key, url = save_and_upload_decrypted_file(filename=file_name, decrypted_bytes=file_bytes, bucket='time-capsoul-files', content_type=content_type)
                 # cover_image = Assets.objects.create(s3_key = s3_key)
                 is_cover_image = True
+                other_media = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted=False, user = user).exclude(id = media_file.id)
+                other_media.update(is_cover_image = False)
                 
             replica_instance = create_time_capsoul(
                 old_time_capsoul = time_capsoul, # create time-capsoul replica
