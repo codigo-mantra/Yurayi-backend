@@ -100,7 +100,7 @@ class S3FileHandler:
                 "Key": destination_key,
                 "Metadata": metadata,
                 "ContentType": content_type,
-                "MetadataDirective": "REPLACE",
+                # "MetadataDirective": "REPLACE",
             }
             if content_disposition:
                 common_args["ContentDisposition"] = content_disposition
