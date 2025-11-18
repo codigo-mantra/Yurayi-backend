@@ -172,7 +172,8 @@ class CreateMemoryRoomView(SecuredView):
         is_updated = update_users_storage(
             capsoul=memory_room
         )
-        # memory_room.delete()
+        media_file = memory_room.memory_media_files.filter(is_deleted = False)
+        media_file.update(is_deleted = True)
         return Response(
             {'message': f'Memory deleted successfully named as : {room_name}'},
             status=status.HTTP_204_NO_CONTENT

@@ -223,6 +223,8 @@ class TimeCapSoulUpdationView(SecuredView):
                 )
                 time_capsoul.is_deleted = True
                 time_capsoul.save()
+                media_files = time_capsoul.timecapsoul_media_files.filter(is_deleted = False)
+                media_files.update(is_deleted  = True)
             return Response({'message': "Time capsoul deleted successfully"})
 
 class TimeCapSoulMediaFilesView(SecuredView):

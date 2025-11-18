@@ -82,7 +82,7 @@ def set_auth_cookies(response: HttpResponse, access_token: str, refresh_token: s
     response.set_cookie(
         key=settings.REFRESH_COOKIE_NAME,
         value=refresh_token,
-        max_age=settings.ACCESS_TOKEN_LIFETIME,
+        max_age=settings.REFRESH_TOKEN_LIFETIME,
         httponly=settings.REFRESH_COOKIE_HTTPONLY,
         secure=settings.REFRESH_COOKIE_SECURE,
         samesite=settings.REFRESH_COOKIE_SAMESITE,
@@ -162,7 +162,7 @@ def create_tokens_for_user(user, session):
     refresh_token = str(uuid.uuid4())
     
     # Save refresh token to database
-    expires_at = timezone.now() + timedelta(days=settings.ACCESS_TOKEN_LIFETIME)
+    expires_at = timezone.now() + timedelta(days=settings.REFRESH_TOKEN_LIFETIME)
     RefreshToken.objects.create(
         token=refresh_token,
         user=user,

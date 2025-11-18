@@ -15,6 +15,8 @@ from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.backends import default_backend
 from botocore.config import Config
 from memory_room.media_helper import ChunkedDecryptor
+from memory_room.crypto_utils import get_file_bytes
+
 
 
 logger = logging.getLogger(__name__)
@@ -403,98 +405,71 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
             progress_callback(65, "Upload completed. Finalizing thumbnail...")
 
         # FALLBACK: If thumbnail not extracted during streaming, try from temp file
-        if not thumbnail_data and temp_decrypted_path and os.path.exists(temp_decrypted_path):
-            extraction_attempts = []
+        try:
+            temp_s3_path = tempfile.mktemp(suffix=f"_s3{file_ext}")
+            extractor = MediaThumbnailExtractor(file=temp_s3_path, file_ext=file_ext)
             
-            try:
-                # if progress_callback:
-                #     progress_callback(86, "Extracting thumbnail (fallback: from temp file)...")
+            with ChunkedDecryptor(s3_key) as decryptor:
                 
-                # Strategy 1: From file path
-                try:
-                    extractor = MediaThumbnailExtractor(file=temp_decrypted_path, file_ext=file_ext)
+                # If no chunk-size present in metadata => full decryption mode
+                if not decryptor.metadata.get("chunk-size"):
+                    full_plaintext, content = get_file_bytes(s3_key)
                     
                     if file_type == 'video':
-                        thumbnail_data = extractor.extract_video_thumbnail()
+                        # Try FFmpeg first (most reliable)
+                        thumbnail_data = extractor.extract_video_thumbnail_ffmpeg(
+                            extension=file_ext,
+                            decrypted_bytes=full_plaintext
+                        )
+                        
+                        # Fallback to enhanced moviepy if FFmpeg fails
+                        if not thumbnail_data:
+                            logger.info("FFmpeg failed, trying moviepy fallback")
+                            thumbnail_data = extractor.extract_video_thumbnail_moviepy_enhanced(
+                                extension=file_ext,
+                                decrypted_bytes=full_plaintext
+                            )
+                    else:
+                        thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
+                            extension=file_ext,
+                            decrypted_bytes=full_plaintext
+                        )
+                else:
+                    # Chunked mode (large files)
+                    with open(temp_s3_path, 'wb') as f:
+                        for chunk in decryptor.decrypt_chunks():
+                            f.write(chunk)
+                    
+                    if file_type == 'video':
+                        # Read the temp file for FFmpeg processing
+                        with open(temp_s3_path, 'rb') as f:
+                            video_bytes = f.read()
+                        
+                        thumbnail_data = extractor.extract_video_thumbnail_ffmpeg(
+                            extension=file_ext,
+                            decrypted_bytes=video_bytes
+                        )
+                        
+                        if not thumbnail_data:
+                            thumbnail_data = extractor.extract_video_thumbnail_moviepy_enhanced(
+                                extension=file_ext,
+                                decrypted_bytes=video_bytes
+                            )
                     else:
                         thumbnail_data = extractor.extract_audio_thumbnail()
                     
-                    if thumbnail_data:
-                        extraction_attempts.append("temp_file_success")
-                        logger.info("Thumbnail extracted from temp file")
-                    else:
-                        extraction_attempts.append("temp_file_none")
-                        
-                except Exception as e:
-                    extraction_attempts.append(f"temp_file_failed:{str(e)[:50]}")
-                    logger.warning(f"Temp file extraction failed: {str(e)}")
-                
-                # Strategy 2: From bytes
-                if not thumbnail_data:
                     try:
-                        with open(temp_decrypted_path, 'rb') as f:
-                            file_bytes = f.read()
-                        
-                        extractor = MediaThumbnailExtractor(file='', file_ext=file_ext)
-                        
-                        if file_type == 'video':
-                            thumbnail_data = extractor.extract_video_thumbnail_from_bytes(
-                                extension=file_ext,
-                                decrypted_bytes=file_bytes,
-                            )
-                        else:
-                            thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
-                                extension=file_ext,
-                                decrypted_bytes=file_bytes,
-                            )
-                        
-                        if thumbnail_data:
-                            extraction_attempts.append("temp_bytes_success")
-                            logger.info("Thumbnail extracted from temp file bytes")
-                        else:
-                            extraction_attempts.append("temp_bytes_none")
-                            
-                    except Exception as e:
-                        extraction_attempts.append(f"temp_bytes_failed:{str(e)[:50]}")
-                        logger.warning(f"Temp bytes extraction failed: {str(e)}")
+                        os.remove(temp_s3_path)
+                    except Exception:
+                        pass
+            
+            if thumbnail_data:
+            # logger.error(f'Thumbnail extraction failed as : {e}')
+                pass 
                 
-                # Strategy 3: From S3 (last resort)
-                if not thumbnail_data:
-                    try:
-                        if progress_callback:
-                            progress_callback(70, "Extracting thumbnail (fallback: from S3)...")
-                        
-                        temp_s3_path = tempfile.mktemp(suffix=f"_s3{file_ext}")
-                        
-                        with ChunkedDecryptor(s3_key) as decryptor:
-                            with open(temp_s3_path, 'wb') as f:
-                                for chunk in decryptor.decrypt_chunks():
-                                    f.write(chunk)
-                        
-                        extractor = MediaThumbnailExtractor(file=temp_s3_path, file_ext=file_ext)
-                        
-                        if file_type == 'video':
-                            thumbnail_data = extractor.extract_video_thumbnail()
-                        else:
-                            thumbnail_data = extractor.extract_audio_thumbnail()
-                        
-                        try:
-                            os.remove(temp_s3_path)
-                        except:
-                            pass
-                        
-                        if thumbnail_data:
-                            extraction_attempts.append("s3_success")
-                            logger.info("Thumbnail extracted from S3")
-                        else:
-                            extraction_attempts.append("s3_none")
-                            
-                    except Exception as e:
-                        extraction_attempts.append(f"s3_failed:{str(e)[:50]}")
-                        logger.error(f"All thumbnail extraction attempts failed: {extraction_attempts}")
                 
-            except Exception as e:
-                logger.error(f"Thumbnail fallback extraction failed: {str(e)}")
+        except Exception as e:
+            logger.error(f'Thumbnail extraction failed as : {e}')
 
         if progress_callback:
             progress_callback(75, "Complete!")
