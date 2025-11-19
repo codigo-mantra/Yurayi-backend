@@ -309,6 +309,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
         replica_instance = None
         files = request.FILES.getlist('file')
         created_objects = []
+        upload_errors = []
+        
         results = []
 
         if len(files) == 0: 
@@ -389,14 +391,33 @@ class TimeCapSoulMediaFilesView(SecuredView):
         total_files = len(files)
         total_size = sum(f.size for f in files)
 
-        if total_files <= 2:
+        # if total_files <= 2:
+        #     max_workers = 1
+        # elif total_files <= 5:
+        #     max_workers = 2
+        # elif total_size > 500 * 1024 * 1024:  # > 500MB
+        #     max_workers = min(total_files, 4)
+        # else:
+        #     max_workers = min(total_files, 6)
+        
+        total_files = len(files)
+        total_size = sum(f.size for f in files)
+        avg_file_size = total_size / total_files if total_files > 0 else 0
+
+        # Memory-aware worker allocation
+        if total_files == 1:
             max_workers = 1
-        elif total_files <= 5:
+        elif total_size > 2 * 1024 * 1024 * 1024:  # > 2GB total
+            max_workers = 2  # Conservative for large uploads
+        elif avg_file_size > 100 * 1024 * 1024:  # Avg > 100MB per file
+            max_workers = min(total_files, 3)
+        elif total_files <= 3:
             max_workers = 2
-        elif total_size > 500 * 1024 * 1024:  # > 500MB
-            max_workers = min(total_files, 4)
         else:
-            max_workers = min(total_files, 6)
+            max_workers = min(total_files, 4)  # HARD CAP at 4
+        
+        logger.info(f"Starting upload: {total_files} files, {total_size / (1024*1024):.2f}MB total, {max_workers} workers")
+        
 
         # Thread-safe progress tracking
         progress_lock = threading.Lock()
@@ -414,18 +435,173 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 }
                 print(f"\n File {file_progress}")
 
+        # def file_upload_stream():
+        #     def process_single_file(file_index, uploaded_file, file_iv, time_capsoul):
+        #         """Process a single file upload with progress tracking"""
+        #         try:
+        #             def progress_callback(progress, message):
+        #                 if progress == -1:  # Error
+        #                     update_file_progress(file_index, 0, message, 'failed')
+        #                 else:
+        #                     update_file_progress(file_index, progress, message, 'processing')
+
+        #             uploaded_file.seek(0)
+
+        #             serializer = TimeCapSoulMediaFileSerializer(
+        #                 data={'file': uploaded_file, 'iv': file_iv},
+        #                 context={
+        #                     'user': user,
+        #                     'time_capsoul': time_capsoul,
+        #                     'progress_callback': progress_callback
+        #                 }
+        #             )
+
+        #             if serializer.is_valid():
+        #                 media_file = serializer.save()
+        #                 time_capsoul = media_file.time_capsoul
+        #                 if time_capsoul.status == 'sealed':
+        #                     capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+        #                     if capsoul_recipients.count() >0:
+        #                         try:
+        #                             existing_media_ids = eval(capsoul_recipients[0].parent_media_refrences)
+        #                             if  existing_media_ids and  type(existing_media_ids) is list:
+        #                                 existing_media_ids.append(media_file.id)
+        #                                 capsoul_recipients.update(parent_media_refrences = existing_media_ids)
+        #                         except Exception as e:
+        #                             logger.error(f'Error while updating parent media references list: {e} for user {user.email} and capsoul id {time_capsoul.id}')
+                                
+
+                                
+        #                         # updated_media_ids = existing_media_ids +  f',{media_file.id}'
+        #                         # capsoul_recipients.update(parent_media_refrences = updated_media_ids)
+        #                 update_file_progress(file_index, 93, 'Upload completed successfully', 'success')
+                            
+                        
+        #                 is_updated = update_users_storage(
+        #                     operation_type='addition',
+        #                     media_updation='capsoul',
+        #                     media_file=media_file
+        #                 )
+        #                 update_file_progress(file_index, 98, 'Upload completed successfully', 'success')
+
+        #                 return {
+        #                     'index': file_index,
+        #                     'result': {
+        #                         "file": uploaded_file.name,
+        #                         "status": "success",
+        #                         "progress": 99,
+        #                         "data": TimeCapSoulMediaFileReadOnlySerializer(media_file).data
+        #                     },
+        #                     'media_file': media_file
+        #                 }
+        #             else:
+        #                 update_file_progress(file_index, 0, f"Validation failed: {serializer.errors}", 'failed')
+        #                 return {
+        #                     'index': file_index,
+        #                     'result': {
+        #                         "file": uploaded_file.name,
+        #                         "status": "failed",
+        #                         "progress": 0,
+        #                         "errors": serializer.errors
+        #                     },
+        #                     'media_file': None
+        #                 }
+
+        #         except Exception as e:
+        #             error_msg = str(e)
+        #             update_file_progress(file_index, 0, f"Upload failed: {error_msg}", 'failed')
+        #             return {
+        #                 'index': file_index,
+        #                 'result': {
+        #                     "file": uploaded_file.name,
+        #                     "status": "failed",
+        #                     "progress": 0,
+        #                     "error": error_msg
+        #                 },
+        #                 'media_file': None
+        #             }
+
+        #     with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        #         future_to_index = {
+        #             executor.submit(process_single_file, i, files[i], ivs[i], time_capsoul): i
+        #             for i in range(total_files)
+        #         }
+
+        #         started_files = set()
+        #         last_sent_progress = {i: -1 for i in range(total_files)}
+
+        #         while len(results) < total_files:
+        #             with progress_lock:
+        #                 for file_index, progress_data in file_progress.items():
+        #                     file_name = files[file_index].name
+
+        #                     # Start message
+        #                     if file_index not in started_files and progress_data['status'] != 'pending':
+        #                         yield f"data: Starting upload of {file_name}\n\n"
+        #                         started_files.add(file_index)
+
+        #                     # Only send updated progress
+        #                     if (
+        #                         progress_data['status'] == 'processing'
+        #                         and progress_data['progress'] != last_sent_progress[file_index]
+        #                     ):
+        #                         yield f"data: {file_name} -> {progress_data['progress']}\n\n"
+        #                         last_sent_progress[file_index] = progress_data['progress']
+
+        #             # Handle completed uploads
+        #             completed_futures = []
+        #             for future in future_to_index:
+        #                 if future.done():
+        #                     completed_futures.append(future)
+
+        #             for future in completed_futures:
+        #                 try:
+        #                     result_data = future.result()
+        #                     if result_data['media_file']:
+        #                         created_objects.append(result_data['media_file'])
+        #                     results.append(result_data['result'])
+
+        #                     file_name = result_data['result']['file']
+        #                     if result_data['result']['status'] == 'success':
+        #                         yield f"data: {file_name} -> 100\n\n"
+        #                         yield f"data: {file_name} upload completed successfully\n\n"
+        #                     else:
+        #                         error_msg = result_data['result'].get('error') or result_data['result'].get('errors', 'Upload failed')
+        #                         yield f"data: {file_name} upload failed: {json.dumps(error_msg)}\n\n"
+
+        #                     del future_to_index[future]
+
+        #                 except Exception as e:
+        #                     logger.exception("Task completion error")
+        #                     del future_to_index[future]
+
+
+        #     yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
+        
+            
         def file_upload_stream():
+            nonlocal created_objects, results, upload_errors
+            
             def process_single_file(file_index, uploaded_file, file_iv, time_capsoul):
                 """Process a single file upload with progress tracking"""
                 try:
                     def progress_callback(progress, message):
-                        if progress == -1:  # Error
+                        """Enhanced progress callback with proper ranges"""
+                        if progress == 0 and "failed" in message.lower():
                             update_file_progress(file_index, 0, message, 'failed')
+                        elif 15 <= progress <= 85:
+                            # Map internal 15-85 to display 5-90
+                            display_progress = int(5 + ((progress - 15) / 70) * 85)
+                            update_file_progress(file_index, display_progress, None, 'processing')
+                        elif progress > 85:
+                            update_file_progress(file_index, progress, message, 'processing')
                         else:
                             update_file_progress(file_index, progress, message, 'processing')
 
+                    # Reset file pointer
                     uploaded_file.seek(0)
 
+                    # Validate and upload
                     serializer = TimeCapSoulMediaFileSerializer(
                         data={'file': uploaded_file, 'iv': file_iv},
                         context={
@@ -437,31 +613,41 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                     if serializer.is_valid():
                         media_file = serializer.save()
-                        time_capsoul = media_file.time_capsoul
-                        if time_capsoul.status == 'sealed':
-                            capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
-                            if capsoul_recipients.count() >0:
-                                try:
-                                    existing_media_ids = eval(capsoul_recipients[0].parent_media_refrences)
-                                    if  existing_media_ids and  type(existing_media_ids) is list:
-                                        existing_media_ids.append(media_file.id)
-                                        capsoul_recipients.update(parent_media_refrences = existing_media_ids)
-                                except Exception as e:
-                                    logger.error(f'Error while updating parent media references list: {e} for user {user.email} and capsoul id {time_capsoul.id}')
-                                
-
-                                
-                                # updated_media_ids = existing_media_ids +  f',{media_file.id}'
-                                # capsoul_recipients.update(parent_media_refrences = updated_media_ids)
-                        update_file_progress(file_index, 93, 'Upload completed successfully', 'success')
-                            
                         
-                        is_updated = update_users_storage(
-                            operation_type='addition',
-                            media_updation='capsoul',
-                            media_file=media_file
-                        )
-                        update_file_progress(file_index, 98, 'Upload completed successfully', 'success')
+                        # Update recipient references for sealed capsouls
+                        if media_file.time_capsoul.status == 'sealed':
+                            capsoul_recipients = TimeCapSoulRecipient.objects.filter(
+                                time_capsoul=media_file.time_capsoul
+                            )
+                            
+                            if capsoul_recipients.exists():
+                                try:
+                                    recipient = capsoul_recipients.first()
+                                    existing_media_ids = eval(recipient.parent_media_refrences) if recipient.parent_media_refrences else []
+                                    
+                                    if isinstance(existing_media_ids, list):
+                                        existing_media_ids.append(media_file.id)
+                                        capsoul_recipients.update(parent_media_refrences=str(existing_media_ids))
+                                        
+                                except Exception as e:
+                                    logger.error(f'Error updating parent media refs: {e} for user {user.email}, capsoul {time_capsoul.id}')
+
+                        update_file_progress(file_index, 93, 'Updating storage...', 'processing')
+
+                        # Update user storage
+                        try:
+                            is_updated = update_users_storage(
+                                operation_type='addition',
+                                media_updation='capsoul',
+                                media_file=media_file
+                            )
+                            if not is_updated:
+                                logger.warning(f"Storage update returned False for media {media_file.id}")
+                        except Exception as e:
+                            logger.error(f"Storage update failed for media {media_file.id}: {e}")
+                            # Don't fail the upload, just log
+
+                        update_file_progress(file_index, 98, 'Upload completed', 'success')
 
                         return {
                             'index': file_index,
@@ -474,7 +660,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
                             'media_file': media_file
                         }
                     else:
-                        update_file_progress(file_index, 0, f"Validation failed: {serializer.errors}", 'failed')
+                        error_msg = f"Validation failed: {serializer.errors}"
+                        # update_file_progress(file_index, 0, error_msg, 'failed')
                         return {
                             'index': file_index,
                             'result': {
@@ -488,7 +675,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                 except Exception as e:
                     error_msg = str(e)
-                    update_file_progress(file_index, 0, f"Upload failed: {error_msg}", 'failed')
+                    logger.exception(f"Upload failed for file {uploaded_file.name}: {e}")
+                    # update_file_progress(file_index, 0, f"Upload failed: {error_msg}", 'failed')
                     return {
                         'index': file_index,
                         'result': {
@@ -500,68 +688,90 @@ class TimeCapSoulMediaFilesView(SecuredView):
                         'media_file': None
                     }
 
-            with ThreadPoolExecutor(max_workers=max_workers) as executor:
-                future_to_index = {
-                    executor.submit(process_single_file, i, files[i], ivs[i], time_capsoul): i
-                    for i in range(total_files)
-                }
+            # Execute parallel uploads with ThreadPoolExecutor
+            try:
+                with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                    future_to_index = {
+                        executor.submit(process_single_file, i, files[i], ivs[i], time_capsoul): i
+                        for i in range(total_files)
+                    }
 
-                started_files = set()
-                last_sent_progress = {i: -1 for i in range(total_files)}
+                    started_files = set()
+                    last_sent_progress = {i: -1 for i in range(total_files)}
+                    completed_count = 0
 
-                while len(results) < total_files:
-                    with progress_lock:
-                        for file_index, progress_data in file_progress.items():
-                            file_name = files[file_index].name
+                    # Monitor progress and stream updates
+                    while completed_count < total_files:
+                        # Send progress updates
+                        with progress_lock:
+                            for file_index, progress_data in file_progress.items():
+                                file_name = files[file_index].name
 
-                            # Start message
-                            if file_index not in started_files and progress_data['status'] != 'pending':
-                                yield f"data: Starting upload of {file_name}\n\n"
-                                started_files.add(file_index)
+                                # Start message
+                                if file_index not in started_files and progress_data['status'] != 'pending':
+                                    yield f"data: Starting upload of {file_name}\n\n"
+                                    started_files.add(file_index)
 
-                            # Only send updated progress
-                            if (
-                                progress_data['status'] == 'processing'
-                                and progress_data['progress'] != last_sent_progress[file_index]
-                            ):
-                                yield f"data: {file_name} -> {progress_data['progress']}\n\n"
-                                last_sent_progress[file_index] = progress_data['progress']
+                                # Progress updates (only on change)
+                                if (progress_data['status'] == 'processing' and 
+                                    progress_data['progress'] != last_sent_progress[file_index]):
+                                    yield f"data: {file_name} -> {progress_data['progress']}\n\n"
+                                    last_sent_progress[file_index] = progress_data['progress']
 
-                    # Handle completed uploads
-                    completed_futures = []
-                    for future in future_to_index:
-                        if future.done():
-                            completed_futures.append(future)
+                        # Check for completed futures
+                        completed_futures = [f for f in future_to_index if f.done()]
 
-                    for future in completed_futures:
-                        try:
-                            result_data = future.result()
-                            if result_data['media_file']:
-                                created_objects.append(result_data['media_file'])
-                            results.append(result_data['result'])
+                        for future in completed_futures:
+                            try:
+                                result_data = future.result(timeout=1)
+                                
+                                if result_data['media_file']:
+                                    created_objects.append(result_data['media_file'])
+                                else:
+                                    upload_errors.append(result_data['result'])
+                                    
+                                results.append(result_data['result'])
 
-                            file_name = result_data['result']['file']
-                            if result_data['result']['status'] == 'success':
-                                yield f"data: {file_name} -> 100\n\n"
-                                yield f"data: {file_name} upload completed successfully\n\n"
-                            else:
-                                error_msg = result_data['result'].get('error') or result_data['result'].get('errors', 'Upload failed')
-                                yield f"data: {file_name} upload failed: {json.dumps(error_msg)}\n\n"
+                                file_name = result_data['result']['file']
+                                if result_data['result']['status'] == 'success':
+                                    yield f"data: {file_name} -> 100\n\n"
+                                    yield f"data: {file_name} upload completed successfully\n\n"
+                                else:
+                                    error_msg = result_data['result'].get('error') or result_data['result'].get('errors', 'Upload failed')
+                                    yield f"data: {file_name} upload failed: {json.dumps(error_msg)}\n\n"
 
-                            del future_to_index[future]
+                                del future_to_index[future]
+                                completed_count += 1
 
-                        except Exception as e:
-                            logger.exception("Task completion error")
-                            del future_to_index[future]
+                            except Exception as e:
+                                logger.exception(f"Task completion error: {e}")
+                                del future_to_index[future]
+                                completed_count += 1
 
+                        # Small delay to prevent CPU spinning
+                        if completed_count < total_files:
+                            time.sleep(0.1)
 
-            yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
+                # Check if any uploads failed
+                if upload_errors:
+                    logger.warning(f"{len(upload_errors)} of {total_files} uploads failed")
+                    
+                # Send final results
+                yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
 
-        # return StreamingHttpResponse(
-        #     file_upload_stream(),
-        #     content_type='text/event-stream',
-        #     status=status.HTTP_200_OK
-        # )
+            except Exception as e:
+                logger.exception(f"Critical error in upload stream: {e}")
+                yield f"data: ERROR: Upload process failed: {str(e)}\n\n"
+                # Optionally cleanup on catastrophic failure
+                # cleanup_on_failure()
+
+            
+            # return StreamingHttpResponse(
+            #     file_upload_stream(),
+            #     content_type='text/event-stream',
+            #     status=status.HTTP_200_OK
+            # )
+        
         response = StreamingHttpResponse(
             file_upload_stream(),
             content_type='text/event-stream',

@@ -534,6 +534,9 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         user = self.context['user']
         time_capsoul = self.context['time_capsoul']
         progress_callback = self.context.get('progress_callback')
+        
+        if progress_callback:
+            progress_callback(5, "Initializing upload...")
 
         file = validated_data.pop('file')
         # file_name = file.name
@@ -574,7 +577,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'upload_error': f"Chunked decryption/upload failed: {str(e)}"})
 
         if progress_callback:
-            progress_callback(80, "File uploaded successfully, generating thumbnails...")
+            progress_callback(86, "File uploaded successfully, generating thumbnails...")
 
         validated_data['title'] = file_name
         validated_data['file_type'] = file_type
@@ -583,7 +586,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         
 
         if progress_callback:
-            progress_callback(85, "Generating thumbnails...")
+            progress_callback(87, "Generating thumbnails...")
 
         try:
             if  result.get('thumbnail_data'):
