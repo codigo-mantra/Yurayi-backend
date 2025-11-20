@@ -443,6 +443,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         # Assign uploaded file details
         validated_data['file_type'] = file_type
         validated_data['s3_key'] = s3_key
+        validated_data['media_type'] = 'original'
         validated_data['title'] = unique_file_name
         validated_data['file_size'] = get_readable_file_size_from_bytes(result['uploaded_size'])
         

@@ -288,7 +288,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                 media_files = TimeCapSoulMediaFile.objects.filter(
                     time_capsoul=time_capsoul,
                     id__in = parent_files_id,
-                )
+                ).order_by('-updated_at')
                 
         serializer = TimeCapSoulMediaFileReadOnlySerializer(media_files, many=True)
         capsoul_data = TimeCapSoulSerializer(time_capsoul, context={'user': user}).data
@@ -347,7 +347,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     option_type = 'replica_creation',
                 )
                 if user.id == time_capsoul.user.id: # if user is owner of the capsoul
-                    parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
+                    parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False).order_by('-updated_at')
                 else:
                     recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
                     if not recipient:
@@ -362,7 +362,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                         parent_media_files = TimeCapSoulMediaFile.objects.filter(
                             time_capsoul=time_capsoul,
                             id__in = parent_files_id,
-                        )
+                        ).order_by('-updated_at')
                 new_media_count = 0
                 old_media_count = parent_media_files.count() 
                 for parent_file in parent_media_files:
@@ -2912,6 +2912,8 @@ class ServeTimeCapSoulMedia(SecuredView):
         exp = request.GET.get("exp")
         sig = request.GET.get("sig")
         
+        
+        
         if not exp or not sig:
             return Response(status=status.HTTP_404_NOT_FOUND)
 
@@ -3689,7 +3691,7 @@ class TimeCapsoulDuplicationApiView(SecuredView):
             parent_media_files = TimeCapSoulMediaFile.objects.filter(
                 time_capsoul=time_capsoul,
                 id__in = parent_files_id,
-            )
+            ).order_by('-created_at')
         else:
             duplicate_room = create_time_capsoul(
                 old_time_capsoul = time_capsoul, # create time-capsoul duplicate here
@@ -3700,7 +3702,7 @@ class TimeCapsoulDuplicationApiView(SecuredView):
                 time_capsoul=time_capsoul,
                 user = user,
                 is_deleted = False,
-            )
+            ).order_by('-created_at')
         new_media_count = 0
         old_media_count = parent_media_files.count()   
         for parent_file in parent_media_files:

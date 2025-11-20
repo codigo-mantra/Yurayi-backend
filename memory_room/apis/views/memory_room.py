@@ -15,6 +15,8 @@ from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser
 from rest_framework.exceptions import ValidationError
 from rest_framework.pagination import PageNumberPagination
+from memory_room.tasks import copy_s3_object_preserve_meta_kms
+
 
 import hmac
 import hashlib
@@ -1462,27 +1464,6 @@ def create_duplicate_room(room:MemoryRoom):
             
             for media in media_files:
                 try:
-                    # file_bytes, content_type = get_media_file_bytes_with_content_type(media, user)
-                    # if not file_bytes or not content_type:
-                        # raise Exception('File decryption failed')
-                    # else:
-                        file_name  = f'{media.title.split(".", 1)[0].replace(" ", "_")}.{media.s3_key.split(".")[-1]}' # get file name 
-                        file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
-                        s3_key = generate_room_media_s3_key(file_name, user.s3_storage_id, room.id)
-                        
-                        # upload_file_to_s3_kms_chunked(
-                        #     key=s3_key,
-                        #     plaintext_bytes=file_bytes,
-                        #     content_type=content_type,
-                        #     progress_callback=None
-                        # )
-                        
-                        res = s3_helper.copy_s3_object_preserve_meta_kms(
-                            source_key=media.s3_key,
-                            destination_key=s3_key,
-                            user_email = user.email,
-                        )
-                                        
                         new_media = MemoryRoomMediaFile.objects.create(
                             user = media.user,
                             memory_room = new_room,
@@ -1497,13 +1478,18 @@ def create_duplicate_room(room:MemoryRoom):
                             s3_url = media.s3_url,
                             s3_key = media.s3_key,
                             media_file_duplicate = media,
-                            created_at = created_at
+                            created_at = created_at,
+                            media_type = 'duplicate'
                         )
                         if new_media:
                             is_updated = update_users_storage(
                                 operation_type='addition',
                                 media_updation='memory_room',
                                 media_file=new_media
+                            )
+                            # bind with celery task
+                            copy_s3_object_preserve_meta_kms.apply_async(
+                                args=[new_media.id, 5, 2,'memory_room']
                             )
                             duplicate_media_count += 1
                 except Exception as e:

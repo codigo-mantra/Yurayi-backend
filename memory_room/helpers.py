@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 from memory_room.s3_helpers import s3_helper
 
 from memory_room.media_helper import decrypt_s3_file_chunked,decrypt_upload_and_extract_audio_thumbnail_chunked
+from memory_room.tasks import copy_s3_object_preserve_meta_kms
 
 AWS_KMS_REGION = 'ap-south-1'
 AWS_KMS_KEY_ID = '843da3bb-9a57-4d9f-a8ab-879a6109f460'
@@ -715,27 +716,35 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
         if option_type == 'replica_creation':
             media_replica = old_media
             media_duplicate = None
+            media_type = 'replica'
         else:
             media_replica = None
+            media_type = 'duplicate'
             media_duplicate = old_media
 
         media_title = updated_media_title if updated_media_title else old_media.title
         media_description = updated_media_description if updated_media_description else old_media.description
         set_as_cover_image = set_as_cover if set_as_cover else old_media.is_cover_image
+        s3_key = old_media.s3_key # keep parent media s3_key as refrence here
+        
+        
+        
         
         
         
         # file_name  = f'{old_media.title.split(".", 1)[0].replace(" ", "_")}.{old_media.s3_key.split(".")[-1]}' # get file name 
-        file_name  = old_media.s3_key.split('/')[-1]
+        # file_name  = old_media.s3_key.split('/')[-1]
+        
         
         # file_name = re.sub(r'[^A-Za-z0-9_]', '', file_name) # remove special characters from file name
-        s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
+        # s3_key = generate_capsoul_media_s3_key(filename=file_name, user_storage=current_user.s3_storage_id, time_capsoul_id=new_capsoul.id) # generate file s3-key
         
-        res = s3_helper.copy_s3_object_preserve_meta_kms(
-            source_key=old_media.s3_key,
-            destination_key=s3_key,
-            user_email = current_user.email,
-        )
+        # res = s3_helper.copy_s3_object_preserve_meta_kms(
+        #     source_key=old_media.s3_key,
+        #     destination_key=s3_key,
+        #     user_email = current_user.email,
+        # )
+        
         
         thumbnail = old_media.thumbnail 
         
@@ -754,6 +763,7 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
             file_size = old_media.file_size,
             s3_url = None,
             s3_key = s3_key,
+            media_type = media_type,
             is_cover_image = set_as_cover_image,
             created_at = created_at
         )
@@ -765,6 +775,12 @@ def create_time_capsoul_media_file(old_media:TimeCapSoulMediaFile, new_capsoul:T
                 media_updation='capsoul', # update user storage
                 media_file=new_media
             )
+            # bind with celery task
+            copy_s3_object_preserve_meta_kms.apply_async(
+                args=[new_media.id]
+            )
+            
+            
             is_created = True
     except Exception as e:
             logger.error(f'Exception while create media fiele {option_type} for media id: {old_media.id} user: {current_user.email} error-message: {e}')

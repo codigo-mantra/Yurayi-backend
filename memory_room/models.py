@@ -122,6 +122,11 @@ FILE_TYPES = (
     ('other', 'Other'),
 )
 
+MEDIA_TYPES = (
+    ('original', 'Original'),
+    ('duplicate', 'Duplicate'),
+    ('replica', 'Replica')
+)
 
 class MemoryRoomMediaFile(BaseModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, blank=True, null=True, related_name='user_media_files')
@@ -154,6 +159,12 @@ class MemoryRoomMediaFile(BaseModel):
     is_cover_image = models.BooleanField(
         default=False,
         verbose_name="Use as Cover"
+    )
+    media_type = models.CharField(
+        max_length=20,
+        choices=MEDIA_TYPES,
+        default='original',
+        verbose_name=" Type"
     )
     thumbnail_url = models.URLField(blank=True, null=True)
     thumbnail_key = models.CharField(blank=True, null=True, max_length=255)
@@ -273,6 +284,12 @@ STATUS_CHOICES = (
 
 )
 
+MEDIA_TYPES = (
+    ('original', 'Original'),
+    ('duplicate', 'Duplicate'),
+    ('replica', 'Replica')
+)
+
 class AbstractMediaFile(BaseModel):
     
     file = models.FileField(
@@ -284,6 +301,12 @@ class AbstractMediaFile(BaseModel):
         choices=FILE_TYPES,
         default='other',
         verbose_name="File Type"
+    )
+    media_type = models.CharField(
+        max_length=20,
+        choices=MEDIA_TYPES,
+        default='original',
+        verbose_name=" Type"
     )
     title = models.CharField(
         max_length=255,

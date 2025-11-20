@@ -8,6 +8,8 @@ from rest_framework import status
 from botocore.config import Config
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from django.conf import settings
+import random
+import string
 
 AWS_KMS_REGION = 'ap-south-1'
 AWS_KMS_KEY_ID = '843da3bb-9a57-4d9f-a8ab-879a6109f460'
@@ -928,12 +930,37 @@ def get_file_bytes(s3_key):
         return None, None
 
 
-def generate_capsoul_media_s3_key(filename, user_storage, time_capsoul_id):
+def generate_capsoul_media_s3_key(filename, user_storage, time_capsoul_id, old_name=None):
+    
+    filename = filename.lower()
+    
+    if old_name:
+        data = old_name.lower().split('.')
+        name, ext = data[0], data[-1]
+
+        
+        while filename ==  old_name:
+            random_chars = string.digits
+            old_name = f'{name}{random.choice(random_chars)}.{ext}'
+        
+        filename = old_name
     s3_key = f'media/time-capsoul-files/{user_storage}/capsoul-id:{time_capsoul_id}/{filename}'.replace(" ", "_")
     return s3_key
 
 
-def generate_room_media_s3_key(filename, user_storage, room_id):
+def generate_room_media_s3_key(filename, user_storage, room_id,old_name=None):
+    filename = filename.lower()
+    
+    if old_name:
+        data = old_name.lower().split('.')
+        name, ext = data[0], data[-1]
+
+        
+        while filename ==  old_name:
+            random_chars = string.digits
+            old_name = f'{name}{random.choice(random_chars)}.{ext}'
+        
+        filename = old_name
     s3_key = f'media/memory-room-files/{user_storage}/room-id:{room_id}/{filename}'.replace(" ", "_")
     return s3_key
 
