@@ -433,7 +433,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     'message': message,
                     'status': status
                 }
-                print(f"\n File {file_progress}")
+                # print(f"\n File {file_progress}")
 
         # def file_upload_stream():
         #     def process_single_file(file_index, uploaded_file, file_iv, time_capsoul):
@@ -647,14 +647,14 @@ class TimeCapSoulMediaFilesView(SecuredView):
                             logger.error(f"Storage update failed for media {media_file.id}: {e}")
                             # Don't fail the upload, just log
 
-                        update_file_progress(file_index, 98, 'Upload completed', 'success')
+                        update_file_progress(file_index, 96, 'Upload completed', 'success')
 
                         return {
                             'index': file_index,
                             'result': {
                                 "file": uploaded_file.name,
                                 "status": "success",
-                                "progress": 99,
+                                "progress": 98,
                                 "data": TimeCapSoulMediaFileReadOnlySerializer(media_file).data
                             },
                             'media_file': media_file

@@ -308,7 +308,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                     'message': message,
                     'status': status
                 }
-                print(f'\n File {file_progress}')
+                # print(f'\n File {file_progress}')
 
         def calculate_overall_progress():
             with progress_lock:
@@ -340,17 +340,8 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
                     if serializer.is_valid():
                         media_file = serializer.save()
-                        # update_memory_room_occupied_storage.apply_async(
-                        #     args=[media_file.id, 'addition'],
-                        # )
-                        # update_user_storage(
-                        #     user=user,
-                        #     media_id=media_file.id,
-                        #     file_size=media_file.file_size,
-                        #     cache_key=f'user_storage_id_{user.id}',
-                        #     operation_type='addition'
-                        # )
-                        update_file_progress(file_index, 90, 'Upload completed successfully', 'success')
+                       
+                        update_file_progress(file_index, 96, 'Upload completed successfully', 'success')
                         
                         is_updated = update_users_storage(
                             operation_type='addition',

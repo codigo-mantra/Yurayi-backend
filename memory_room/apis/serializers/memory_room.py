@@ -394,33 +394,15 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         file_type = validated_data.get('file_type')
         
         if progress_callback:
-            progress_callback(5, "Initializing upload...")
+            progress_callback(4, "Initializing upload...")
             
         try:
             s3_key = generate_room_media_s3_key(unique_file_name, user.s3_storage_id, memory_room.id)
             if progress_callback:
-                progress_callback(10, "Preparing chunked decrypt & upload...")
+                progress_callback(5, "Preparing chunked decrypt & upload...")
 
-            # Progress wrapper for upload
-            # def upload_progress_callback(upload_percentage, message):
-            #     if progress_callback:
-            #         if upload_percentage == -1:
-            #             progress_callback(-1, message)
-            #         else:
-            #             overall_progress = 10 + int((upload_percentage / 100) * 70)  # map 10–80%
-            #             progress_callback(min(overall_progress, 80), message)
             
-            # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
-            #     file_type = file_type,
-            #     key=s3_key,
-            #     encrypted_file=file,
-            #     iv_str=iv,
-            #     # content_type="audio/mpeg",
-            #     progress_callback=upload_progress_callback,
-            #     file_ext=os.path.splitext(file.name)[1].lower(),
-            # )
-            
-            result = media_uploader(
+            result = decrypt_upload_and_extract_audio_thumbnail_chunked(
                 file_type = file_type,
                 key=s3_key,
                 encrypted_file=file,
@@ -430,14 +412,24 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                 file_ext=os.path.splitext(file.name)[1].lower(),
             )
             
+            # result = media_uploader(
+            #     file_type = file_type,
+            #     key=s3_key,
+            #     encrypted_file=file,
+            #     iv_str=iv,
+            #     # content_type="audio/mpeg",
+            #     progress_callback=progress_callback,
+            #     file_ext=os.path.splitext(file.name)[1].lower(),
+            # )
+            
         except Exception as e:
             logger.error('Chunked Decrypt/Upload Error', exc_info=True)
             # if progress_callback:
             #     progress_callback(0, f"Chunked decryption/upload failed: {str(e)}")
             raise serializers.ValidationError({'upload_error': f"Chunked decryption/upload failed: {str(e)}"})
 
-        if progress_callback:
-            progress_callback(80, "File uploaded successfully, generating thumbnails...")
+        # if progress_callback:
+        #     progress_callback(80, "File uploaded successfully, generating thumbnails...")
         
 
         # Assign uploaded file details
@@ -466,7 +458,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
 
 
         if progress_callback:
-            progress_callback(85, "Finalizing...")
+            progress_callback(91, "Finalizing...")
 
         # instance = super().create(validated_data)
         instance = super(MemoryRoomMediaFileCreationSerializer, self).create(validated_data)

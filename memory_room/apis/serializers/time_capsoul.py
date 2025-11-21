@@ -24,7 +24,7 @@ from timecapsoul.utils import MediaThumbnailExtractor
 from memory_room.apis.serializers.memory_room import AssetSerializer
 from memory_room.models import (
     TimeCapSoulTemplateDefault,CustomTimeCapSoulTemplate,TimeCapSoul,TimeCapSoulRecipient,RecipientsDetail,
-    TimeCapSoulMediaFile,TimeCapSoulDetail, TimeCapSoulMediaFileReplica, TimeCapSoulReplica,
+    TimeCapSoulMediaFile,TimeCapSoulDetail, 
     )
 from timecapsoul.utils import send_html_email
 from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_image, generate_signed_path, decrypt_frontend_file,save_and_upload_decrypted_file, encrypt_and_upload_file_no_iv, encrypt_and_upload_file_chunked,upload_encrypted_file_chunked,get_media_file_bytes_with_content_type,generate_signature,generate_capsoul_media_s3_key,clean_filename
@@ -536,7 +536,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         progress_callback = self.context.get('progress_callback')
         
         if progress_callback:
-            progress_callback(5, "Initializing upload...")
+            progress_callback(4, "Initializing upload...")
 
         file = validated_data.pop('file')
         # file_name = file.name
@@ -548,11 +548,20 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         validated_data['time_capsoul'] = time_capsoul
 
         if progress_callback:
-            progress_callback(10, "Initializing upload...")
+            progress_callback(5, "Initializing upload...")
         
         try:
             s3_key = generate_capsoul_media_s3_key(file_name, user.s3_storage_id, time_capsoul.id)
-            result = media_uploader(
+            # result = media_uploader(
+            #     file_type = file_type,
+            #     key=s3_key,
+            #     encrypted_file=file,
+            #     iv_str=iv,
+            #     # content_type="audio/mpeg",
+            #     progress_callback=progress_callback,
+            #     file_ext=os.path.splitext(file.name)[1].lower(),
+            # )
+            result = decrypt_upload_and_extract_audio_thumbnail_chunked(
                 file_type = file_type,
                 key=s3_key,
                 encrypted_file=file,
@@ -561,23 +570,12 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                 progress_callback=progress_callback,
                 file_ext=os.path.splitext(file.name)[1].lower(),
             )
-            # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
-            #     file_type = file_type,
-            #     key=s3_key,
-            #     encrypted_file=file,
-            #     iv_str=iv,
-            #     # content_type="audio/mpeg",
-            #     progress_callback=upload_progress_callback,
-            #     file_ext=os.path.splitext(file.name)[1].lower(),
-            # )
         except Exception as e:
             logger.error('Chunked Decrypt/Upload Error', exc_info=True)
             # if progress_callback:
             #     progress_callback(0, f"Chunked decryption/upload failed: {str(e)}")
             raise serializers.ValidationError({'upload_error': f"Chunked decryption/upload failed: {str(e)}"})
 
-        if progress_callback:
-            progress_callback(86, "File uploaded successfully, generating thumbnails...")
 
         validated_data['title'] = file_name
         validated_data['file_type'] = file_type
@@ -586,9 +584,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         validated_data['file_size'] = get_readable_file_size_from_bytes(result['uploaded_size'])
         
 
-        if progress_callback:
-            progress_callback(87, "Generating thumbnails...")
-
+      
         try:
             if  result.get('thumbnail_data'):
                 from django.core.files.base import ContentFile
@@ -601,13 +597,10 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         except Exception as e:
             logger.exception('Exception while extracting thumbnail')
 
-        if progress_callback:
-            progress_callback(88, "Finalizing...")
-
         instance = super().create(validated_data)
 
         if progress_callback:
-            progress_callback(90, "File processed successfully!")
+            progress_callback(91, "File processed successfully!")
 
         return instance
 

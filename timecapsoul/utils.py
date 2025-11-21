@@ -19,7 +19,8 @@ from io import BytesIO
 import logging
 from mutagen.mp4 import MP4
 from mutagen.flac import FLAC
-# from moviepy.editor import VideoFileCli
+from moviepy.editor import VideoFileClip
+
 import tempfile
 from PIL import Image
 
