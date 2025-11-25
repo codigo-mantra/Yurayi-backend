@@ -402,17 +402,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                 progress_callback(5, "Preparing chunked decrypt & upload...")
 
             
-            result = decrypt_upload_and_extract_audio_thumbnail_chunked(
-                file_type = file_type,
-                key=s3_key,
-                encrypted_file=file,
-                iv_str=iv,
-                # content_type="audio/mpeg",
-                progress_callback=progress_callback,
-                file_ext=os.path.splitext(file.name)[1].lower(),
-            )
-            
-            # result = media_uploader(
+            # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
             #     file_type = file_type,
             #     key=s3_key,
             #     encrypted_file=file,
@@ -421,6 +411,16 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             #     progress_callback=progress_callback,
             #     file_ext=os.path.splitext(file.name)[1].lower(),
             # )
+            
+            result = media_uploader(
+                file_type = file_type,
+                key=s3_key,
+                encrypted_file=file,
+                iv_str=iv,
+                # content_type="audio/mpeg",
+                progress_callback=progress_callback,
+                file_ext=os.path.splitext(file.name)[1].lower(),
+            )
             
         except Exception as e:
             logger.error('Chunked Decrypt/Upload Error', exc_info=True)

@@ -552,16 +552,7 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         
         try:
             s3_key = generate_capsoul_media_s3_key(file_name, user.s3_storage_id, time_capsoul.id)
-            # result = media_uploader(
-            #     file_type = file_type,
-            #     key=s3_key,
-            #     encrypted_file=file,
-            #     iv_str=iv,
-            #     # content_type="audio/mpeg",
-            #     progress_callback=progress_callback,
-            #     file_ext=os.path.splitext(file.name)[1].lower(),
-            # )
-            result = decrypt_upload_and_extract_audio_thumbnail_chunked(
+            result = media_uploader(
                 file_type = file_type,
                 key=s3_key,
                 encrypted_file=file,
@@ -570,6 +561,15 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                 progress_callback=progress_callback,
                 file_ext=os.path.splitext(file.name)[1].lower(),
             )
+            # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
+            #     file_type = file_type,
+            #     key=s3_key,
+            #     encrypted_file=file,
+            #     iv_str=iv,
+            #     # content_type="audio/mpeg",
+            #     progress_callback=progress_callback,
+            #     file_ext=os.path.splitext(file.name)[1].lower(),
+            # )
         except Exception as e:
             logger.error('Chunked Decrypt/Upload Error', exc_info=True)
             # if progress_callback:
