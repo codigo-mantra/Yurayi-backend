@@ -802,27 +802,610 @@ class GetMedia(SecuredView):
         return response
 
 
+# class ServeMedia(SecuredView):
+#     """
+#     Simplified streaming media server with unified response handling.
+#     """
+    
+#     CACHE_TIMEOUT = 60 * 60 * 24*7  # 7 days 
+#     STREAMING_CHUNK_SIZE = 64 * 1024  # 64KB chunks
+    
+#     # File category extensions (same as before)
+#     IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', 
+#                         '.heic', '.heif', '.svg', '.ico', '.raw', '.psd'}
+#     VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', 
+#                         '.3gp', '.mpg', '.ts', '.m4v','.mpeg'}
+#     AUDIO_EXTENSIONS = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', 
+#                         '.aiff', '.m4a', '.opus', '.amr'}
+#     OTHER_EXTENSIONS = {'.txt', '.doc', '.docx', '.pdf', '.rtf', '.odt', '.md', '.tex',
+#                         '.csv', '.xls', '.xlsx', '.ods', '.tsv', '.json', '.xml', '.yaml', '.yml',
+#                         '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.iso',
+#                         '.exe', '.msi', '.apk', '.bat', '.sh', '.app',
+#                         '.html', '.htm', '.css', '.js', '.ts', '.py', '.java', '.c', '.cpp', '.cs',
+#                         '.php', '.rb', '.go', '.swift', '.rs', '.kt', '.sql', '.ini', '.env', '.toml'}
+    
+#     def _get_file_extension(self, filename):
+#         """Extract file extension from filename."""
+#         return '.' + filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
+    
+#     def _categorize_file(self, filename):
+#         """Determine file category based on extension."""
+#         ext = self._get_file_extension(filename)
+#         if ext in self.IMAGE_EXTENSIONS:
+#             return 'image'
+#         elif ext in self.VIDEO_EXTENSIONS:
+#             return 'video'
+#         elif ext in self.AUDIO_EXTENSIONS:
+#             return 'audio'
+#         elif ext in self.OTHER_EXTENSIONS:
+#             return 'other'
+#         return 'unknown'
+    
+#     def _is_pdf_file(self, filename):
+#         """Check if file is a PDF."""
+#         return filename.lower().endswith('.pdf')
+    
+#     def _is_csv_file(self, filename):
+#         """Check if file is a CSV."""
+#         return filename.lower().endswith('.csv')
+    
+#     def _is_json_file(self, filename):
+#         """Check if file is a JSON."""
+#         return filename.lower().endswith('.json')
+    
+#     def _guess_content_type(self, filename):
+#         """Guess content type from filename extension."""
+#         import mimetypes
+#         content_type, _ = mimetypes.guess_type(filename)
+        
+#         ext = self._get_file_extension(filename)
+        
+#         # Quick lookup for common types
+#         type_map = {
+#             # Video
+#             '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
+#             '.mov': 'video/quicktime', '.mkv': 'video/mp4', '.avi': 'video/mp4',
+#             '.mpeg': 'video/mpeg', '.mpg': 'video/mpeg', '.3gp': 'video/3gpp',
+#             # Audio
+#             '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/mp4',
+#             '.wav': 'audio/wav', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
+#             # Image
+#             '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+#             '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+#             # Documents
+#             '.pdf': 'application/pdf',
+#             '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+#             '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+#             '.csv': 'text/csv',
+#             '.json': 'application/json',
+#         }
+        
+#         return type_map.get(ext, content_type or 'application/octet-stream')
+    
+#     def _create_response(self, content, content_type, filename, streaming=False, 
+#                         range_support=False, start=0, end=None, total_size=None):
+#         """
+#         Unified response creator for all file types.
+        
+#         Args:
+#             content: File bytes or generator for streaming
+#             content_type: MIME type
+#             filename: Original filename
+#             streaming: Whether to use StreamingHttpResponse
+#             range_support: Whether to add Range headers
+#             start: Start byte for range requests
+#             end: End byte for range requests
+#             total_size: Total file size for range requests
+#         """
+#         # Create appropriate response type
+#         if streaming:
+#             response = StreamingHttpResponse(content, content_type=content_type)
+#             if range_support and start > 0:
+#                 response.status_code = 206
+#         else:
+#             response = HttpResponse(content, content_type=content_type)
+        
+#         # Set content length
+#         if streaming and total_size:
+#             length = (end - start) if end else total_size
+#             response["Content-Length"] = str(length)
+#         elif not streaming:
+#             response["Content-Length"] = str(len(content))
+        
+#         # Range headers
+#         if range_support:
+#             response["Accept-Ranges"] = "bytes"
+#             if start > 0 and end and total_size:
+#                 response["Content-Range"] = f"bytes {start}-{end-1}/{total_size}"
+        
+#         # Security headers
+#         response["Content-Disposition"] = "inline"
+#         response["X-Content-Type-Options"] = "nosniff"
+#         response["Cache-Control"] = "private, max-age=3600"
+        
+#         # Special CSP for SVG
+#         if content_type == "image/svg+xml":
+#             response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+#         else:
+#             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+#             csp = f"frame-ancestors 'self' {frame_ancestors};"
+#             if range_support:
+#                 csp = f"media-src *; {csp}"
+#             response["Content-Security-Policy"] = csp
+        
+#         # CORS headers
+#         response["Cross-Origin-Resource-Policy"] = "cross-origin"
+#         response["Access-Control-Allow-Origin"] = "*"
+#         if range_support:
+#             response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+        
+#         return response
+    
+#     def _serve_pdf_with_range(self, request, file_bytes, filename):
+#         """
+#         Serve PDF with proper Range support for browser preview.
+#         PDFs need range support for progressive loading in browser viewers.
+#         """
+#         file_size = len(file_bytes)
+#         range_header = request.headers.get("Range", "")
+        
+#         # Parse range
+#         start, end = 0, file_size - 1
+#         if range_header:
+#             import re
+#             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+#             if m:
+#                 start = int(m.group(1))
+#                 if m.group(2):
+#                     end = int(m.group(2))
+#                 end = min(end, file_size - 1)
+        
+#         is_partial = range_header != ""
+        
+#         # Use streaming response for range requests, regular for full file
+#         if is_partial:
+#             from wsgiref.util import FileWrapper
+#             from io import BytesIO
+#             response = StreamingHttpResponse(
+#                 FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
+#                 content_type="application/pdf",
+#                 status=206
+#             )
+#         else:
+#             response = HttpResponse(
+#                 file_bytes,
+#                 content_type="application/pdf",
+#                 status=200
+#             )
+        
+#         # PDF-specific headers
+#         response["Accept-Ranges"] = "bytes"
+#         response["Content-Length"] = str(end - start + 1)
+#         response["Content-Disposition"] = "inline"
+#         response["X-Content-Type-Options"] = "nosniff"
+#         response["Cache-Control"] = "private, max-age=3600"
+        
+#         if is_partial:
+#             response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        
+#         # CORS for PDF.js and other viewers
+#         response["Access-Control-Allow-Origin"] = "*"
+#         response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+#         response["Cross-Origin-Resource-Policy"] = "cross-origin"
+        
+#         # Allow embedding in iframes from allowed origins
+#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+#         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+        
+#         return response
+    
+#     def _serve_csv_with_range(self, request, file_bytes, filename):
+#         """
+#         Serve CSV with Range support for large file preview.
+#         Allows browsers/editors to load CSV progressively.
+#         """
+#         file_size = len(file_bytes)
+#         range_header = request.headers.get("Range", "")
+        
+#         # Parse range
+#         start, end = 0, file_size - 1
+#         if range_header:
+#             import re
+#             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+#             if m:
+#                 start = int(m.group(1))
+#                 if m.group(2):
+#                     end = int(m.group(2))
+#                 end = min(end, file_size - 1)
+        
+#         is_partial = range_header != ""
+        
+#         # Use streaming response for range requests
+#         if is_partial:
+#             from wsgiref.util import FileWrapper
+#             from io import BytesIO
+#             response = StreamingHttpResponse(
+#                 FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
+#                 content_type="text/csv",
+#                 status=206
+#             )
+#         else:
+#             response = HttpResponse(
+#                 file_bytes,
+#                 content_type="text/csv",
+#                 status=200
+#             )
+        
+#         # CSV-specific headers
+#         response["Accept-Ranges"] = "bytes"
+#         response["Content-Length"] = str(end - start + 1)
+#         response["Content-Disposition"] = "inline"
+#         response["X-Content-Type-Options"] = "nosniff"
+#         response["Cache-Control"] = "private, max-age=3600"
+        
+#         if is_partial:
+#             response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        
+#         # CORS for CSV viewers
+#         response["Access-Control-Allow-Origin"] = "*"
+#         response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+#         response["Cross-Origin-Resource-Policy"] = "cross-origin"
+        
+#         # Allow embedding
+#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+#         response["Content-Security-Policy"] = f"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self' {frame_ancestors};"
+        
+#         return response
+    
+#     def _serve_json_with_range(self, request, file_bytes, filename):
+#         """
+#         Serve JSON with Range support for large file preview.
+#         Allows progressive loading of large JSON files.
+#         """
+#         file_size = len(file_bytes)
+#         range_header = request.headers.get("Range", "")
+        
+#         # Parse range
+#         start, end = 0, file_size - 1
+#         if range_header:
+#             import re
+#             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+#             if m:
+#                 start = int(m.group(1))
+#                 if m.group(2):
+#                     end = int(m.group(2))
+#                 end = min(end, file_size - 1)
+        
+#         is_partial = range_header != ""
+        
+#         # Use streaming response for range requests
+#         if is_partial:
+#             from wsgiref.util import FileWrapper
+#             from io import BytesIO
+#             response = StreamingHttpResponse(
+#                 FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
+#                 content_type="application/json",
+#                 status=206
+#             )
+#         else:
+#             response = HttpResponse(
+#                 file_bytes,
+#                 content_type="application/json",
+#                 status=200
+#             )
+        
+#         # JSON-specific headers
+#         response["Accept-Ranges"] = "bytes"
+#         response["Content-Length"] = str(end - start + 1)
+#         response["Content-Disposition"] = "inline"
+#         response["X-Content-Type-Options"] = "nosniff"
+#         response["Cache-Control"] = "private, max-age=3600"
+        
+#         if is_partial:
+#             response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        
+#         # CORS for JSON viewers
+#         response["Access-Control-Allow-Origin"] = "*"
+#         response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+#         response["Cross-Origin-Resource-Policy"] = "cross-origin"
+        
+#         # Allow embedding with strict CSP for JSON
+#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+#         response["Content-Security-Policy"] = f"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; frame-ancestors 'self' {frame_ancestors};"
+        
+#         return response
+    
+#     def _stream_chunked_decrypt(self, s3_key, start_byte=0, end_byte=None):
+#         """Generator that streams decrypted chunks."""
+#         # with ChunkedDecryptor(s3_key) as decryptor:
+#         #     for decrypted_chunk in decryptor.decrypt_chunks(start_byte, end_byte):
+#         #         chunk_offset = 0
+#         #         while chunk_offset < len(decrypted_chunk):
+#         #             yield decrypted_chunk[chunk_offset:chunk_offset + self.STREAMING_CHUNK_SIZE]
+#         #             chunk_offset += self.STREAMING_CHUNK_SIZE
+        
+#         with ChunkedDecryptor(s3_key) as decryptor:
+        
+#             # If no chunk-size present in metadata => full decryption mode
+#             if not decryptor.metadata.get("chunk-size"):
+#                 full_plaintext, content = get_file_bytes(s3_key)
+
+
+#                 # Yield in streamable pieces
+#                 offset = 0
+#                 while offset < len(full_plaintext):
+#                     yield full_plaintext[offset:offset + self.STREAMING_CHUNK_SIZE]
+#                     offset += self.STREAMING_CHUNK_SIZE
+
+#             else:
+#                 # Chunked mode (large files)
+#                 for decrypted_chunk in decryptor.decrypt_chunks():
+#                     if not decrypted_chunk:
+#                         continue
+                    
+#                     offset = 0
+#                     while offset < len(decrypted_chunk):
+#                         yield decrypted_chunk[offset:offset + self.STREAMING_CHUNK_SIZE]
+#                         offset += self.STREAMING_CHUNK_SIZE
+    
+#     def _get_file_size_from_metadata(self, s3_key):
+#         """Calculate decrypted file size from S3 metadata."""
+#         cache_key = f"media_size_{s3_key}"
+#         cached_size = cache.get(cache_key)
+#         if cached_size:
+#             return cached_size
+        
+#         try:
+#             obj = s3.head_object(Bucket=MEDIA_FILES_BUCKET, Key=s3_key)
+#             encrypted_size = obj['ContentLength']
+#             chunk_size = int(obj['Metadata'].get('chunk-size', 10 * 1024 * 1024))
+            
+#             num_chunks = (encrypted_size + chunk_size + 27) // (chunk_size + 28)
+#             overhead = num_chunks * 28
+#             decrypted_size = encrypted_size - overhead
+            
+#             cache.set(cache_key, decrypted_size, timeout=self.CACHE_TIMEOUT)
+#             return decrypted_size
+#         except Exception as e:
+#             logger.error(f"Failed to calculate file size for {s3_key}: {e}")
+#             return None
+    
+#     def get(self, request, s3_key, media_file_id):
+#         """Main entry point - simplified routing and response."""
+#         user = self.get_current_user(request)
+#         if not user:
+#             return Response(status=status.HTTP_401_UNAUTHORIZED)
+
+#         try:
+#             # Validate signature
+#             exp = request.GET.get("exp")
+#             sig = request.GET.get("sig")
+#             if not exp or not sig or int(exp) < int(time.time()):
+#                 return Response(status=status.HTTP_404_NOT_FOUND)
+
+#             media_file = MemoryRoomMediaFile.objects.only('id', 's3_key', 'user_id').get(
+#                 id=media_file_id, user=user
+#             )
+
+#             if not verify_signature(media_file.s3_key, exp, sig):
+#                 return Response(status=status.HTTP_404_NOT_FOUND)
+
+#             s3_key = media_file.s3_key
+#             filename = s3_key.split("/")[-1]
+#             extension = self._get_file_extension(filename)
+#             category = self._categorize_file(filename)
+#             content_type = self._guess_content_type(filename)
+            
+#             # Check for special cases
+#             is_pdf = self._is_pdf_file(filename)
+#             is_csv = self._is_csv_file(filename)
+#             is_json = self._is_json_file(filename)
+#             needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv'}
+#             is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
+            
+#             # Route 1: Streaming with range support (video/audio that don't need conversion)
+#             if (category in ['video', 'audio']) and not needs_conversion and not is_special:
+#                 file_size = self._get_file_size_from_metadata(s3_key)
+#                 if not file_size:
+#                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+#                 # Parse range header
+#                 start, end = 0, file_size
+#                 range_header = request.headers.get("Range", "")
+#                 if range_header:
+#                     import re
+#                     m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+#                     if m:
+#                         start = int(m.group(1))
+#                         end = int(m.group(2)) + 1 if m.group(2) else file_size
+#                         end = min(end, file_size)
+                
+#                 logger.info(f"Streaming {category}: {filename}")
+#                 return self._create_response(
+#                     self._stream_chunked_decrypt(s3_key, start, end),
+#                     content_type, filename,
+#                     streaming=True, range_support=True,
+#                     start=start, end=end, total_size=file_size
+#                 )
+            
+#             # Route 2: Progressive streaming (images, no special handling)
+#             elif category == 'image' and not is_special:
+#                 file_size = self._get_file_size_from_metadata(s3_key)
+#                 if not file_size:
+#                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+#                 logger.info(f"Progressive image: {filename}")
+#                 return self._create_response(
+#                     self._stream_chunked_decrypt(s3_key),
+#                     content_type, filename,
+#                     streaming=True, range_support=False
+#                 )
+            
+#             # Route 3: Full file with conversions (everything else)
+#             else:
+#                 logger.info(f"Full decrypt for {category}: {filename}")
+                
+#                 # Get or decrypt full file
+#                 bytes_cache_key = f"media_bytes_{s3_key}"
+#                 cached_data = cache.get(bytes_cache_key)
+                
+#                 if cached_data:
+#                     file_bytes, _ = cached_data
+#                 else:
+#                     file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+#                     if not file_bytes:
+#                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+#                     cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+                
+#                 # Check if PDF, CSV, or JSON after decryption
+#                 if is_pdf:
+#                     logger.info(f"Serving PDF with range support: {filename}")
+#                     return self._serve_pdf_with_range(request, file_bytes, filename)
+#                 elif is_csv:
+#                     logger.info(f"Serving CSV with range support: {filename}")
+#                     return self._serve_csv_with_range(request, file_bytes, filename)
+#                 elif is_json:
+#                     logger.info(f"Serving JSON with range support: {filename}")
+#                     return self._serve_json_with_range(request, file_bytes, filename)
+                
+#                 # Handle conversions
+#                 if extension == '.doc':
+#                     cache_key = f'{media_file.id}_docx_preview'
+#                     file_bytes = cache.get(cache_key) or convert_doc_to_docx_bytes(file_bytes, media_file.id, user.email)
+#                     cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+#                     content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+#                     filename = filename.replace(".doc", ".docx")
+                
+#                 elif extension in {'.heic', '.heif'}:
+#                     cache_key = f'{bytes_cache_key}_jpeg'
+#                     file_bytes = cache.get(cache_key) or convert_heic_to_jpeg_bytes(file_bytes)[0]
+#                     cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+#                     content_type = "image/jpeg"
+#                     filename = filename.rsplit('.', 1)[0] + '.jpg'
+                
+#                 elif needs_conversion:
+#                     cache_key = f'{bytes_cache_key}_mp4'
+#                     mp4_bytes = cache.get(cache_key)
+                    
+#                     if not mp4_bytes:
+#                         try:
+#                             logger.info(f"Converting {extension} to MP4 for {filename}")
+#                             if extension in {'.mpeg', '.mpg'}:
+#                                 mp4_bytes, _ = self.convert_mpeg_to_mp4_bytes(file_bytes)
+#                             else:
+#                                 mp4_bytes, _ = self.convert_video_to_mp4_bytes(extension, file_bytes)
+#                             cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+#                         except Exception as e:
+#                             logger.error(f"Conversion failed for {filename}: {e}")
+#                             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    
+#                     file_bytes = mp4_bytes
+#                     content_type = "video/mp4"
+#                     filename = filename.rsplit('.', 1)[0] + '.mp4'
+                    
+#                     # Now stream the converted MP4 with range support
+#                     logger.info(f"Streaming converted MP4: {filename}")
+                    
+#                     # Store converted file temporarily for range streaming
+#                     converted_s3_key = f"temp_converted_{media_file.id}"
+#                     temp_cache_key = f"media_bytes_{converted_s3_key}"
+#                     cache.set(temp_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+                    
+#                     # Return streaming response with range support
+#                     file_size = len(file_bytes)
+                    
+#                     # Parse range header
+#                     start, end = 0, file_size
+#                     range_header = request.headers.get("Range", "")
+#                     if range_header:
+#                         import re
+#                         m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+#                         if m:
+#                             start = int(m.group(1))
+#                             end = int(m.group(2)) + 1 if m.group(2) else file_size
+#                             end = min(end, file_size)
+                    
+#                     # Create generator for range
+#                     def generate_range():
+#                         chunk_size = self.STREAMING_CHUNK_SIZE
+#                         pos = start
+#                         while pos < end:
+#                             chunk_end = min(pos + chunk_size, end)
+#                             yield file_bytes[pos:chunk_end]
+#                             pos = chunk_end
+                    
+#                     return self._create_response(
+#                         generate_range(),
+#                         content_type, filename,
+#                         streaming=True, range_support=True,
+#                         start=start, end=end, total_size=file_size
+#                     )
+#                 # For non-converted files, return simple response
+#                 return self._create_response(file_bytes, content_type, filename)
+
+#         except MemoryRoomMediaFile.DoesNotExist:
+#             return Response(status=status.HTTP_404_NOT_FOUND)
+#         except Exception as e:
+#             logger.warning(f'Exception serving media {s3_key} for {user.email}: {e}')
+#             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    
+#     # Keep conversion methods as-is
+#     def convert_mpeg_to_mp4_bytes(self, file_bytes):
+#         """Convert MPEG/MPG to MP4 bytes using MoviePy."""
+#         logger.info("Converting MPEG/MPG to MP4...")
+#         with tempfile.NamedTemporaryFile(suffix=".mpeg") as temp_in, \
+#              tempfile.NamedTemporaryFile(suffix=".mp4") as temp_out:
+#             temp_in.write(file_bytes)
+#             temp_in.flush()
+#             try:
+#                 clip = VideoFileClip(temp_in.name)
+#                 clip.write_videofile(temp_out.name, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+#                 clip.close()
+#             except Exception as e:
+#                 logger.error(f"MoviePy conversion failed: {e}")
+#                 raise
+#             temp_out.seek(0)
+#             mp4_bytes = temp_out.read()
+#         logger.info(f"Conversion successful ({len(mp4_bytes)} bytes)")
+#         return mp4_bytes, "converted.mp4"
+
+#     def convert_video_to_mp4_bytes(self, source_format, file_bytes):
+#         """Generic video converter for MKV, AVI, WMV, etc."""
+#         logger.info(f"Converting {source_format} to MP4...")
+#         with tempfile.NamedTemporaryFile(suffix=source_format) as temp_in, \
+#              tempfile.NamedTemporaryFile(suffix=".mp4") as temp_out:
+#             temp_in.write(file_bytes)
+#             temp_in.flush()
+#             try:
+#                 clip = VideoFileClip(temp_in.name)
+#                 clip.write_videofile(temp_out.name, codec="libx264", audio_codec="aac", verbose=False, logger=None)
+#                 clip.close()
+#             except Exception as e:
+#                 logger.error(f"Video conversion failed for {source_format}: {e}")
+#                 raise
+#             temp_out.seek(0)
+#             mp4_bytes = temp_out.read()
+#         logger.info(f"Conversion complete ({len(mp4_bytes)} bytes)")
+#         return mp4_bytes, "converted.mp4"
+
+
+
 class ServeMedia(SecuredView):
     """
-    Simplified streaming media server with unified response handling.
+    Securely serve decrypted media from S3 via Django.
+    Streaming responses for all files with lazy loading for audio/video.
     """
     
-    CACHE_TIMEOUT = 60 * 60 * 24*7  # 7 days 
+    CACHE_TIMEOUT = 60 * 60 * 24*7  # 24 hours
     STREAMING_CHUNK_SIZE = 64 * 1024  # 64KB chunks
     
-    # File category extensions (same as before)
+    # File category extensions
     IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', 
                         '.heic', '.heif', '.svg', '.ico', '.raw', '.psd'}
     VIDEO_EXTENSIONS = {'.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv', '.webm', 
-                        '.3gp', '.mpg', '.ts', '.m4v','.mpeg'}
+                        '.3gp', '.mpg', '.ts', '.m4v', '.mpeg'}
     AUDIO_EXTENSIONS = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', 
                         '.aiff', '.m4a', '.opus', '.amr'}
-    OTHER_EXTENSIONS = {'.txt', '.doc', '.docx', '.pdf', '.rtf', '.odt', '.md', '.tex',
-                        '.csv', '.xls', '.xlsx', '.ods', '.tsv', '.json', '.xml', '.yaml', '.yml',
-                        '.zip', '.rar', '.7z', '.tar', '.gz', '.bz2', '.xz', '.iso',
-                        '.exe', '.msi', '.apk', '.bat', '.sh', '.app',
-                        '.html', '.htm', '.css', '.js', '.ts', '.py', '.java', '.c', '.cpp', '.cs',
-                        '.php', '.rb', '.go', '.swift', '.rs', '.kt', '.sql', '.ini', '.env', '.toml'}
     
     def _get_file_extension(self, filename):
         """Extract file extension from filename."""
@@ -837,24 +1420,10 @@ class ServeMedia(SecuredView):
             return 'video'
         elif ext in self.AUDIO_EXTENSIONS:
             return 'audio'
-        elif ext in self.OTHER_EXTENSIONS:
-            return 'other'
-        return 'unknown'
-    
-    def _is_pdf_file(self, filename):
-        """Check if file is a PDF."""
-        return filename.lower().endswith('.pdf')
-    
-    def _is_csv_file(self, filename):
-        """Check if file is a CSV."""
-        return filename.lower().endswith('.csv')
-    
-    def _is_json_file(self, filename):
-        """Check if file is a JSON."""
-        return filename.lower().endswith('.json')
+        return 'other'
     
     def _guess_content_type(self, filename):
-        """Guess content type from filename extension."""
+        """Guess content type from filename extension for better browser compatibility."""
         import mimetypes
         content_type, _ = mimetypes.guess_type(filename)
         
@@ -866,9 +1435,11 @@ class ServeMedia(SecuredView):
             '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
             '.mov': 'video/quicktime', '.mkv': 'video/mp4', '.avi': 'video/mp4',
             '.mpeg': 'video/mpeg', '.mpg': 'video/mpeg', '.3gp': 'video/3gpp',
+            '.flv': 'video/mp4', '.wmv': 'video/mp4',
             # Audio
             '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/mp4',
             '.wav': 'audio/wav', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
+            '.opus': 'audio/ogg', '.wma': 'audio/x-ms-wma',
             # Image
             '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
             '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
@@ -882,65 +1453,18 @@ class ServeMedia(SecuredView):
         
         return type_map.get(ext, content_type or 'application/octet-stream')
     
-    def _create_response(self, content, content_type, filename, streaming=False, 
-                        range_support=False, start=0, end=None, total_size=None):
-        """
-        Unified response creator for all file types.
-        
-        Args:
-            content: File bytes or generator for streaming
-            content_type: MIME type
-            filename: Original filename
-            streaming: Whether to use StreamingHttpResponse
-            range_support: Whether to add Range headers
-            start: Start byte for range requests
-            end: End byte for range requests
-            total_size: Total file size for range requests
-        """
-        # Create appropriate response type
-        if streaming:
-            response = StreamingHttpResponse(content, content_type=content_type)
-            if range_support and start > 0:
-                response.status_code = 206
-        else:
-            response = HttpResponse(content, content_type=content_type)
-        
-        # Set content length
-        if streaming and total_size:
-            length = (end - start) if end else total_size
-            response["Content-Length"] = str(length)
-        elif not streaming:
-            response["Content-Length"] = str(len(content))
-        
-        # Range headers
-        if range_support:
-            response["Accept-Ranges"] = "bytes"
-            if start > 0 and end and total_size:
-                response["Content-Range"] = f"bytes {start}-{end-1}/{total_size}"
-        
-        # Security headers
-        response["Content-Disposition"] = "inline"
-        response["X-Content-Type-Options"] = "nosniff"
-        response["Cache-Control"] = "private, max-age=3600"
-        
-        # Special CSP for SVG
-        if content_type == "image/svg+xml":
-            response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
-        else:
-            frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-            csp = f"frame-ancestors 'self' {frame_ancestors};"
-            if range_support:
-                csp = f"media-src *; {csp}"
-            response["Content-Security-Policy"] = csp
-        
-        # CORS headers
-        response["Cross-Origin-Resource-Policy"] = "cross-origin"
-        response["Access-Control-Allow-Origin"] = "*"
-        if range_support:
-            response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
-        
-        return response
+    def _is_pdf_file(self, filename):
+        """Check if file is a PDF."""
+        return filename.lower().endswith('.pdf')
     
+    def _is_csv_file(self, filename):
+        """Check if file is a CSV."""
+        return filename.lower().endswith('.csv')
+    
+    def _is_json_file(self, filename):
+        """Check if file is a JSON."""
+        return filename.lower().endswith('.json')
+
     def _serve_pdf_with_range(self, request, file_bytes, filename):
         """
         Serve PDF with proper Range support for browser preview.
@@ -1114,20 +1638,74 @@ class ServeMedia(SecuredView):
         response["Content-Security-Policy"] = f"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; frame-ancestors 'self' {frame_ancestors};"
         
         return response
+
+    def _create_response(self, content, content_type, filename, streaming=False, 
+                        range_support=False, start=0, end=None, total_size=None):
+        """
+        Unified response creator for all file types.
+        
+        Args:
+            content: File bytes or generator for streaming
+            content_type: MIME type
+            filename: Original filename
+            streaming: Whether to use StreamingHttpResponse
+            range_support: Whether to add Range headers
+            start: Start byte for range requests
+            end: End byte for range requests
+            total_size: Total file size for range requests
+        """
+        # Create appropriate response type
+        if streaming:
+            response = StreamingHttpResponse(content, content_type=content_type)
+            if range_support and start > 0:
+                response.status_code = 206
+        else:
+            response = HttpResponse(content, content_type=content_type)
+        
+        # Set content length
+        if streaming and total_size:
+            length = (end - start) if end else total_size
+            response["Content-Length"] = str(length)
+        elif not streaming:
+            if content:
+                response["Content-Length"] = str(len(content))
+        
+        # Range headers
+        if range_support:
+            response["Accept-Ranges"] = "bytes"
+            if start > 0 and end and total_size:
+                response["Content-Range"] = f"bytes {start}-{end-1}/{total_size}"
+        
+        # Security headers
+        response["Content-Disposition"] = "inline"
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, max-age=3600"
+        
+        # Special CSP for SVG
+        if content_type == "image/svg+xml":
+            response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+        else:
+            frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+            csp = f"frame-ancestors 'self' {frame_ancestors};"
+            if range_support:
+                csp = f"media-src *; {csp}"
+            response["Content-Security-Policy"] = csp
+        
+        # CORS headers
+        response["Cross-Origin-Resource-Policy"] = "cross-origin"
+        response["Access-Control-Allow-Origin"] = "*"
+        if range_support:
+            response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+        
+        return response
     
     def _stream_chunked_decrypt(self, s3_key, start_byte=0, end_byte=None):
         """Generator that streams decrypted chunks."""
-        # with ChunkedDecryptor(s3_key) as decryptor:
-        #     for decrypted_chunk in decryptor.decrypt_chunks(start_byte, end_byte):
-        #         chunk_offset = 0
-        #         while chunk_offset < len(decrypted_chunk):
-        #             yield decrypted_chunk[chunk_offset:chunk_offset + self.STREAMING_CHUNK_SIZE]
-        #             chunk_offset += self.STREAMING_CHUNK_SIZE
-        
         with ChunkedDecryptor(s3_key) as decryptor:
         
             # If no chunk-size present in metadata => full decryption mode
             if not decryptor.metadata.get("chunk-size"):
+                # full_plaintext = decryptor.decrypt_full()
                 full_plaintext, content = get_file_bytes(s3_key)
 
 
@@ -1139,7 +1717,7 @@ class ServeMedia(SecuredView):
 
             else:
                 # Chunked mode (large files)
-                for decrypted_chunk in decryptor.decrypt_chunks():
+                for decrypted_chunk in decryptor.decrypt_chunks(start_byte, end_byte):
                     if not decrypted_chunk:
                         continue
                     
@@ -1158,6 +1736,13 @@ class ServeMedia(SecuredView):
         try:
             obj = s3.head_object(Bucket=MEDIA_FILES_BUCKET, Key=s3_key)
             encrypted_size = obj['ContentLength']
+            metadata =  obj['Metadata']
+            chunk_size = metadata.get('chunk-size')
+            if not chunk_size:
+                meta_cache_key = f'meta_cache_key_{s3_key}'
+                cache.set(meta_cache_key, metadata, 60*60*24)
+                
+            
             chunk_size = int(obj['Metadata'].get('chunk-size', 10 * 1024 * 1024))
             
             num_chunks = (encrypted_size + chunk_size + 27) // (chunk_size + 28)
@@ -1169,45 +1754,140 @@ class ServeMedia(SecuredView):
         except Exception as e:
             logger.error(f"Failed to calculate file size for {s3_key}: {e}")
             return None
-    
-    def get(self, request, s3_key, media_file_id):
-        """Main entry point - simplified routing and response."""
+
+    def get(self, request, s3_key, media_file_id=None):
+        exp = request.GET.get("exp")
+        sig = request.GET.get("sig")
+        
+        
+        if not exp or not sig:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if int(exp) < int(time.time()):
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
         user = self.get_current_user(request)
-        if not user:
+        if user is None:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
 
-        try:
-            # Validate signature
-            exp = request.GET.get("exp")
-            sig = request.GET.get("sig")
-            if not exp or not sig or int(exp) < int(time.time()):
-                return Response(status=status.HTTP_404_NOT_FOUND)
+        media_file = MemoryRoomMediaFile.objects.only('id', 's3_key', 'user_id').get( id=media_file_id, user=user )
 
-            media_file = MemoryRoomMediaFile.objects.only('id', 's3_key', 'user_id').get(
-                id=media_file_id, user=user
+        s3_key = media_file.s3_key
+        filename = s3_key.split("/")[-1]
+        extension = self._get_file_extension(filename)
+        category = self._categorize_file(filename)
+        content_type = self._guess_content_type(filename)
+        
+        # Check for special cases
+        is_pdf = self._is_pdf_file(filename)
+        is_csv = self._is_csv_file(filename)
+        is_json = self._is_json_file(filename)
+        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv'}
+        is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
+        
+        # Route 1: Streaming with range support (video/audio that don't need conversion)
+        if (category in ['video', 'audio']) and not needs_conversion and not is_special:
+            file_size = self._get_file_size_from_metadata(s3_key)
+            if not file_size:
+                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+            # Parse range header
+            start, end = 0, file_size
+            range_header = request.headers.get("Range", "")
+            if range_header:
+                import re
+                m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+                if m:
+                    start = int(m.group(1))
+                    end = int(m.group(2)) + 1 if m.group(2) else file_size
+                    end = min(end, file_size)
+            
+            logger.info(f"Streaming {category}: {filename}")
+            return self._create_response(
+                self._stream_chunked_decrypt(s3_key, start, end),
+                content_type, filename,
+                streaming=True, range_support=True,
+                start=start, end=end, total_size=file_size
             )
-
-            if not verify_signature(media_file.s3_key, exp, sig):
-                return Response(status=status.HTTP_404_NOT_FOUND)
-
-            s3_key = media_file.s3_key
-            filename = s3_key.split("/")[-1]
-            extension = self._get_file_extension(filename)
-            category = self._categorize_file(filename)
-            content_type = self._guess_content_type(filename)
+        
+        # Route 2: Progressive streaming (images, no special handling)
+        elif category == 'image' and not is_special:
+            file_size = self._get_file_size_from_metadata(s3_key)
+            if not file_size:
+                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-            # Check for special cases
-            is_pdf = self._is_pdf_file(filename)
-            is_csv = self._is_csv_file(filename)
-            is_json = self._is_json_file(filename)
-            needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv'}
-            is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
+            logger.info(f"Progressive image: {filename}")
+            return self._create_response(
+                self._stream_chunked_decrypt(s3_key),
+                content_type, filename,
+                streaming=True, range_support=False
+            )
+        
+        # Route 3: Full file with conversions (everything else)
+        else:
+            logger.info(f"Full decrypt for {category}: {filename}")
             
-            # Route 1: Streaming with range support (video/audio that don't need conversion)
-            if (category in ['video', 'audio']) and not needs_conversion and not is_special:
-                file_size = self._get_file_size_from_metadata(s3_key)
-                if not file_size:
+            # Get or decrypt full file
+            bytes_cache_key = f"media_bytes_{s3_key}"
+            cached_data = cache.get(bytes_cache_key)
+            
+            if cached_data:
+                file_bytes, _ = cached_data
+            else:
+                file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+                if not file_bytes:
                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+            
+            # Check if PDF, CSV, or JSON after decryption
+            if is_pdf:
+                logger.info(f"Serving PDF with range support: {filename}")
+                return self._serve_pdf_with_range(request, file_bytes, filename)
+            elif is_csv:
+                logger.info(f"Serving CSV with range support: {filename}")
+                return self._serve_csv_with_range(request, file_bytes, filename)
+            elif is_json:
+                logger.info(f"Serving JSON with range support: {filename}")
+                return self._serve_json_with_range(request, file_bytes, filename)
+            
+            # Handle conversions
+            if extension == '.doc':
+                cache_key = f'{media_file.id}_docx_preview'
+                file_bytes = cache.get(cache_key) or convert_doc_to_docx_bytes(file_bytes, media_file.id, user.email)
+                cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+                content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                filename = filename.replace(".doc", ".docx")
+            
+            elif extension in {'.heic', '.heif'}:
+                cache_key = f'{bytes_cache_key}_jpeg'
+                file_bytes = cache.get(cache_key) or convert_heic_to_jpeg_bytes(file_bytes)[0]
+                cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+                content_type = "image/jpeg"
+                filename = filename.rsplit('.', 1)[0] + '.jpg'
+            
+            elif needs_conversion:
+                cache_key = f'{bytes_cache_key}_mp4'
+                mp4_bytes = cache.get(cache_key)
+                
+                if not mp4_bytes:
+                    try:
+                        logger.info(f"Converting {extension} to MP4 for {filename}")
+                        mp4_bytes, _ = convert_video_to_mp4_bytes(
+                            source_format=extension,
+                            file_bytes=file_bytes
+                        )
+                        cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+                    except Exception as e:
+                        logger.error(f"Conversion failed for {filename}: {e}")
+                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                
+                file_bytes = mp4_bytes
+                content_type = "video/mp4"
+                filename = filename.rsplit('.', 1)[0] + '.mp4'
+                
+                # Now stream the converted MP4 with range support
+                logger.info(f"Streaming converted MP4: {filename}")
+                file_size = len(file_bytes)
                 
                 # Parse range header
                 start, end = 0, file_size
@@ -1220,173 +1900,24 @@ class ServeMedia(SecuredView):
                         end = int(m.group(2)) + 1 if m.group(2) else file_size
                         end = min(end, file_size)
                 
-                logger.info(f"Streaming {category}: {filename}")
+                # Create generator for range
+                def generate_range():
+                    chunk_size = self.STREAMING_CHUNK_SIZE
+                    pos = start
+                    while pos < end:
+                        chunk_end = min(pos + chunk_size, end)
+                        yield file_bytes[pos:chunk_end]
+                        pos = chunk_end
+                
                 return self._create_response(
-                    self._stream_chunked_decrypt(s3_key, start, end),
+                    generate_range(),
                     content_type, filename,
                     streaming=True, range_support=True,
                     start=start, end=end, total_size=file_size
                 )
             
-            # Route 2: Progressive streaming (images, no special handling)
-            elif category == 'image' and not is_special:
-                file_size = self._get_file_size_from_metadata(s3_key)
-                if not file_size:
-                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                
-                logger.info(f"Progressive image: {filename}")
-                return self._create_response(
-                    self._stream_chunked_decrypt(s3_key),
-                    content_type, filename,
-                    streaming=True, range_support=False
-                )
-            
-            # Route 3: Full file with conversions (everything else)
-            else:
-                logger.info(f"Full decrypt for {category}: {filename}")
-                
-                # Get or decrypt full file
-                bytes_cache_key = f"media_bytes_{s3_key}"
-                cached_data = cache.get(bytes_cache_key)
-                
-                if cached_data:
-                    file_bytes, _ = cached_data
-                else:
-                    file_bytes, _ = decrypt_s3_file_chunked(s3_key)
-                    if not file_bytes:
-                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                    cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
-                
-                # Check if PDF, CSV, or JSON after decryption
-                if is_pdf:
-                    logger.info(f"Serving PDF with range support: {filename}")
-                    return self._serve_pdf_with_range(request, file_bytes, filename)
-                elif is_csv:
-                    logger.info(f"Serving CSV with range support: {filename}")
-                    return self._serve_csv_with_range(request, file_bytes, filename)
-                elif is_json:
-                    logger.info(f"Serving JSON with range support: {filename}")
-                    return self._serve_json_with_range(request, file_bytes, filename)
-                
-                # Handle conversions
-                if extension == '.doc':
-                    cache_key = f'{media_file.id}_docx_preview'
-                    file_bytes = cache.get(cache_key) or convert_doc_to_docx_bytes(file_bytes, media_file.id, user.email)
-                    cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
-                    content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                    filename = filename.replace(".doc", ".docx")
-                
-                elif extension in {'.heic', '.heif'}:
-                    cache_key = f'{bytes_cache_key}_jpeg'
-                    file_bytes = cache.get(cache_key) or convert_heic_to_jpeg_bytes(file_bytes)[0]
-                    cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
-                    content_type = "image/jpeg"
-                    filename = filename.rsplit('.', 1)[0] + '.jpg'
-                
-                elif needs_conversion:
-                    cache_key = f'{bytes_cache_key}_mp4'
-                    mp4_bytes = cache.get(cache_key)
-                    
-                    if not mp4_bytes:
-                        try:
-                            logger.info(f"Converting {extension} to MP4 for {filename}")
-                            if extension in {'.mpeg', '.mpg'}:
-                                mp4_bytes, _ = self.convert_mpeg_to_mp4_bytes(file_bytes)
-                            else:
-                                mp4_bytes, _ = self.convert_video_to_mp4_bytes(extension, file_bytes)
-                            cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
-                        except Exception as e:
-                            logger.error(f"Conversion failed for {filename}: {e}")
-                            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                    
-                    file_bytes = mp4_bytes
-                    content_type = "video/mp4"
-                    filename = filename.rsplit('.', 1)[0] + '.mp4'
-                    
-                    # Now stream the converted MP4 with range support
-                    logger.info(f"Streaming converted MP4: {filename}")
-                    
-                    # Store converted file temporarily for range streaming
-                    converted_s3_key = f"temp_converted_{media_file.id}"
-                    temp_cache_key = f"media_bytes_{converted_s3_key}"
-                    cache.set(temp_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
-                    
-                    # Return streaming response with range support
-                    file_size = len(file_bytes)
-                    
-                    # Parse range header
-                    start, end = 0, file_size
-                    range_header = request.headers.get("Range", "")
-                    if range_header:
-                        import re
-                        m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-                        if m:
-                            start = int(m.group(1))
-                            end = int(m.group(2)) + 1 if m.group(2) else file_size
-                            end = min(end, file_size)
-                    
-                    # Create generator for range
-                    def generate_range():
-                        chunk_size = self.STREAMING_CHUNK_SIZE
-                        pos = start
-                        while pos < end:
-                            chunk_end = min(pos + chunk_size, end)
-                            yield file_bytes[pos:chunk_end]
-                            pos = chunk_end
-                    
-                    return self._create_response(
-                        generate_range(),
-                        content_type, filename,
-                        streaming=True, range_support=True,
-                        start=start, end=end, total_size=file_size
-                    )
-                # For non-converted files, return simple response
-                return self._create_response(file_bytes, content_type, filename)
-
-        except MemoryRoomMediaFile.DoesNotExist:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-        except Exception as e:
-            logger.warning(f'Exception serving media {s3_key} for {user.email}: {e}')
-            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-    
-    # Keep conversion methods as-is
-    def convert_mpeg_to_mp4_bytes(self, file_bytes):
-        """Convert MPEG/MPG to MP4 bytes using MoviePy."""
-        logger.info("Converting MPEG/MPG to MP4...")
-        with tempfile.NamedTemporaryFile(suffix=".mpeg") as temp_in, \
-             tempfile.NamedTemporaryFile(suffix=".mp4") as temp_out:
-            temp_in.write(file_bytes)
-            temp_in.flush()
-            try:
-                clip = VideoFileClip(temp_in.name)
-                clip.write_videofile(temp_out.name, codec="libx264", audio_codec="aac", verbose=False, logger=None)
-                clip.close()
-            except Exception as e:
-                logger.error(f"MoviePy conversion failed: {e}")
-                raise
-            temp_out.seek(0)
-            mp4_bytes = temp_out.read()
-        logger.info(f"Conversion successful ({len(mp4_bytes)} bytes)")
-        return mp4_bytes, "converted.mp4"
-
-    def convert_video_to_mp4_bytes(self, source_format, file_bytes):
-        """Generic video converter for MKV, AVI, WMV, etc."""
-        logger.info(f"Converting {source_format} to MP4...")
-        with tempfile.NamedTemporaryFile(suffix=source_format) as temp_in, \
-             tempfile.NamedTemporaryFile(suffix=".mp4") as temp_out:
-            temp_in.write(file_bytes)
-            temp_in.flush()
-            try:
-                clip = VideoFileClip(temp_in.name)
-                clip.write_videofile(temp_out.name, codec="libx264", audio_codec="aac", verbose=False, logger=None)
-                clip.close()
-            except Exception as e:
-                logger.error(f"Video conversion failed for {source_format}: {e}")
-                raise
-            temp_out.seek(0)
-            mp4_bytes = temp_out.read()
-        logger.info(f"Conversion complete ({len(mp4_bytes)} bytes)")
-        return mp4_bytes, "converted.mp4"
+            # For non-converted files, return simple response
+            return self._create_response(file_bytes, content_type, filename)
 
 class RefreshMediaURL(SecuredView):
     """
