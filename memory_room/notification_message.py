@@ -1,38 +1,38 @@
 NOTIFICATIONS = {
     # ---------------- Capsoul ----------------
-    "capsoul_sealed": {
+    "capsoul_sealed": { # at sealed
         "title": "Capsoul Sealed",
         "message": "Your capsoul is sealed. It’s locked and ready, set to open at the perfect moment you’ve already chosen.",
         "category": "capsoul",
         "type": "capsoul_sealed",
     },
-    "capsoul_invite_received": {
+    "capsoul_invite_received": { # invitation notification
         "title": "Recipients & Sharing",
         "message": "You’ve been invited to a capsoul. Someone special has saved a memory with you in mind — a surprise awaits.",
         "category": "capsoul",
         "type": "capsoul_invite_received",
     },
-    "capsoul_almost_unlock": {
+    "capsoul_almost_unlock": { # at almost unlock
         "title": "Unlock & Future Notifications",
         "message": "It’s the time… Your capsoul is about to unlock. A surprise memory is waiting for you.",
         "category": "capsoul",
         "type": "capsoul_almost_unlock",
     },
-    "capsoul_unlocked": {
+    "capsoul_unlocked": { # notification when recipient open share capsoul
         "title": "Your capsoul has been opened",
         "message": "The wait is over! Someone has opened a moment you shared. Dive in and relive it.",
         "category": "capsoul",
         "type": "capsoul_unlocked",
     },
-    "capsoul_waiting": {
+    "capsoul_waiting": { # 24 hour reminder
         "title": "A capsoul is waiting for you",
         "message": "A surprise memory has been sealed with love for you. Open it when you’re ready.",
         "category": "capsoul",
         "type": "capsoul_waiting",
     },
-    "capsoul_reminder_7_days": {
+    "capsoul_reminder_7_days": { # 7days reminder
         "title": "Capsoul Reminder (7 Days)",
-        "message": "Reminder: A special capsoul is unlocking in 7 days. Get ready to experience a memory someone tucked away just for you.",
+        "message": "A special capsoul is unlocking in 7 days. Get ready to experience a memory someone tucked away just for you.",
         "category": "capsoul",
         "type": "capsoul_reminder_7_days",
     },

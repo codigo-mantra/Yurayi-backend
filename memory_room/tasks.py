@@ -16,7 +16,10 @@ from botocore.config import Config
 import math
 import time
 import mimetypes
+from memory_room.models import Notification
 from django.conf import settings
+from memory_room.notification_message import NOTIFICATIONS
+
 
 from memory_room.models import MemoryRoom, MemoryRoomMediaFile, TimeCapSoulMediaFile
 
@@ -156,7 +159,44 @@ def capsoul_unlocked(capsoul_id):
     finally:
         return is_created
         
-        
+
+def capsoul_notification_generator(recipient, notification_key, message=None):
+    """Notification generator  """
+    try:
+        is_created = False
+        if recipient.is_opened == False: 
+            person_email = recipient.email
+            time_capsoul = recipient.time_capsoul
+            try:
+                user = User.objects.get(email = person_email)
+                notification_data = NOTIFICATIONS[f'{notification_key}']
+                category = notification_data['category']
+                category_type = notification_data['type']
+                title = notification_data['title']
+                if not  message:
+                    message = notification_data['message']
+                
+                capsoul_notification =  user.notifications.filter(time_capsoul = time_capsoul, category=category, category_type = category_type).first()
+                
+                if not capsoul_notification:
+                    notification = Notification.objects.create(
+                    user=user,
+                    category=category,
+                    category_type=category_type,
+                    title=title,
+                    message=message,
+                    time_capsoul=time_capsoul,
+                )
+                is_created = True
+                return is_created
+                
+            except User.DoesNotExist as e:
+                # skip if user not exists
+                return is_created
+                
+          
+    except Exception as e:
+        logger.error(f'Exception while creating notification as : {e}')
 
 
 @shared_task
@@ -193,6 +233,37 @@ def capsoul_memory_one_year_ago(capsoul_id):
         time_capsoul=time_capsoul
     )
 
+@shared_task(bind=True, track_started=True, name="Notification_for_24_reminder", base=LoggedTask)
+def create_24_hour_reminder_notification(self):
+    recipeints =  TimeCapSoulRecipient.objects.filter(time_capsoul__status = 'unlocked', is_opened = False,is_capsoul_deleted = False)
+    notification_key = 'capsoul_waiting'
+    
+    for recipient in recipeints:
+        try:
+            is_created = capsoul_notification_generator(
+                recipient=recipient,
+                notification_key = notification_key,
+            )
+        except Exception as e:
+            pass
+        # print(f'\n Is Notification created: {is_created}')
+
+@shared_task(bind=True, track_started=True, name="Notification_for_7_reminder", base=LoggedTask)
+def create_7_days_reminder_notification(self):
+    recipeints =  TimeCapSoulRecipient.objects.filter(time_capsoul__status = 'unlocked', is_opened = False,is_capsoul_deleted = False)
+    notification_key = 'capsoul_reminder_7_days'
+    
+    for recipient in recipeints:
+        try:
+            is_created = capsoul_notification_generator(
+                recipient=recipient,
+                notification_key = notification_key,
+            )
+        except Exception as e:
+            pass
+        # print(f'\n Is Notification created: {is_created}')
+
+          
 
 @shared_task
 def capsoul_notification_handler():
@@ -210,12 +281,14 @@ def capsoul_notification_handler():
         is_deleted = False,
     )
     
-    #  Already unlocked capsouls
+    # #  Already unlocked capsouls
     unlocked_capsouls = TimeCapSoul.objects.filter(
         status='unlocked',
         is_deleted = False,
         
     )
+    create_24_hour_reminder_notification.apply_async() # 24 hour notification generator
+    create_7_days_reminder_notification.apply_async()  # 7 days reminder notification generator
     
     for capsoul in sealed_capsouls:
         unlock_date = capsoul.unlock_date
@@ -229,15 +302,15 @@ def capsoul_notification_handler():
     for capsoul in unlocked_capsouls:
         unlock_date = capsoul.unlock_date
 
-        # 24 hours after unlock → Waiting
-        if one_hour_ago < unlock_date + timedelta(hours=24) <= now:
-            print('--- capsoul_waiting called ---')
-            capsoul_waiting.apply_async((capsoul.id,), eta=unlock_date)
+        # # 24 hours after unlock → Waiting
+        # if one_hour_ago < unlock_date + timedelta(hours=24) <= now:
+        #     print('--- capsoul_waiting called ---')
+        #     capsoul_waiting.apply_async((capsoul.id,), eta=unlock_date)
 
-        # 7 days after unlock → Reminder
-        if one_hour_ago < unlock_date + timedelta(days=7) <= now:
-            print('--- capsoul_reminder_7_days called ---')
-            capsoul_reminder_7_days.apply_async((capsoul.id,), eta=unlock_date)
+        # # 7 days after unlock → Reminder
+        # if one_hour_ago < unlock_date + timedelta(days=7) <= now:
+        #     print('--- capsoul_reminder_7_days called ---')
+        #     capsoul_reminder_7_days.apply_async((capsoul.id,), eta=unlock_date)
 
         # 1 year after unlock → Memory One Year Ago
         if one_hour_ago < unlock_date + timedelta(days=365) <= now:
