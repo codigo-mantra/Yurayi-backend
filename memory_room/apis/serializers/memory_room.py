@@ -10,7 +10,7 @@ from memory_room.models import (
 )
 from memory_room.s3_uploader_helpers import decrypt_upload_and_extract_audio_thumbnail_chunked_updated
 from memory_room.media_helper import decrypt_upload_and_extract_audio_thumbnail_chunked
-from memory_room.upload_helper import decrypt_upload_and_extract_audio_thumbnail_chunked as media_uploader
+from memory_room.upload_helper import decrypt_upload_and_extract_audio_thumbnail_chunked_upgraded, decrypt_upload_and_extract_audio_thumbnail_chunked as media_uploader
 
 from memory_room.apis.serializers.serailizers import MemoryRoomSerializer
 from memory_room.utils import upload_file_to_s3_bucket, get_file_category,get_readable_file_size_from_bytes, generate_signature
@@ -411,8 +411,17 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             #     progress_callback=progress_callback,
             #     file_ext=os.path.splitext(file.name)[1].lower(),
             # )
+            # result = decrypt_upload_and_extract_audio_thumbnail_chunked_updated(
+            #     file_type = file_type,
+            #     key=s3_key,
+            #     encrypted_file=file,
+            #     iv_str=iv,
+            #     # content_type="audio/mpeg",
+            #     progress_callback=progress_callback,
+            #     file_ext=os.path.splitext(file.name)[1].lower(),
+            # )
             
-            result = media_uploader(
+            result = decrypt_upload_and_extract_audio_thumbnail_chunked_upgraded(
                 file_type = file_type,
                 key=s3_key,
                 encrypted_file=file,

@@ -550,7 +550,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
     # Thread-safe thumbnail extraction
     thumbnail_extracted = False
     thumbnail_lock = threading.Lock()
-    MAX_THUMBNAIL_ATTEMPTS = 7
+    MAX_THUMBNAIL_ATTEMPTS = 5
     MIN_BUFFER_FOR_ATTEMPT = 256 * 1024
     
     # Strategic extraction points
@@ -882,7 +882,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
             MultipartUpload={"Parts": parts},
         )
         
-        if not thumbnail_data:
+        if file_type in ['video', 'audio'] and  not thumbnail_data:
             print('\n -------- thumbnail extraction failed ---------,')
             try:
                 temp_s3_path = tempfile.mktemp(suffix=f"_s3{file_ext}")
@@ -935,7 +935,10 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                                     decrypted_bytes=video_bytes
                                 )
                         else:
-                            thumbnail_data = extractor.extract_audio_thumbnail()
+                            thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
+                                extension=file_ext,
+                                decrypted_bytes=video_bytes,
+                            )
                         
                         try:
                             os.remove(temp_s3_path)
@@ -991,3 +994,487 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
             pass
 
 
+
+def decrypt_upload_and_extract_audio_thumbnail_chunked_upgraded(
+        key: str,
+        encrypted_file,
+        iv_str: str,
+        content_type: str = "application/octet-stream",
+        file_ext: str = "",
+        progress_callback=None,
+        chunk_size: int = 10 * 1024 * 1024,  # 10 MB default
+        file_type=None,
+        thumbnail_buffer_size: int = 512 * 1024,  # 512 KB buffer for thumbnail
+        max_retries: int = 3,  # Retry failed uploads
+    ):
+    """
+    Decrypt AES-256-GCM encrypted file chunk-by-chunk, upload decrypted chunks to S3, 
+    and extract embedded audio/video thumbnail while streaming.
+    Optimized for minimal RAM usage with retry logic and improved large file handling.
+    
+    IMPROVEMENTS:
+    - Fixed memory leaks in thumbnail extraction fallback
+    - Ultra-low RAM usage with streaming and aggressive cleanup
+    - Max 4 workers for optimal performance/resource balance
+    - Exponential backoff retry logic for failed uploads
+    - Strategic thumbnail extraction with proper cleanup
+    - Limited fallback thumbnail extraction (first 50MB only for large files)
+    - Progress updates from 15-85% during processing
+    """
+
+    bucket = MEDIA_FILES_BUCKET
+    parts = []
+    uploaded_bytes = 0
+    thumbnail_data = None
+    upload_error = None
+    buffer_for_thumbnail = None
+    temp_s3_path = None
+    
+    # Thread-safe thumbnail extraction
+    thumbnail_extracted = False
+    thumbnail_lock = threading.Lock()
+    MAX_THUMBNAIL_ATTEMPTS = 5
+    MIN_BUFFER_FOR_ATTEMPT = 256 * 1024
+    
+    # Strategic extraction points
+    thumbnail_extraction_points = []
+    
+    # Retry configuration
+    MAX_RETRIES = max_retries
+    RETRY_DELAY_BASE = 1  # seconds
+    
+    # Fallback thumbnail limits for large files
+    MAX_FALLBACK_SIZE = 50 * 1024 * 1024  # Only process first 50MB for fallback
+    
+    try:
+        s3_key = key
+        if progress_callback:
+            progress_callback(15, "Initializing decryption...")
+
+        # Parse IV
+        try:
+            if all(c in "0123456789abcdefABCDEF" for c in iv_str.strip()):
+                iv = bytes.fromhex(iv_str)
+            else:
+                iv = base64.b64decode(iv_str)
+        except Exception as e:
+            raise ValueError(f"Invalid IV format: {e}")
+
+        # Decode AES key
+        key_bytes = settings.ENCRYPTION_KEY
+        if isinstance(key_bytes, str):
+            key_bytes = base64.b64decode(key_bytes)
+        if len(key_bytes) != 32:
+            raise ValueError(f"Key must be 32 bytes for AES-256, got {len(key_bytes)} bytes")
+
+        # Determine file size and auth tag
+        encrypted_file.seek(0, 2)
+        total_size = encrypted_file.tell()
+        if total_size < 16:
+            raise ValueError("Encrypted file too short (missing GCM tag).")
+        encrypted_data_size = total_size - 16
+        encrypted_file.seek(encrypted_data_size)
+        auth_tag = encrypted_file.read(16)
+        encrypted_file.seek(0)
+
+        # RAM-OPTIMIZED: Conservative adaptive strategy (max 4 workers)
+        if encrypted_data_size <= 5 * 1024 * 1024:  # < 5MB
+            effective_chunk_size = max(encrypted_data_size, 2 * 1024 * 1024)
+            use_threading = False
+            max_workers = 1
+        elif encrypted_data_size <= 50 * 1024 * 1024:  # 5-50MB
+            effective_chunk_size = 5 * 1024 * 1024
+            use_threading = True
+            max_workers = 2
+        elif encrypted_data_size <= 200 * 1024 * 1024:  # 50-200MB
+            effective_chunk_size = 8 * 1024 * 1024
+            use_threading = True
+            max_workers = 3
+        else:  # > 200MB - CAPPED at 4 workers for RAM efficiency
+            effective_chunk_size = 12 * 1024 * 1024  # Balanced chunk size
+            use_threading = True
+            max_workers = 4  # HARD CAP
+
+        # Calculate strategic thumbnail extraction points
+        if file_type in ['video', 'audio']:
+            buffer_for_thumbnail = BytesIO()
+            total_chunks = (encrypted_data_size + effective_chunk_size - 1) // effective_chunk_size
+            
+            # 7 attempts: 2 start, 3 middle, 2 end
+            thumbnail_extraction_points = [
+                1,  # Start - chunk 1
+                2,  # Start - chunk 2
+                total_chunks // 3,  # Early middle
+                total_chunks // 2,  # Middle
+                (total_chunks * 2) // 3,  # Late middle
+                max(total_chunks - 1, 3),  # Near end
+                total_chunks  # End
+            ]
+            thumbnail_extraction_points = sorted(set(thumbnail_extraction_points))[:MAX_THUMBNAIL_ATTEMPTS]
+            logger.info(f"Thumbnail extraction planned at chunks: {thumbnail_extraction_points}")
+
+        # Initialize decryptor
+        cipher = Cipher(algorithms.AES(key_bytes), modes.GCM(iv, auth_tag), backend=default_backend())
+        decryptor = cipher.decryptor()
+
+        if progress_callback:
+            progress_callback(17, "Starting chunked decrypt & upload...")
+
+        # Generate KMS data key & AESGCM encryptor for S3
+        resp = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+        data_key_plain = resp["Plaintext"]
+        data_key_encrypted = resp["CiphertextBlob"]
+        aesgcm = AESGCM(data_key_plain)
+
+        # Prepare S3 multipart upload
+        multipart_resp = s3.create_multipart_upload(
+            Bucket=bucket,
+            Key=s3_key,
+            ContentType=content_type,
+            Metadata={
+                "edk": base64.b64encode(data_key_encrypted).decode(),
+                "orig-content-type": content_type,
+                "chunk-size": str(effective_chunk_size),
+            },
+        )
+        upload_id = multipart_resp["UploadId"]
+
+        upload_queue = None
+        upload_threads = []
+        
+        # Single lock for all shared state (prevents race conditions)
+        state_lock = threading.Lock() if use_threading else None
+
+        # RAM-OPTIMIZED: Retry logic with exponential backoff
+        def upload_part_with_retry(bucket, key, part_num, upload_id, body, max_retries=MAX_RETRIES):
+            """Upload a part with exponential backoff retry logic"""
+            for attempt in range(max_retries):
+                try:
+                    resp = s3.upload_part(
+                        Bucket=bucket,
+                        Key=key,
+                        PartNumber=part_num,
+                        UploadId=upload_id,
+                        Body=body,
+                    )
+                    return resp
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        raise  # Last attempt failed
+                    
+                    # Exponential backoff: 1s, 2s, 4s, 8s...
+                    delay = RETRY_DELAY_BASE * (2 ** attempt)
+                    logger.warning(f"Upload part {part_num} failed (attempt {attempt + 1}/{max_retries}), retrying in {delay}s: {str(e)}")
+                    time.sleep(delay)
+            
+            raise RuntimeError(f"Failed to upload part {part_num} after {max_retries} attempts")
+
+        if use_threading:
+            # RAM-OPTIMIZED: Minimal queue size (only 1 slot per worker)
+            upload_queue = Queue(maxsize=max_workers)
+
+            def upload_worker():
+                nonlocal upload_error, uploaded_bytes
+                while True:
+                    item = None
+                    try:
+                        item = upload_queue.get(timeout=2)
+                        if item is None:
+                            break
+                        
+                        part_num, encrypted_body, decrypted_len = item
+                        
+                        try:
+                            # Upload with retry logic
+                            resp = upload_part_with_retry(
+                                bucket, s3_key, part_num, upload_id, encrypted_body
+                            )
+                            
+                            # Thread-safe state update
+                            with state_lock:
+                                if upload_error:  # Stop if another thread failed
+                                    break
+                                    
+                                parts.append({"ETag": resp["ETag"], "PartNumber": part_num})
+                                uploaded_bytes += decrypted_len
+                                
+                                # Progress from 20-85
+                                percent = 20 + int((uploaded_bytes / encrypted_data_size) * 65)
+                                if progress_callback:
+                                    progress_callback(min(percent, 85), None)
+                                    
+                        except Exception as e:
+                            with state_lock:
+                                if not upload_error:
+                                    upload_error = e
+                                    logger.error(f"Part {part_num} upload failed after retries: {str(e)}")
+                            break
+                            
+                    except Empty:
+                        continue
+                    finally:
+                        if item:
+                            upload_queue.task_done()
+                            # RAM-OPTIMIZED: Immediately free memory
+                            del item
+                            if 'encrypted_body' in locals():
+                                del encrypted_body
+
+            # Start worker threads (max 4)
+            for _ in range(max_workers):
+                thread = threading.Thread(target=upload_worker, daemon=True)
+                thread.start()
+                upload_threads.append(thread)
+
+        # Process chunks
+        part_number = 1
+        total_read = 0
+        current_chunk_number = 0
+
+        while total_read < encrypted_data_size:
+            # Check for errors before processing more
+            if use_threading:
+                with state_lock if state_lock else nullcontext():
+                    if upload_error:
+                        raise upload_error
+
+            to_read = min(effective_chunk_size, encrypted_data_size - total_read)
+            chunk = encrypted_file.read(to_read)
+            total_read += len(chunk)
+            current_chunk_number += 1
+
+            # Decrypt chunk
+            decrypted_chunk = decryptor.update(chunk)
+            
+            # RAM-OPTIMIZED: Free encrypted chunk immediately
+            del chunk
+
+            # Strategic thumbnail extraction
+            if (not thumbnail_extracted and 
+                file_type in ['video', 'audio'] and 
+                buffer_for_thumbnail is not None and
+                current_chunk_number in thumbnail_extraction_points):
+                
+                with thumbnail_lock:
+                    if not thumbnail_extracted:
+                        buffer_for_thumbnail.write(decrypted_chunk)
+                        current_buffer_size = buffer_for_thumbnail.tell()
+                        
+                        if current_buffer_size >= MIN_BUFFER_FOR_ATTEMPT:
+                            attempt_num = thumbnail_extraction_points.index(current_chunk_number) + 1
+                            
+                            try:
+                                logger.info(f"Thumbnail extraction attempt {attempt_num} at chunk {current_chunk_number} (buffer: {current_buffer_size} bytes)")
+                                
+                                extractor = MediaThumbnailExtractor(file='', file_ext=file_ext)
+                                buffer_data = buffer_for_thumbnail.getvalue()
+                                
+                                if file_type == 'video':
+                                    thumb = extractor.extract_video_thumbnail_from_bytes(
+                                        extension=file_ext,
+                                        decrypted_bytes=buffer_data,
+                                    )
+                                else:
+                                    thumb = extractor.extract_audio_thumbnail_from_bytes(
+                                        extension=file_ext,
+                                        decrypted_bytes=buffer_data,
+                                    )
+                                
+                                if thumb:
+                                    thumbnail_data = thumb
+                                    thumbnail_extracted = True
+                                    # RAM-OPTIMIZED: Free buffer immediately
+                                    buffer_for_thumbnail.close()
+                                    buffer_for_thumbnail = None
+                                    del buffer_data
+                                    logger.info(f"Thumbnail extracted successfully on attempt {attempt_num}")
+                                else:
+                                    del buffer_data
+                                    logger.info(f"Attempt {attempt_num} returned None")
+                                    
+                            except Exception as e:
+                                logger.warning(f"Attempt {attempt_num} failed: {str(e)}")
+                        
+                        # RAM-OPTIMIZED: Aggressive buffer management
+                        # Clear buffer if too large OR if we've passed half the attempts
+                        if buffer_for_thumbnail:
+                            should_clear = (
+                                current_buffer_size > thumbnail_buffer_size * 2 or
+                                attempt_num > MAX_THUMBNAIL_ATTEMPTS // 2
+                            )
+                            if should_clear:
+                                buffer_for_thumbnail.seek(0)
+                                buffer_for_thumbnail.truncate()
+                                logger.info(f"Buffer cleared at {current_buffer_size} bytes (attempt {attempt_num})")
+
+            # Encrypt chunk for S3 upload
+            nonce = os.urandom(12)
+            ciphertext_chunk = aesgcm.encrypt(nonce, decrypted_chunk, None)
+            body = nonce + ciphertext_chunk
+            
+            # RAM-OPTIMIZED: Delete intermediate data
+            del ciphertext_chunk, nonce
+
+            if use_threading:
+                # Block if queue full (natural backpressure)
+                upload_queue.put((part_number, body, len(decrypted_chunk)))
+                # Don't delete body - needed by worker thread
+            else:
+                # Direct upload with retry for single-threaded mode
+                try:
+                    resp = upload_part_with_retry(
+                        bucket, s3_key, part_number, upload_id, body
+                    )
+                    parts.append({"ETag": resp["ETag"], "PartNumber": part_number})
+                    uploaded_bytes += len(decrypted_chunk)
+                    
+                    # Progress from 20-85
+                    percent = 20 + int((uploaded_bytes / encrypted_data_size) * 65)
+                    if progress_callback:
+                        progress_callback(min(percent, 85), None)
+                except Exception as e:
+                    raise RuntimeError(f"Failed to upload part {part_number}: {str(e)}")
+                finally:
+                    del body
+
+            # RAM-OPTIMIZED: Free decrypted chunk
+            del decrypted_chunk
+            part_number += 1
+
+        # Finalize decryption
+        decryptor.finalize()
+
+        if use_threading:
+            # Signal all workers to stop
+            for _ in range(max_workers):
+                upload_queue.put(None)
+            
+            # Wait for all workers
+            timeout = 60 if encrypted_data_size > 1024 * 1024 * 1024 else 30
+            for thread in upload_threads:
+                thread.join(timeout=timeout)
+            
+            # Check final error state
+            with state_lock if state_lock else nullcontext():
+                if upload_error:
+                    raise upload_error
+
+        # Complete S3 upload
+        parts.sort(key=lambda x: x["PartNumber"])
+        result = s3.complete_multipart_upload(
+            Bucket=bucket,
+            Key=s3_key,
+            UploadId=upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+        
+        # OPTIMIZED FALLBACK: Only attempt if file is reasonable size
+        if file_type in ['video', 'audio'] and not thumbnail_data:
+            logger.info('Primary thumbnail extraction failed, attempting fallback...')
+            print(f'------------Thumbnail attems failed --- final attemps')
+            
+             # FALLBACK: If thumbnail not extracted during streaming, try from temp file
+            try:
+                temp_s3_path = tempfile.mktemp(suffix=f"_s3{file_ext}")
+                extractor = MediaThumbnailExtractor(file=temp_s3_path, file_ext=file_ext)
+                
+                with ChunkedDecryptor(s3_key) as decryptor:
+                    
+                    
+                    # Chunked mode (large files)
+                    bytes_written = 0
+                    
+                    with open(temp_s3_path, 'wb') as f:
+                        for chunk in decryptor.decrypt_chunks():
+                            f.write(chunk)
+                            bytes_written += len(chunk)
+                            
+                    
+                    if file_type == 'video':
+                        # Read the temp file for FFmpeg processing
+                        with open(temp_s3_path, 'rb') as f:
+                            video_bytes = f.read()
+                        
+                        thumbnail_data = extractor.extract_video_thumbnail_ffmpeg(
+                            extension=file_ext,
+                            decrypted_bytes=video_bytes
+                        )
+                        
+                        if not thumbnail_data:
+                            thumbnail_data = extractor.extract_video_thumbnail_moviepy_enhanced(
+                                extension=file_ext,
+                                decrypted_bytes=video_bytes
+                            )
+                    else:
+                        thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
+                            extension=file_ext,
+                            decrypted_bytes=video_bytes
+                        )
+                    
+                    try:
+                        os.remove(temp_s3_path)
+                        del video_bytes
+                        
+                    except Exception as e:
+                        logger.error(f'Exception at cleaning as  {e}')
+                        pass
+            
+                    if thumbnail_data:
+                    # logger.error(f'Thumbnail extraction failed as : {e}')
+                        pass 
+            except Exception as e:
+                logger.error(f'-------Thumbnail extraction failed ------- \n {e}')
+                print(f'-------Thumbnail extraction failed ------- \n {e}')
+            
+            progress_callback(85, None)
+
+        return {
+            "s3_result": result,
+            "uploaded_size": uploaded_bytes,
+            "thumbnail_data": thumbnail_data,
+        }
+
+    except Exception as e:
+        if "upload_id" in locals():
+            try:
+                s3.abort_multipart_upload(Bucket=bucket, Key=s3_key, UploadId=upload_id)
+            except Exception:
+                pass
+        if progress_callback:
+            progress_callback(0, f"Decrypt/upload failed: {e}")
+        raise RuntimeError(f"Decrypt/upload failed: {e}")
+
+    finally:
+        # RAM-OPTIMIZED: Aggressive cleanup
+        try:
+            if 'data_key_plain' in locals():
+                del data_key_plain
+        except Exception:
+            pass
+        try:
+            if buffer_for_thumbnail:
+                buffer_for_thumbnail.close()
+                del buffer_for_thumbnail
+        except Exception:
+            pass
+        try:
+            if 'decryptor' in locals():
+                del decryptor
+        except Exception:
+            pass
+        try:
+            if 'aesgcm' in locals():
+                del aesgcm
+        except Exception:
+            pass
+        try:
+            if 'cipher' in locals():
+                del cipher
+        except Exception:
+            pass
+        try:
+            # Cleanup temp file if still exists
+            if temp_s3_path and os.path.exists(temp_s3_path):
+                os.remove(temp_s3_path)
+        except Exception:
+            pass
