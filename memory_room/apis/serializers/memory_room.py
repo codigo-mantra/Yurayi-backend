@@ -18,6 +18,8 @@ from memory_room.crypto_utils import encrypt_and_upload_file, decrypt_and_get_im
 from django.core.files.base import ContentFile
 from memory_room.helpers import upload_file_to_s3_kms, upload_file_to_s3_kms_chunked, generate_unique_file_name
 
+from memory_room.fixed import decrypt_upload_and_extract_audio_thumbnail_chunked as large_file_handler
+
 # AWS_KMS_REGION = settings.AWS_KMS_REGION
 # AWS_KMS_KEY_ID = settings.AWS_KMS_KEY_ID
 AWS_KMS_REGION = 'ap-south-1'
@@ -421,8 +423,16 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             #     file_ext=os.path.splitext(file.name)[1].lower(),
             # )
             
-            result = decrypt_upload_and_extract_audio_thumbnail_chunked_upgraded(
-                file_type = file_type,
+            # result = decrypt_upload_and_extract_audio_thumbnail_chunked_upgraded(
+            #     file_type = file_type,
+            #     key=s3_key,
+            #     encrypted_file=file,
+            #     iv_str=iv,
+            #     # content_type="audio/mpeg",
+            #     progress_callback=progress_callback,
+            #     file_ext=os.path.splitext(file.name)[1].lower(),
+            # )
+            result = large_file_handler(
                 key=s3_key,
                 encrypted_file=file,
                 iv_str=iv,
