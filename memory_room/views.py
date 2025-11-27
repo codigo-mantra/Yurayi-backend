@@ -7,7 +7,17 @@ from timecapsoul.utils import send_html_email
 from userauth.tasks import send_html_email_task
 from userauth.models import User
 import logging
+from memory_room.fixed import upload_file_to_s3_bucket as s3_uploader
 logger = logging.getLogger(__name__)
+
+from rest_framework.views import Response, APIView
+
+t  = TimeCapSoul.objects.get(id = 1174)
+rs = t.recipient_detail.all()
+from memory_room.tasks import create_24_hour_reminder_notification,capsoul_notification_generator
+
+recipeints = rs
+
 
 # u = User.objects.get(email ="krishnayadavpb07@gmail.com")
 # u.set_password("Test@1234")
@@ -451,15 +461,19 @@ class S3FileUploadView(View):
                     status=400
                 )
 
-            file_name = f"media/{uploaded_file.name}"
+            # file_name = f"media/{uploaded_file.name}"
 
-            result = upload_file_to_s3(
-                uploaded_file,
-                file_name,
-                content_type=uploaded_file.content_type,
-            )
+            # result = upload_file_to_s3(
+            #     uploaded_file,
+            #     file_name,
+            #     content_type=uploaded_file.content_type,
+            # )
+            result = s3_uploader(
+            file=uploaded_file,
+            # folder="user_uploads"
+        )
 
-            if not result["success"]:
+            if not result:
                 return JsonResponse(result, status=500)
 
             return JsonResponse(result, status=200)
@@ -469,3 +483,18 @@ class S3FileUploadView(View):
                 {"success": False, "error": f"Unhandled exception: {str(e)}"},
                 status=500,
             )
+
+
+class UploadFileView(APIView):
+    def post(self, request):
+        file = request.FILES["file"]   # Django UploadedFile
+
+        result = s3_uploader(
+            file=file,
+            # folder="user_uploads"
+        )
+
+        return Response({
+            "success": True,
+            "file": result
+        })

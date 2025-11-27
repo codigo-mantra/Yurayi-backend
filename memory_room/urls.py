@@ -1,11 +1,13 @@
 
 from django.urls import path, include
 from django.urls import include, path, re_path
-from .views import testing_view, S3FileUploadView
+from .views import testing_view, S3FileUploadView, UploadFileView
 
 
 urlpatterns = [
     path('testing/', testing_view, name='test'),
+    # path('testing/upload/files/', UploadFileView, name='upload'),
+    
     path('upload/', S3FileUploadView.as_view(), name='test'),
 
 

@@ -440,3 +440,271 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                 del cipher
         except Exception:
             pass
+
+
+import math
+import logging
+import boto3
+import mimetypes
+from botocore.exceptions import ClientError, BotoCoreError
+
+logger = logging.getLogger(__name__)
+
+
+class S3FileUploader:
+    """
+    Uploads small and large (GB+) files to AWS S3.
+    Optimized for Django InMemoryUploadedFile and TemporaryUploadedFile.
+    """
+
+    def __init__(self, aws_key, aws_secret, region, bucket, default_acl="public-read",
+                 chunk_size_mb=51, max_retries=3):
+        self.bucket = bucket
+        self.default_acl = default_acl
+        self.chunk_size = 51 * 1024 * 1024
+        self.max_retries = max_retries
+
+        logger.info(f"S3FileUploader initialized for bucket={bucket}, region={region}, "
+                    f"chunk_size={chunk_size_mb}MB, max_retries={max_retries}")
+
+        self.s3 = boto3.client(
+            "s3",
+            region_name=region,
+            aws_access_key_id=aws_key,
+            aws_secret_access_key=aws_secret
+        )
+
+    # ---------------------------------------------------------
+    # PUBLIC METHOD
+    # ---------------------------------------------------------
+    def upload(self, file_obj, s3_key, content_type=None, acl=None, progress_callback=None):
+        acl = acl or self.default_acl
+        content_type = content_type or mimetypes.guess_type(file_obj.name)[0] or "application/octet-stream"
+
+        file_obj.seek(0)
+        file_size = self._get_file_size(file_obj)
+
+        logger.info(f"Starting upload: key={s3_key}, size={file_size} bytes, ACL={acl}, CT={content_type}")
+
+        # Handle empty file
+        if file_size == 0:
+            logger.warning(f"File '{file_obj.name}' is empty. Uploading empty file.")
+            return self._upload_empty_file(s3_key, content_type, acl)
+
+        # Small files
+        if file_size <= self.chunk_size:
+            logger.info(f"Small upload detected: {file_size} bytes (single part).")
+            return self._upload_small(file_obj, s3_key, content_type, acl)
+
+        # Large multipart upload
+        logger.info(f"Large upload detected: {file_size} bytes. Starting multipart upload...")
+        return self._upload_large(file_obj, file_size, s3_key, content_type, acl, progress_callback)
+
+    # ---------------------------------------------------------
+    # SMALL FILE UPLOAD
+    # ---------------------------------------------------------
+    def _upload_small(self, file_obj, s3_key, content_type, acl):
+        try:
+            file_obj.seek(0)
+            self.s3.upload_fileobj(
+                Fileobj=file_obj,
+                Bucket=self.bucket,
+                Key=s3_key,
+                ExtraArgs={"ContentType": content_type, "ACL": acl}
+            )
+            logger.info(f"Small file uploaded successfully: key={s3_key}")
+            return {"status": "success", "key": s3_key}
+
+        except Exception as e:
+            logger.error(f"Small upload FAILED for key={s3_key}: {e}", exc_info=True)
+            raise Exception(f"Small S3 upload failed: {str(e)}")
+
+    # ---------------------------------------------------------
+    # LARGE MULTIPART UPLOAD
+    # ---------------------------------------------------------
+    def _upload_large(self, file_obj, file_size, s3_key, content_type, acl, progress_callback):
+        # num_parts = math.ceil(file_size / self.chunk_size)
+        num_parts = math.ceil(file_size / 13)
+        
+
+        logger.info(f"Creating multipart upload: key={s3_key}, parts={num_parts}")
+
+        # Create multipart upload
+        try:
+            multipart = self.s3.create_multipart_upload(
+                Bucket=self.bucket,
+                Key=s3_key,
+                ACL=acl,
+                ContentType=content_type,
+                Metadata={
+                    "file-size": str(file_size),
+                    "chunk-size": str(self.chunk_size),
+                    "total-parts": str(num_parts),
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to create multipart upload for key={s3_key}: {e}", exc_info=True)
+            raise Exception(f"Failed to initialize multipart upload: {str(e)}")
+
+        upload_id = multipart["UploadId"]
+        logger.info(f"Multipart upload created successfully: upload_id={upload_id}, key={s3_key}")
+
+        parts = []
+        part_number = 1
+        file_obj.seek(0)
+
+        try:
+            while True:
+                chunk = file_obj.read(self.chunk_size)
+                if not chunk:
+                    break
+
+                logger.debug(f"Uploading part {part_number}/{num_parts} (size={len(chunk)} bytes)...")
+
+                etag = self._upload_part_with_retry(chunk, s3_key, upload_id, part_number)
+                parts.append({"PartNumber": part_number, "ETag": etag})
+
+                logger.info(f"Uploaded part {part_number}/{num_parts} successfully.")
+
+                if progress_callback:
+                    progress_callback(part_number, num_parts)
+
+                part_number += 1
+
+        except Exception as e:
+            logger.error(f"Multipart upload FAILED at part {part_number}, key={s3_key}", exc_info=True)
+            self._abort(upload_id, s3_key)
+            raise Exception(f"Multipart upload failed: {str(e)}")
+
+        # Complete multipart upload
+        try:
+            logger.info(f"Completing multipart upload: key={s3_key}, upload_id={upload_id}")
+            self.s3.complete_multipart_upload(
+                Bucket=self.bucket,
+                Key=s3_key,
+                UploadId=upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+            logger.info(f"Multipart upload completed successfully: key={s3_key}")
+        except Exception as e:
+            logger.error(f"Failed to complete multipart upload: key={s3_key}", exc_info=True)
+            self._abort(upload_id, s3_key)
+            raise Exception(f"Failed to complete upload: {str(e)}")
+
+        return {"status": "success", "key": s3_key, "parts": len(parts)}
+
+    # ---------------------------------------------------------
+    # Upload part with retry (for failed chunks)
+    # ---------------------------------------------------------
+    def _upload_part_with_retry(self, chunk, s3_key, upload_id, part_number):
+        last_error = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                logger.debug(f"Uploading part {part_number}, attempt {attempt}/{self.max_retries}")
+                resp = self.s3.upload_part(
+                    Bucket=self.bucket,
+                    Key=s3_key,
+                    UploadId=upload_id,
+                    PartNumber=part_number,
+                    Body=chunk,
+                )
+                return resp["ETag"]
+
+            except (ClientError, BotoCoreError) as e:
+                last_error = e
+                logger.warning(
+                    f"Retry {attempt}/{self.max_retries} FAILED for part {part_number}, key={s3_key}: {e}"
+                )
+
+        logger.error(f"Part upload FAILED permanently: part={part_number}, key={s3_key}", exc_info=True)
+        raise Exception(f"Failed after {self.max_retries} retries. Error: {last_error}")
+
+    # ---------------------------------------------------------
+    # Abort upload
+    # ---------------------------------------------------------
+    def _abort(self, upload_id, s3_key):
+        logger.warning(f"Aborting multipart upload: key={s3_key}, upload_id={upload_id}")
+        try:
+            self.s3.abort_multipart_upload(
+                Bucket=self.bucket,
+                Key=s3_key,
+                UploadId=upload_id,
+            )
+            logger.info(f"Multipart upload aborted successfully: key={s3_key}")
+        except Exception:
+            logger.error(f"Abort multipart upload FAILED: key={s3_key}, upload_id={upload_id}", exc_info=True)
+
+    # ---------------------------------------------------------
+    # Empty file upload
+    # ---------------------------------------------------------
+    def _upload_empty_file(self, s3_key, content_type, acl):
+        logger.info(f"Uploading empty file: key={s3_key}")
+        self.s3.put_object(
+            Bucket=self.bucket,
+            Key=s3_key,
+            Body=b"",
+            ContentType=content_type,
+            ACL=acl,
+        )
+        return {"status": "success", "key": s3_key, "empty": True}
+
+    # ---------------------------------------------------------
+    # Utility: Django file size
+    # ---------------------------------------------------------
+    def _get_file_size(self, file_obj):
+        pos = file_obj.tell()
+        file_obj.seek(0, 2)
+        size = file_obj.tell()
+        file_obj.seek(pos)
+        return size
+
+
+def upload_file_to_s3_bucket(file, folder=None):
+    original_name = file.name
+
+    # Determine folder/key structure
+    if folder:
+        final_name = f"{folder}/{original_name}"
+    else:
+        final_name = original_name
+
+    # Example: your existing function for categorizing file
+    file_category = (original_name)
+
+    # Full key like images/profile/file.jpg
+    s3_key = f"large_file_testing/{final_name}"
+
+    # Detect content type
+    content_type = mimetypes.guess_type(original_name)[0] or "application/octet-stream"
+
+    uploader = S3FileUploader(
+        aws_key=settings.AWS_ACCESS_KEY_ID,
+        aws_secret=settings.AWS_SECRET_ACCESS_KEY,
+        region='ap-south-1',
+        bucket="time-capsoul-files",
+        default_acl="public-read",    # or private
+        chunk_size_mb=10,             # 10 MB chunks
+        max_retries=3
+    )
+    def upload_progress(part, total_parts):
+        print(f"Uploaded part {part}/{total_parts}")
+
+    # Upload
+    response = uploader.upload(
+        file_obj=file,
+        s3_key=s3_key,
+        content_type=content_type,
+        progress_callback=upload_progress
+
+    )
+
+    # Build public S3 URL
+    s3_url = f"https://{settings.AWS_STORAGE_BUCKET_NAME}.s3.{settings.AWS_S3_REGION_NAME}.amazonaws.com/{s3_key}"
+
+    return {
+        "url": s3_url,
+        "category": file_category,
+        "key": s3_key,
+        "upload_response": response
+    }

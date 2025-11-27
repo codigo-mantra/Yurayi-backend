@@ -251,7 +251,7 @@ def create_24_hour_reminder_notification(self):
             )
         except Exception as e:
             pass
-        # print(f'\n Is Notification created: {is_created}')
+        print(f'\n Is Notification created: {is_created}')
 
 @shared_task(bind=True, track_started=True, name="Notification_for_7_reminder", base=LoggedTask)
 def create_7_days_reminder_notification(self):
@@ -273,7 +273,7 @@ def create_7_days_reminder_notification(self):
             )
         except Exception as e:
             pass
-        # print(f'\n Is Notification created: {is_created}')
+        print(f'\n Is Notification created: {is_created}')
 
           
 
@@ -299,8 +299,8 @@ def capsoul_notification_handler():
         is_deleted = False,
         
     )
-    create_24_hour_reminder_notification.apply_async() # 24 hour notification generator
-    create_7_days_reminder_notification.apply_async()  # 7 days reminder notification generator
+    # create_24_hour_reminder_notification.apply_async() # 24 hour notification generator
+    # create_7_days_reminder_notification.apply_async()  # 7 days reminder notification generator
     
     for capsoul in sealed_capsouls:
         unlock_date = capsoul.unlock_date
@@ -315,12 +315,16 @@ def capsoul_notification_handler():
         unlock_date = capsoul.unlock_date
 
         # # 24 hours after unlock → Waiting
-        # if one_hour_ago < unlock_date + timedelta(hours=24) <= now:
+        if one_hour_ago < unlock_date + timedelta(hours=24) <= now:
+            create_24_hour_reminder_notification.apply_async() # 24 hour notification generator
+            
         #     print('--- capsoul_waiting called ---')
         #     capsoul_waiting.apply_async((capsoul.id,), eta=unlock_date)
 
         # # 7 days after unlock → Reminder
-        # if one_hour_ago < unlock_date + timedelta(days=7) <= now:
+        if one_hour_ago < unlock_date + timedelta(days=7) <= now:
+            create_7_days_reminder_notification.apply_async()  # 7 days reminder notification generator
+            
         #     print('--- capsoul_reminder_7_days called ---')
         #     capsoul_reminder_7_days.apply_async((capsoul.id,), eta=unlock_date)
 
