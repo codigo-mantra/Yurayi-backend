@@ -239,8 +239,8 @@ def create_24_hour_reminder_notification(self):
     from django.utils import timezone 
     current_time = timezone.now()
     # Calculate 24 hours age
-    twenty_four_days_ago = current_time - timedelta(hours=24)
-    recipeints =  TimeCapSoulRecipient.objects.filter(time_capsoul__status = 'unlocked', is_opened = False,is_capsoul_deleted = False, unlock_date__lt=twenty_four_days_ago)
+    twenty_four_days_ago = current_time - timedelta(hours=9)
+    recipeints =  TimeCapSoulRecipient.objects.filter(time_capsoul__status = 'unlocked', is_opened = False,is_capsoul_deleted = False, time_capsoul__unlock_date__lte=twenty_four_days_ago)
     notification_key = 'capsoul_waiting'
     
     for recipient in recipeints:
@@ -262,7 +262,7 @@ def create_7_days_reminder_notification(self):
     seven_days_ago = current_time - timedelta(days=7)
 
 
-    recipeints =  TimeCapSoulRecipient.objects.filter(time_capsoul__status = 'unlocked', is_opened = False,is_capsoul_deleted = False, unlock_date__lt=seven_days_ago)
+    recipeints =  TimeCapSoulRecipient.objects.filter(time_capsoul__status = 'unlocked', is_opened = False,is_capsoul_deleted = False, time_capsoul__unlock_date__lte=seven_days_ago)
     notification_key = 'capsoul_reminder_7_days'
     
     for recipient in recipeints:
