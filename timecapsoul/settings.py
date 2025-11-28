@@ -40,7 +40,7 @@ else:
 
 DEBUG = True
 
-ALLOWED_HOSTS = ["app.yurayi.com", "127.0.0.1", "localhost"]
+ALLOWED_HOSTS = ["app.yurayi.com", "127.0.0.1", "localhost", "13.200.54.51",]
 
 print(f'\n ---- Project running is env type: {ENVIRONMENT_TYPE}  and debug mode: {DEBUG} ---')
 
@@ -386,14 +386,12 @@ CORS_ALLOWED_ORIGINS = [
     "http://127.0.0.1:3000",
     "https://yurayi.com",
     "https://app.yurayi.com",
-
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
     "https://yurayi.com",
     "https://app.yurayi.com",
-
 ]
 
 CACHES = {

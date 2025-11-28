@@ -597,7 +597,8 @@ class SecuredView(APIView):
         if sid:
             try:
                 session = Session.objects.get(pk=sid)
-                if session.user_agent != ua or session.ip_address != ip:
+                # if session.user_agent != ua or session.ip_address != ip:
+                if session.user_agent != ua:
                     logger.warning(f"Session hijack attempt. Expected ua={session.user_agent}, ip={session.ip_address}; got ua={ua}, ip={ip}")
                     return self.unauthorized("Session invalid for this device")
                 
