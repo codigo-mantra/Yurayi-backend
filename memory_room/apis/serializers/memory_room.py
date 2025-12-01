@@ -21,7 +21,7 @@ from memory_room.helpers import upload_file_to_s3_kms, upload_file_to_s3_kms_chu
 from memory_room.fixed import decrypt_upload_and_extract_audio_thumbnail_chunked as large_file_handler
 
 
-from memory_room.jpg_images_handler import jpg_images_handler, decrypt_upload_and_extract_audio_thumbnail_chunked as fixed_uploader_hai
+from memory_room.jpg_images_handler import jpg_images_handler
 
 # AWS_KMS_REGION = settings.AWS_KMS_REGION
 # AWS_KMS_KEY_ID = settings.AWS_KMS_KEY_ID
@@ -442,7 +442,6 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                     s3_key=s3_key,
                     encrypted_file=file,
                     iv_str=iv,
-                    # content_type="audio/mpeg",
                     # progress_callback=progress_callback,
                     file_ext=os.path.splitext(file.name)[1].lower(),
                 )
