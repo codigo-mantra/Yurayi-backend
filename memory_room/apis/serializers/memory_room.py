@@ -20,6 +20,9 @@ from memory_room.helpers import upload_file_to_s3_kms, upload_file_to_s3_kms_chu
 
 from memory_room.fixed import decrypt_upload_and_extract_audio_thumbnail_chunked as large_file_handler
 
+
+from memory_room.jpg_images_handler import jpg_images_handler, decrypt_upload_and_extract_audio_thumbnail_chunked as fixed_uploader_hai
+
 # AWS_KMS_REGION = settings.AWS_KMS_REGION
 # AWS_KMS_KEY_ID = settings.AWS_KMS_KEY_ID
 AWS_KMS_REGION = 'ap-south-1'
@@ -432,14 +435,28 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
             #     progress_callback=progress_callback,
             #     file_ext=os.path.splitext(file.name)[1].lower(),
             # )
-            result = media_uploader(
-                key=s3_key,
-                encrypted_file=file,
-                iv_str=iv,
-                # content_type="audio/mpeg",
-                progress_callback=progress_callback,
-                file_ext=os.path.splitext(file.name)[1].lower(),
-            )
+            file_ext=os.path.splitext(file.name)[1].lower()
+            
+            if file_ext in (".jpg", ".jpeg"):
+                result = jpg_images_handler(
+                    s3_key=s3_key,
+                    encrypted_file=file,
+                    iv_str=iv,
+                    # content_type="audio/mpeg",
+                    # progress_callback=progress_callback,
+                    file_ext=os.path.splitext(file.name)[1].lower(),
+                )
+            else:
+                result = media_uploader(
+                    key=s3_key,
+                    encrypted_file=file,
+                    iv_str=iv,
+                    file_type = file_type,
+                    # content_type="audio/mpeg",
+                    progress_callback=progress_callback,
+                    file_ext=os.path.splitext(file.name)[1].lower(),
+                )
+            
             
         except Exception as e:
             logger.error('Chunked Decrypt/Upload Error', exc_info=True)
@@ -458,19 +475,18 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
         validated_data['title'] = unique_file_name
         validated_data['file_size'] = get_readable_file_size_from_bytes(result['uploaded_size'])
         
-        # validated_data['file'] = file  # keep reference (but it's encrypted version)
         try:
-            # if file_type == 'audio' and result.get('thumbnail_data'):
-            if  result.get('thumbnail_data') is not None:
-                
-                from django.core.files.base import ContentFile
-                image_file = ContentFile(result['thumbnail_data'], name=f"thumbnail_{file.name}.jpg")
+            if  result.get('thumbnail_data'):
+                    
+                    from django.core.files.base import ContentFile
+                    image_file = ContentFile(result['thumbnail_data'], name=f"thumbnail_{file.name}.jpg")
 
-                if image_file:
-                    from userauth.models import Assets
-                    asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
-                    validated_data['thumbnail_url'] = asset.s3_url
-                    validated_data['thumbnail_key'] = asset.s3_key
+                    if image_file:
+                        from userauth.models import Assets
+                        asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
+                        validated_data['thumbnail_url'] = asset.s3_url
+                        validated_data['thumbnail_key'] = asset.s3_key
+            pass
 
         except Exception as e:
             logger.exception('Exception while extracting thumbnail')

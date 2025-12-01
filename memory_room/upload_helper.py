@@ -513,6 +513,485 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked_working_test(
         except Exception:
             pass
 
+import tempfile
+import subprocess
+import os
+from io import BytesIO
+from PIL import Image
+
+def try_ffmpeg_direct(segment_bytes: bytes, file_ext: str) -> bytes | None:
+    """
+    Try direct FFmpeg extraction without rebuilding.
+    Sometimes works even without moov atom.
+    """
+    tmp_in = None
+    tmp_out = None
+    
+    try:
+        # Write segment
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as f:
+            f.write(segment_bytes)
+            tmp_in = f.name
+        
+        tmp_out = tempfile.mktemp(suffix='.jpg')
+        
+        # Try extraction with error recovery flags
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel", "warning",
+            "-err_detect", "ignore_err",  # Ignore errors
+            "-fflags", "+genpts+igndts",  # Generate timestamps
+            "-i", tmp_in,
+            "-frames:v", "1",
+            "-q:v", "2",
+            "-vf", "scale=800:-1",
+            tmp_out
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        
+        if os.path.exists(tmp_out) and os.path.getsize(tmp_out) > 1000:
+            with open(tmp_out, 'rb') as f:
+                return f.read()
+        
+        # Try seeking to different positions
+        for seek_pos in ["0", "0.5", "1", "2"]:
+            cmd = [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "warning",
+                "-ss", seek_pos,
+                "-err_detect", "ignore_err",
+                "-i", tmp_in,
+                "-frames:v", "1", "-q:v", "2",
+                tmp_out
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, timeout=10)
+            
+            if os.path.exists(tmp_out) and os.path.getsize(tmp_out) > 1000:
+                with open(tmp_out, 'rb') as f:
+                    return f.read()
+        
+        return None
+        
+    except Exception as e:
+        print(f"Direct FFmpeg failed: {e}")
+        return None
+        
+    finally:
+        for path in [tmp_in, tmp_out]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except:
+                    pass
+
+
+
+import tempfile
+import subprocess
+import os
+from io import BytesIO
+from PIL import Image
+
+
+def locate_moov_atom(data: bytes) -> tuple[int, int] | None:
+    """
+    Scan for moov atom location in partial MP4 data.
+    Returns (start_offset, size) or None
+    """
+    try:
+        pos = 0
+        max_scan = min(len(data), 50 * 1024 * 1024)  # Scan up to 50MB
+        
+        while pos < max_scan - 8:
+            # Read atom size and type
+            if pos + 8 > len(data):
+                break
+                
+            atom_size = int.from_bytes(data[pos:pos+4], 'big')
+            atom_type = data[pos+4:pos+8]
+            
+            if atom_type == b'moov':
+                print(f"✓ Found moov atom at offset {pos}, size {atom_size}")
+                return (pos, atom_size)
+            
+            # Skip to next atom
+            if atom_size < 8 or atom_size > len(data) - pos:
+                # Try scanning byte by byte for moov signature
+                pos += 1
+            else:
+                pos += atom_size
+            
+    except Exception as e:
+        print(f"✗ Error scanning for moov: {e}")
+    
+    return None
+
+
+def scan_for_atoms(data: bytes, max_scan: int = 1024 * 1024) -> list:
+    """
+    Scan and list all MP4 atoms found in data.
+    Useful for debugging.
+    """
+    atoms = []
+    pos = 0
+    scan_limit = min(len(data), max_scan)
+    
+    while pos < scan_limit - 8:
+        try:
+            atom_size = int.from_bytes(data[pos:pos+4], 'big')
+            atom_type = data[pos+4:pos+8]
+            
+            if atom_type.isalpha() or atom_type in [b'ftyp', b'moov', b'mdat', b'free', b'wide']:
+                atoms.append({
+                    'type': atom_type.decode('ascii', errors='ignore'),
+                    'offset': pos,
+                    'size': atom_size
+                })
+                
+            if atom_size < 8 or atom_size > len(data) - pos:
+                pos += 1
+            else:
+                pos += atom_size
+        except:
+            pos += 1
+    
+    return atoms
+
+
+def decrypt_range(s3_key, start_byte, end_byte):
+    """
+    Decrypt only a specific byte range of the encrypted file.
+    Optimized: reads chunks sequentially, extracts only required portion.
+    """
+    # Ensure integers
+    start_byte = int(start_byte)
+    end_byte = int(end_byte)
+    
+    buffer = bytearray()
+    current_pos = 0
+
+    with ChunkedDecryptor(s3_key) as decryptor:
+        for chunk in decryptor.decrypt_chunks():
+            chunk_len = len(chunk)
+            chunk_start = current_pos
+            chunk_end = current_pos + chunk_len
+
+            # If chunk overlaps requested range
+            if chunk_end >= start_byte and chunk_start <= end_byte:
+                rs = max(0, start_byte - chunk_start)
+                re = min(chunk_len, end_byte - chunk_start)
+                buffer.extend(chunk[rs:re])
+
+            current_pos += chunk_len
+
+            if current_pos > end_byte:
+                break
+
+    return bytes(buffer)
+
+def smart_decrypt_for_mp4(s3_key, file_size):
+    """
+    Enhanced MP4 decryption with larger segments and better coverage.
+    """
+    mb = 1024 * 1024
+    file_size = int(file_size)
+    segments = []
+    
+    print(f"File size: {file_size / mb:.2f} MB")
+    
+    # Strategy 1: Large HEAD segment (up to 20 MB)
+    head_size = int(min(20 * mb, file_size // 3))
+    print(f"Decrypting HEAD: 0 to {head_size / mb:.2f} MB")
+    head = decrypt_range(s3_key, 0, head_size)
+    
+    # Scan for atoms in head
+    atoms = scan_for_atoms(head)
+    print(f"HEAD atoms found: {[a['type'] for a in atoms]}")
+    
+    segments.append(('head', head))
+    
+    # Strategy 2: Large TAIL segment (up to 25 MB - moov often here)
+    tail_size = int(min(25 * mb, file_size // 3))
+    tail_start = int(max(0, file_size - tail_size))
+    print(f"Decrypting TAIL: {tail_start / mb:.2f} MB to {file_size / mb:.2f} MB")
+    tail = decrypt_range(s3_key, tail_start, file_size)
+    
+    # Scan for atoms in tail
+    atoms = scan_for_atoms(tail)
+    print(f"TAIL atoms found: {[a['type'] for a in atoms]}")
+    
+    segments.append(('tail', tail))
+    
+    # Strategy 3: Check if we need MID
+    moov_found = False
+    for name, seg in segments:
+        if locate_moov_atom(seg):
+            moov_found = True
+            print(f"✓ moov found in {name}")
+            break
+    
+    if not moov_found:
+        print("⚠ moov not found in HEAD or TAIL, trying MID")
+        if file_size > 50 * mb:
+            mid_size = int(min(15 * mb, file_size // 5))
+            mid_start = int((file_size // 2) - (mid_size // 2))
+            print(f"Decrypting MID: {mid_start / mb:.2f} MB to {(mid_start + mid_size) / mb:.2f} MB")
+            mid = decrypt_range(s3_key, mid_start, mid_start + mid_size)
+            
+            atoms = scan_for_atoms(mid)
+            print(f"MID atoms found: {[a['type'] for a in atoms]}")
+            
+            segments.append(('mid', mid))
+    
+    return segments
+
+
+def try_ffmpeg_direct(segment_bytes: bytes, file_ext: str) -> bytes | None:
+    """
+    Try direct FFmpeg extraction without rebuilding.
+    Sometimes works even without moov atom.
+    """
+    tmp_in = None
+    tmp_out = None
+    
+    try:
+        # Write segment
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as f:
+            f.write(segment_bytes)
+            tmp_in = f.name
+        
+        tmp_out = tempfile.mktemp(suffix='.jpg')
+        
+        # Try extraction with error recovery flags
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel", "warning",
+            "-err_detect", "ignore_err",  # Ignore errors
+            "-fflags", "+genpts+igndts",  # Generate timestamps
+            "-i", tmp_in,
+            "-frames:v", "1",
+            "-q:v", "2",
+            "-vf", "scale=800:-1",
+            tmp_out
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, timeout=10)
+        
+        if os.path.exists(tmp_out) and os.path.getsize(tmp_out) > 1000:
+            with open(tmp_out, 'rb') as f:
+                return f.read()
+        
+        # Try seeking to different positions
+        for seek_pos in ["0", "0.5", "1", "2"]:
+            cmd = [
+                "ffmpeg", "-y", "-hide_banner", "-loglevel", "warning",
+                "-ss", seek_pos,
+                "-err_detect", "ignore_err",
+                "-i", tmp_in,
+                "-frames:v", "1", "-q:v", "2",
+                tmp_out
+            ]
+            
+            result = subprocess.run(cmd, capture_output=True, timeout=10)
+            
+            if os.path.exists(tmp_out) and os.path.getsize(tmp_out) > 1000:
+                with open(tmp_out, 'rb') as f:
+                    return f.read()
+        
+        return None
+        
+    except Exception as e:
+        print(f"Direct FFmpeg failed: {e}")
+        return None
+        
+    finally:
+        for path in [tmp_in, tmp_out]:
+            if path and os.path.exists(path):
+                try:
+                    os.remove(path)
+                except:
+                    pass
+
+
+def rebuild_mp4_with_unsparsing(segment_bytes: bytes, file_ext: str) -> str | None:
+    """
+    Advanced MP4 rebuild with multiple strategies.
+    """
+    tmp_in = None
+    tmp_out = None
+    
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as f:
+            f.write(segment_bytes)
+            tmp_in = f.name
+        
+        tmp_out = tempfile.mktemp(suffix=".mp4")
+        
+        # Strategy 1: Copy with faststart
+        cmd1 = [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-i", tmp_in,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            "-f", "mp4",
+            tmp_out
+        ]
+        
+        result = subprocess.run(cmd1, capture_output=True, timeout=15)
+        if os.path.exists(tmp_out) and os.path.getsize(tmp_out) > 5000:
+            return tmp_out
+        
+        # Strategy 2: Re-encode first few seconds (more reliable but slower)
+        cmd2 = [
+            "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+            "-err_detect", "ignore_err",
+            "-i", tmp_in,
+            "-t", "3",  # Only 3 seconds
+            "-c:v", "libx264",
+            "-preset", "ultrafast",
+            "-crf", "28",
+            "-an",  # No audio
+            "-movflags", "+faststart",
+            tmp_out
+        ]
+        
+        result = subprocess.run(cmd2, capture_output=True, timeout=30)
+        if os.path.exists(tmp_out) and os.path.getsize(tmp_out) > 5000:
+            return tmp_out
+        
+        return None
+        
+    except Exception as e:
+        print(f"MP4 rebuild failed: {e}")
+        return None
+        
+    finally:
+        if tmp_in and os.path.exists(tmp_in):
+            try:
+                os.remove(tmp_in)
+            except:
+                pass
+
+
+def extract_thumbnail_from_segment(segment_bytes: bytes, file_ext: str, segment_name: str) -> bytes | None:
+    """
+    Extract thumbnail with multiple fallback strategies.
+    """
+    print(f"\n--- Processing {segment_name} ({len(segment_bytes) / (1024*1024):.2f} MB) ---")
+    
+    # Check for moov atom
+    moov_location = locate_moov_atom(segment_bytes)
+    
+    # Strategy 1: Direct FFmpeg (fastest, works even without complete moov)
+    # print("Strategy 1: Direct FFmpeg extraction")
+    thumb = try_ffmpeg_direct(segment_bytes, file_ext)
+    if thumb:
+        print("✓ Success with direct FFmpeg")
+        return thumb
+    
+    # Strategy 2: Rebuild MP4 if needed
+    if not moov_location:
+        # print("Strategy 2: Rebuilding MP4 structure")
+        rebuilt_path = rebuild_mp4_with_unsparsing(segment_bytes, file_ext)
+        
+        if rebuilt_path:
+            try:
+                thumb = try_ffmpeg_direct(open(rebuilt_path, 'rb').read(), '.mp4')
+                if thumb:
+                    print("✓ Success with rebuilt MP4")
+                    os.remove(rebuilt_path)
+                    return thumb
+                os.remove(rebuilt_path)
+            except:
+                pass
+    
+    # Strategy 3: Try with moviepy (if available)
+    # print("Strategy 3: Trying MoviePy")
+    try:
+        from moviepy.editor import VideoFileClip
+        
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as f:
+                f.write(segment_bytes)
+                tmp_path = f.name
+            
+            clip = VideoFileClip(tmp_path, audio=False)
+            frame = clip.get_frame(min(0.5, clip.duration / 2))
+            
+            img = Image.fromarray(frame)
+            if img.mode != 'RGB':
+                img = img.convert('RGB')
+            img.thumbnail((800, 800), Image.Resampling.LANCZOS)
+            
+            img_bytes = BytesIO()
+            img.save(img_bytes, format='JPEG', quality=85)
+            
+            clip.close()
+            print("✓ Success with MoviePy")
+            return img_bytes.getvalue()
+            
+        finally:
+            if tmp_path and os.path.exists(tmp_path):
+                os.remove(tmp_path)
+                
+    except Exception as e:
+        print(f"✗ MoviePy failed: {e}")
+    
+    print(f"✗ All strategies failed for {segment_name}")
+    return None
+
+
+def fallback_thumbnail_multi_segment_fixed(s3_key, file_type, file_ext, file_size):
+    """
+    Enhanced multi-segment thumbnail extraction with diagnostics.
+    """
+    if file_type != "video":
+        print("Not a video file, using audio extraction")
+        # Use your existing audio extraction
+        return None
+    
+   
+    
+    # Get segments
+    segments = smart_decrypt_for_mp4(s3_key, file_size)
+    
+    # Try each segment
+    for segment_name, segment_bytes in segments:
+        if not segment_bytes or len(segment_bytes) < 10000:
+            print(f"⚠ Skipping {segment_name}: too small")
+            continue
+        
+        thumb = extract_thumbnail_from_segment(segment_bytes, file_ext, segment_name)
+        
+        if thumb:
+            return thumb
+        
+        # Cleanup
+        del segment_bytes
+    
+    print("✗✗✗ FAILED: All segments exhausted ✗✗✗")
+    return None
+
+def extract_thumbnail_full_decrypt(s3_key, file_ext):
+    """
+    Last resort: decrypt entire file.
+    Only use for files < 100 MB.
+    """
+    print("Using full file decryption...")
+    
+    with ChunkedDecryptor(s3_key) as decryptor:
+        full_data = b''.join(decryptor.decrypt_chunks())
+    
+    print(f"Decrypted {len(full_data) / (1024*1024):.2f} MB")
+    
+    return extract_thumbnail_from_segment(full_data, file_ext, "full_file")
+
 
 def decrypt_upload_and_extract_audio_thumbnail_chunked(
         key: str,
@@ -550,7 +1029,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
     # Thread-safe thumbnail extraction
     thumbnail_extracted = False
     thumbnail_lock = threading.Lock()
-    MAX_THUMBNAIL_ATTEMPTS = 5
+    MAX_THUMBNAIL_ATTEMPTS = 3
     MIN_BUFFER_FOR_ATTEMPT = 256 * 1024
     
     # Strategic extraction points
@@ -610,21 +1089,36 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
             max_workers = 4  # HARD CAP
 
         # Calculate strategic thumbnail extraction points
-        if file_type in ['video', 'audio']:
-            buffer_for_thumbnail = BytesIO()
-            total_chunks = (encrypted_data_size + effective_chunk_size - 1) // effective_chunk_size
+        # if file_type in ['video', 'audio']:
+        #     buffer_for_thumbnail = BytesIO()
+        #     total_chunks = (encrypted_data_size + effective_chunk_size - 1) // effective_chunk_size
             
-            # 7 attempts: 2 start, 3 middle, 2 end
-            thumbnail_extraction_points = [
-                1,  # Start - chunk 1
-                2,  # Start - chunk 2
-                total_chunks // 3,  # Early middle
-                total_chunks // 2,  # Middle
-                (total_chunks * 2) // 3,  # Late middle
-                max(total_chunks - 1, 3),  # Near end
-                total_chunks  # End
+        #     # 7 attempts: 2 start, 3 middle, 2 end
+        #     thumbnail_extraction_points = [
+        #         1,  # Start - chunk 1
+        #         2,  # Start - chunk 2
+        #         total_chunks // 3,  # Early middle
+        #         total_chunks // 2,  # Middle
+        #         (total_chunks * 2) // 3,  # Late middle
+        #         max(total_chunks - 1, 3),  # Near end
+        #         total_chunks  # End
+        #     ]
+        #     thumbnail_extraction_points = sorted(set(thumbnail_extraction_points))[:MAX_THUMBNAIL_ATTEMPTS]
+        
+        if file_type in ('video', 'audio'):
+            buffer_for_thumbnail = BytesIO()
+            total_chunks = max(1, (encrypted_data_size + effective_chunk_size - 1) // effective_chunk_size)
+            # Build candidate points, then pick at most MAX_THUMBNAIL_ATTEMPTS
+            candidate_points = [
+                1, 2,
+                max(1, total_chunks // 6),
+                max(1, total_chunks // 3),
+                max(1, total_chunks // 2),
+                max(1, (total_chunks * 2) // 3),
+                total_chunks - 1 if total_chunks > 2 else total_chunks
             ]
-            thumbnail_extraction_points = sorted(set(thumbnail_extraction_points))[:MAX_THUMBNAIL_ATTEMPTS]
+            # unique, sorted, cap
+            thumbnail_extraction_points = sorted({p for p in candidate_points if 1 <= p <= total_chunks})[:MAX_THUMBNAIL_ATTEMPTS]
             logger.info(f"Thumbnail extraction planned at chunks: {thumbnail_extraction_points}")
 
         # Initialize decryptor
@@ -809,8 +1303,6 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                             except Exception as e:
                                 logger.warning(f"Attempt {attempt_num} failed: {str(e)}")
                         
-                        # RAM-OPTIMIZED: Aggressive buffer management
-                        # Clear buffer if too large OR if we've passed half the attempts
                         if buffer_for_thumbnail:
                             should_clear = (
                                 current_buffer_size > thumbnail_buffer_size * 2 or
@@ -845,7 +1337,7 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                     # Progress from 20-85
                     percent = 20 + int((uploaded_bytes / encrypted_data_size) * 65)
                     if progress_callback:
-                        progress_callback(min(percent, 85), None)
+                        progress_callback(min(percent, 83), None)
                 except Exception as e:
                     raise RuntimeError(f"Failed to upload part {part_number}: {str(e)}")
                 finally:
@@ -882,76 +1374,31 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
             MultipartUpload={"Parts": parts},
         )
         
-        if file_type in ['video', 'audio'] and  not thumbnail_data:
-            print('\n -------- thumbnail extraction failed ---------,')
-            try:
-                temp_s3_path = tempfile.mktemp(suffix=f"_s3{file_ext}")
-                extractor = MediaThumbnailExtractor(file=temp_s3_path, file_ext=file_ext)
+        if  not thumbnail_data and file_type in ['video', 'audio']:
+            
+            if file_type  == 'video':
+                thumbnail_data  = extract_thumbnail_full_decrypt(
+                    s3_key=s3_key,
+                    file_ext = file_ext,
+                )
+            else:
+                try:
+                    with ChunkedDecryptor(s3_key) as decryptor:
+                        full_data = b''.join(decryptor.decrypt_chunks())
+                    thumbnail_data  = extractor.extract_audio_thumbnail_from_bytes(
+                        extension=file_ext,
+                        decrypted_bytes=full_data
+                    )
+                    try:
+                        del full_data
+                    except Exception as e:
+                        pass
+                except Exception as e:
+                    logger.error(f'Exception while audio thumbnail extraction  for s3-key: {s3_key}  as {e}')
                 
-                with ChunkedDecryptor(s3_key) as decryptor:
-                    
-                    # If no chunk-size present in metadata => full decryption mode
-                    if not decryptor.metadata.get("chunk-size"):
-                        full_plaintext, content = get_file_bytes(s3_key)
-                        
-                        if file_type == 'video':
-                            # Try FFmpeg first (most reliable)
-                            thumbnail_data = extractor.extract_video_thumbnail_ffmpeg(
-                                extension=file_ext,
-                                decrypted_bytes=full_plaintext
-                            )
-                            
-                            # Fallback to enhanced moviepy if FFmpeg fails
-                            if not thumbnail_data:
-                                logger.info("FFmpeg failed, trying moviepy fallback")
-                                thumbnail_data = extractor.extract_video_thumbnail_moviepy_enhanced(
-                                    extension=file_ext,
-                                    decrypted_bytes=full_plaintext
-                                )
-                        else:
-                            thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
-                                extension=file_ext,
-                                decrypted_bytes=full_plaintext
-                            )
-                    else:
-                        # Chunked mode (large files)
-                        with open(temp_s3_path, 'wb') as f:
-                            for chunk in decryptor.decrypt_chunks():
-                                f.write(chunk)
-                        
-                        if file_type == 'video':
-                            # Read the temp file for FFmpeg processing
-                            with open(temp_s3_path, 'rb') as f:
-                                video_bytes = f.read()
-                            
-                            thumbnail_data = extractor.extract_video_thumbnail_ffmpeg(
-                                extension=file_ext,
-                                decrypted_bytes=video_bytes
-                            )
-                            
-                            if not thumbnail_data:
-                                thumbnail_data = extractor.extract_video_thumbnail_moviepy_enhanced(
-                                    extension=file_ext,
-                                    decrypted_bytes=video_bytes
-                                )
-                        else:
-                            thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
-                                extension=file_ext,
-                                decrypted_bytes=video_bytes,
-                            )
-                        
-                        try:
-                            os.remove(temp_s3_path)
-                        except Exception:
-                            pass
+            if not thumbnail_data:
+                logger.error(f'Thumbnail extraction failed for s3-key: {s3_key}')
                 
-                if thumbnail_data:
-                # logger.error(f'Thumbnail extraction failed as : {e}')
-                    pass 
-                    
-                    
-            except Exception as e:
-                logger.error(f'Thumbnail extraction failed as : {e}')
 
         if progress_callback:
             progress_callback(85, None)
