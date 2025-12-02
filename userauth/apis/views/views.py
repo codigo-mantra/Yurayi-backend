@@ -615,7 +615,7 @@ class SecuredView(APIView):
         # fetch user
         user_id = payload.get("user_id")
         self.current_user = get_object_or_404(User, id=user_id)
-        logger.debug("Authenticated user in SecuredView.initial")
+        logger.info("Authenticated user in SecuredView.initial")
         self.token_payload = payload
         
     def get_current_user(self, request):
@@ -840,7 +840,66 @@ class CustomPasswordChangeView(SecuredView):
         logger.info(f"CustomPasswordChangeView password changed successfully {user.email}")
         return Response(status=status.HTTP_200_OK)
         
+
+class RefreshUserToken(APIView):
+    
+    def post(self, request, *args, **kwargs):
+        ua = (request.META.get("HTTP_USER_AGENT") or None)
+        token = request.COOKIES.get(settings.ACCESS_COOKIE_NAME)
+        if not token:
+            logger.warning("Access token missing")
+            return self.unauthorized("Access token missing")
         
+        try:
+            payload = decode_jwt_noverify(token)
+        except Exception:
+            logger.warning("Invalid access token")
+            return self.unauthorized("Invalid access token")
+        
+        sid = payload.get("sid")
+        self.session = None
+        if sid:
+            try:
+                session = Session.objects.get(pk=sid)
+                # if session.user_agent != ua or session.ip_address != ip:
+                if session.user_agent != ua:
+                    logger.warning(f"Session hijack attempt. Expected ua={session.user_agent}, ip={session.ip_address}; got ua={ua}, ip={ip}")
+                    return self.unauthorized("Session invalid for this device")
+                
+                if session.revoked:
+                    logger.warning("Session revoked")
+                    return self.unauthorized("Session revoked")
+                session.last_used_at = timezone.now()
+                session.save(update_fields=["last_used_at"])
+                self.session = session
+            except Session.DoesNotExist:
+                logger.warning("Invalid session")
+                return self.unauthorized("Invalid session")
+        
+        user_id = payload.get("user_id")
+        user = get_object_or_404(User, id=user_id)
+        self.token_payload = payload
+        
+        access_token, refresh_token = create_tokens_for_user(user, session)
+        resp = Response({
+            "access": access_token,
+            'is_password_set': True,
+            "user": {
+                "username": user.username,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+            },
+        })
+        resp = set_auth_cookies(resp, access_token, refresh_token)
+        
+        logger.info(f"Login success for user {user.email}")
+        return resp
+        
+        
+        
+        
+            
 
 # Base class for authenticated users      
 # class SecuredView(APIView):

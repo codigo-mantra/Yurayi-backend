@@ -7,7 +7,7 @@ from userauth.apis.views.views import (
     LoginView, RegistrationView, LogoutView,
     GoogleAuthView, GenerateJWTTokenView, ContactUsAPIView,UserProfileUpdateView,
     CustomPasswordResetView,CustomPasswordChangeView,CustomPasswordResetConfirmView, DashboardAPIView,ForgotPasswordView, PasswordResetConfirmView, NewsletterSubscribeAPIView,UserAddressListCreateView,UserAddressDetailView, 
-    UserQueriesAPIView, YurayiPolicyView, SessionListAPIView, SessionDeleteAPIView, SessionClearOthersAPIView,RevokeOldUserSession, ServeProfileImage
+    UserQueriesAPIView, YurayiPolicyView, SessionListAPIView, SessionDeleteAPIView, SessionClearOthersAPIView,RevokeOldUserSession, ServeProfileImage,RefreshUserToken
     
 )
 from rest_framework_simplejwt.views import TokenVerifyView
@@ -31,6 +31,7 @@ urlpatterns = [
 
     path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),
     path('generate-jwt/', GenerateJWTTokenView.as_view(), name='generate-jwt'),
+    path('refresh/user/token/', RefreshUserToken.as_view(), name='refresh_token'),
 
     # google auth urls(login, registeration)
     path("google/auth/", GoogleAuthView.as_view(), name="google_login"),
