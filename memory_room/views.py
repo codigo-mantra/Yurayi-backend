@@ -12,11 +12,11 @@ logger = logging.getLogger(__name__)
 
 from rest_framework.views import Response, APIView
 
-t  = TimeCapSoul.objects.get(id = 1174)
-rs = t.recipient_detail.all()
-from memory_room.tasks import create_24_hour_reminder_notification,capsoul_notification_generator
+# t  = TimeCapSoul.objects.get(id = 1174)
+# rs = t.recipient_detail.all()
+# from memory_room.tasks import create_24_hour_reminder_notification,capsoul_notification_generator
 
-recipeints = rs
+# recipeints = rs
 
 
 # u = User.objects.get(email ="krishnayadavpb07@gmail.com")
