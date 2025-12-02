@@ -442,7 +442,9 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                             logger.exception("Task completion error")
                             del future_to_index[future]
                     
+                    # time.sleep(0.1)
                     time.sleep(0.1)
+                    
             
             yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
 

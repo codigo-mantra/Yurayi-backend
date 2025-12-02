@@ -348,6 +348,7 @@ def upload_encrypted_jpg_to_s3(
         content_type: str = "image/jpeg",
         chunk_size: int = 6 * 1024 * 1024,     # 6MB default
         max_retries: int = 3,
+        progress_callback = None
 ):
     """
     Encrypt JPG bytes with AES-GCM using KMS-generated data key and upload to S3
@@ -379,6 +380,9 @@ def upload_encrypted_jpg_to_s3(
     parts = []
     part_number = 1
     total_size = len(jpg_bytes)
+    
+    if progress_callback:
+        progress_callback(35, 'Upload starting...')
 
     # ---------- 3. Retry Wrapper ----------
     def upload_part_retry(part_num, body):
@@ -400,6 +404,9 @@ def upload_encrypted_jpg_to_s3(
 
     # ---------- 4. Encrypt + Upload Multipart ----------
     offset = 0
+    if progress_callback:
+        progress_callback(55, None)
+    
     while offset < total_size:
 
         chunk = jpg_bytes[offset: offset + chunk_size]
@@ -415,11 +422,14 @@ def upload_encrypted_jpg_to_s3(
 
         parts.append({"PartNumber": part_number, "ETag": resp["ETag"]})
         part_number += 1
+        
 
         del chunk, ciphertext, encrypted_body
 
     # ---------- 5. Complete Multipart Upload ----------
     parts.sort(key=lambda x: x["PartNumber"])
+    if progress_callback:
+        progress_callback(65, None)
 
     result = s3.complete_multipart_upload(
         Bucket=bucket,
@@ -430,6 +440,8 @@ def upload_encrypted_jpg_to_s3(
 
     # Cleanup security-sensitive data
     del aesgcm, data_key_plain
+    if progress_callback:
+        progress_callback(80, None)
 
     return {
         "s3_result": result,
@@ -438,7 +450,7 @@ def upload_encrypted_jpg_to_s3(
     }
 
 
-def jpg_images_handler(s3_key, encrypted_file,iv_str,file_ext):
+def jpg_images_handler(s3_key, encrypted_file,iv_str,file_ext,progress_callback=None):
     
     if file_ext in (".jpg", ".jpeg"):
         print("[LOG] Checking JPG corruption...")
@@ -451,11 +463,13 @@ def jpg_images_handler(s3_key, encrypted_file,iv_str,file_ext):
             key=key_bytes
             
         )
+        if progress_callback:
+            progress_callback(20, 'JPG File Decryted')
         if is_image_corrupted(original_bytes):
             print("[LOG] JPG corrupted → Trying Pillow repair...")
         
             repaired = try_fix_corrupted_jpg(original_bytes)
-
+            
             if repaired:
                 final_bytes = repaired
             else:
@@ -476,6 +490,12 @@ def jpg_images_handler(s3_key, encrypted_file,iv_str,file_ext):
                             final_bytes = reencode_jpg(original_bytes)
                         except Exception:
                             raise Exception("Image totally unrecoverable.")
+                if progress_callback:
+                    progress_callback(25, 'JPG File Fixed')
+
+        else:
+            if progress_callback:
+                progress_callback(25, 'JPG File')
         
         if final_bytes is None:
             final_bytes = original_bytes
@@ -483,6 +503,7 @@ def jpg_images_handler(s3_key, encrypted_file,iv_str,file_ext):
         res = upload_encrypted_jpg_to_s3(
             s3_key=s3_key,
             jpg_bytes=final_bytes,
+            progress_callback = progress_callback
         )
         return res
         

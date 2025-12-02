@@ -17,6 +17,7 @@ from memory_room.signals import update_user_storage
 from memory_room.tasks import capsoul_almost_unlock,capsoul_unlocked,update_parent_media_refrences_task
 
 from memory_room.media_helper import decrypt_upload_and_extract_audio_thumbnail_chunked
+from memory_room.jpg_images_handler import jpg_images_handler
 from memory_room.upload_helper import decrypt_upload_and_extract_audio_thumbnail_chunked as media_uploader
 
 from django.core.files.images import ImageFile 
@@ -552,15 +553,26 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         
         try:
             s3_key = generate_capsoul_media_s3_key(file_name, user.s3_storage_id, time_capsoul.id)
-            result = media_uploader(
-                file_type = file_type,
-                key=s3_key,
-                encrypted_file=file,
-                iv_str=iv,
-                # content_type="audio/mpeg",
-                progress_callback=progress_callback,
-                file_ext=os.path.splitext(file.name)[1].lower(),
-            )
+            file_ext=os.path.splitext(file.name)[1].lower()
+            
+            if file_ext in (".jpg", ".jpeg"):
+                result = jpg_images_handler(
+                    s3_key=s3_key,
+                    encrypted_file=file,
+                    iv_str=iv,
+                    progress_callback=progress_callback,
+                    file_ext=os.path.splitext(file.name)[1].lower(),
+                )
+            else:
+                result = media_uploader(
+                    key=s3_key,
+                    encrypted_file=file,
+                    iv_str=iv,
+                    file_type = file_type,
+                    # content_type="audio/mpeg",
+                    progress_callback=progress_callback,
+                    file_ext=os.path.splitext(file.name)[1].lower(),
+                )
             # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
             #     file_type = file_type,
             #     key=s3_key,
