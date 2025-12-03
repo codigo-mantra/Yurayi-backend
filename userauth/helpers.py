@@ -162,7 +162,7 @@ def create_tokens_for_user(user, session):
     refresh_token = str(uuid.uuid4())
     
     # Save refresh token to database
-    expires_at = timezone.now() + timedelta(days=settings.REFRESH_TOKEN_LIFETIME)
+    expires_at = timezone.now() + timedelta(seconds=settings.REFRESH_TOKEN_LIFETIME)
     RefreshToken.objects.create(
         token=refresh_token,
         user=user,

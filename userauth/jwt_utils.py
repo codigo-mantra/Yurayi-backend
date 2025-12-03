@@ -12,7 +12,7 @@ def _now():
 
 def create_access_jwt_for_user(user, session_id):
     now = _now()
-    exp = now + timedelta(days=7)  
+    exp = now + timedelta(seconds=settings.ACCESS_TOKEN_LIFETIME)  
 
     payload = {
         "iss": settings.JWT_ISSUER,
