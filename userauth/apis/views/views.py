@@ -207,16 +207,12 @@ class GoogleAuthView(APIView):
             logger.error(f'Exception while creating user sesion as {e} for user: {user.email}')
             raise
 
-        # access = create_access_jwt_for_user(user, session_id=session.id)
-        # refresh_value = _gen_refresh_value()
-        # from django.utils import timezone 
-        # expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
-        # RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
         access_token, refresh_token = create_tokens_for_user(user, session)
         
 
         resp = Response({
             "access": access_token,
+            "refresh": refresh_token,
             "user": {
                 "username": user.username,
                 "email": user.email,
@@ -225,37 +221,10 @@ class GoogleAuthView(APIView):
             },
             'is_new_user': is_new_user,
             'is_password_set': result['is_password_set'],
-
-            
-            
         })
         
         # Set authentication cookies using utility functionk
         resp = set_auth_cookies(resp, access_token, refresh_token)
-        
-
-        # resp.set_cookie(
-        #     settings.REFRESH_COOKIE_NAME,
-        #     refresh_value,
-        #     httponly=settings.REFRESH_COOKIE_HTTPONLY,
-        #     secure=settings.REFRESH_COOKIE_SECURE,
-        #     samesite=settings.REFRESH_COOKIE_SAMESITE,
-        #     max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
-        #     domain=settings.COOKIE_DOMAIN,
-        #     path=settings.REFRESH_COOKIE_PATH,
-        # )
-
-        # #  Set access cookie
-        # resp.set_cookie(
-        #     settings.ACCESS_COOKIE_NAME,
-        #     access,
-        #     httponly=settings.ACCESS_COOKIE_HTTPONLY,
-        #     secure=settings.ACCESS_COOKIE_SECURE,
-        #     samesite=settings.ACCESS_COOKIE_SAMESITE,
-        #     max_age=settings.ACCESS_TOKEN_LIFETIME,
-        #     domain=settings.COOKIE_DOMAIN,
-        #     path=settings.ACCESS_COOKIE_PATH,
-        # )
         logger.info(f"User successfully login via google auth user email: {user.email}")
         return resp
 
@@ -336,6 +305,8 @@ class RegistrationView(APIView):
 
         resp = Response({
             "access": access_token,
+            "refresh": refresh_token,
+            
             "user": {
                 "username": user.username,
                 "email": user.email,
@@ -480,6 +451,8 @@ class LoginView(APIView):
         access_token, refresh_token = create_tokens_for_user(user, session)
         resp = Response({
             "access": access_token,
+            "refresh": refresh_token,
+            
             'is_password_set': True,
             "user": {
                 "username": user.username,
@@ -495,40 +468,6 @@ class LoginView(APIView):
         return resp
         
             
-        # access = create_access_jwt_for_user(user, session_id=session.id)
-        # refresh_value = _gen_refresh_value()
-        # from django.utils import timezone 
-        # expires_at = timezone.now() + timezone.timedelta(days=REFRESH_TTL_DAYS)
-        # RefreshToken.objects.create(token=refresh_value, user=user, session=session, expires_at=expires_at)
-
-        
-
-        # resp.set_cookie(
-        #     settings.REFRESH_COOKIE_NAME,
-        #     refresh_value,
-        #     httponly=settings.REFRESH_COOKIE_HTTPONLY,
-        #     secure=settings.REFRESH_COOKIE_SECURE,
-        #     samesite=settings.REFRESH_COOKIE_SAMESITE,
-        #     max_age=int(api_settings.ACCESS_TOKEN_LIFETIME.total_seconds()),
-        #     domain=settings.COOKIE_DOMAIN,
-        #     path=settings.REFRESH_COOKIE_PATH,
-        # )
-
-        # #  Set access cookie
-        # resp.set_cookie(
-        #     settings.ACCESS_COOKIE_NAME,
-        #     access,
-        #     httponly=settings.ACCESS_COOKIE_HTTPONLY,
-        #     secure=settings.ACCESS_COOKIE_SECURE,
-        #     samesite=settings.ACCESS_COOKIE_SAMESITE,
-        #     max_age=settings.ACCESS_TOKEN_LIFETIME,
-        #     domain=settings.COOKIE_DOMAIN,
-        #     path=settings.ACCESS_COOKIE_PATH,
-        # )
-        # logger.info("Login success")
-        # return resp
-
-
     def _issue_tokens(self, user):
         refresh = RefreshToken.for_user(user)
         return Response({
@@ -840,49 +779,46 @@ class CustomPasswordChangeView(SecuredView):
         logger.info(f"CustomPasswordChangeView password changed successfully {user.email}")
         return Response(status=status.HTTP_200_OK)
         
-
 class RefreshUserToken(APIView):
-    
+
+    permission_classes = []
+
+    def unauthorized(self, message):
+        raise NotAuthenticated(message)
+
     def post(self, request, *args, **kwargs):
-        ua = (request.META.get("HTTP_USER_AGENT") or None)
-        token = request.COOKIES.get(settings.ACCESS_COOKIE_NAME)
-        if not token:
-            logger.warning("Access token missing")
-            return self.unauthorized("Access token missing")
+        from django.utils import timezone
+        ua = request.META.get("HTTP_USER_AGENT") or None
+
+        refresh_token = request.COOKIES.get(settings.REFRESH_COOKIE_NAME)
+        if not refresh_token:
+            return self.unauthorized("Refresh token missing")
+
+        refresh_token_obj = RefreshToken.objects.filter(token=refresh_token).first()
+        if not refresh_token_obj or refresh_token_obj.revoked:
+            return self.unauthorized("Refresh token revoked or invalid")
+        from datetime import datetime, timedelta, timezone
         
+        
+        
+        if datetime.now(timezone.utc) > refresh_token_obj.expires_at:
+            return self.unauthorized("Refresh token expired")
+        
+        session = refresh_token_obj.session
+        user = refresh_token_obj.user
+
         try:
-            payload = decode_jwt_noverify(token)
-        except Exception:
-            logger.warning("Invalid access token")
-            return self.unauthorized("Invalid access token")
+            active_sessions = Session.objects.filter(user = user, id = session.id).first()
+            active_sessions.revoked = False
+            active_sessions.save
+
+        except Exception as e:
+            logger.error(f'Exception while creating user sesion as {e} for user: {user.email}')
+            raise
         
-        sid = payload.get("sid")
-        self.session = None
-        if sid:
-            try:
-                session = Session.objects.get(pk=sid)
-                # if session.user_agent != ua or session.ip_address != ip:
-                if session.user_agent != ua:
-                    logger.warning(f"Session hijack attempt. Expected ua={session.user_agent}, ip={session.ip_address}; got ua={ua}, ip={ip}")
-                    return self.unauthorized("Session invalid for this device")
-                
-                if session.revoked:
-                    logger.warning("Session revoked")
-                    return self.unauthorized("Session revoked")
-                session.last_used_at = timezone.now()
-                session.save(update_fields=["last_used_at"])
-                self.session = session
-            except Session.DoesNotExist:
-                logger.warning("Invalid session")
-                return self.unauthorized("Invalid session")
-        
-        user_id = payload.get("user_id")
-        user = get_object_or_404(User, id=user_id)
-        self.token_payload = payload
-        
-        access_token, refresh_token = create_tokens_for_user(user, session)
+        access_token, refresh_token = create_tokens_for_user(user, active_sessions)
         resp = Response({
-            "access": access_token,
+            "refresh": refresh_token,
             'is_password_set': True,
             "user": {
                 "username": user.username,
@@ -891,15 +827,14 @@ class RefreshUserToken(APIView):
                 "last_name": user.last_name,
             },
         })
+        # Set authentication cookies using utility functionk
         resp = set_auth_cookies(resp, access_token, refresh_token)
         
         logger.info(f"Login success for user {user.email}")
+        refresh_token_obj.revoked = True
+        refresh_token_obj.save() # revoke old token
         return resp
-        
-        
-        
-        
-            
+         
 
 # Base class for authenticated users      
 # class SecuredView(APIView):
