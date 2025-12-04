@@ -87,6 +87,13 @@ s3 = boto3.client("s3", region_name='ap-south-1',
 )
 
 
+def display_cache_message(msg:str):
+    try:
+        print(f'\n ---- {msg}   ----')
+    except Exception as e:
+        pass
+    
+
 class MemoryRoomCoverView(SecuredView):
     """
     API endpoint to list all assets of type 'Memory Room Cover'.
@@ -116,9 +123,15 @@ class UserMemoryRoomListView(SecuredView):
         Returns all memory rooms for the current user that are not deleted.
         """
         user  = self.get_current_user(request)
-        rooms = MemoryRoom.objects.filter(user=user, is_deleted=False).order_by('-created_at')
-        serializer = MemoryRoomSerializer(rooms, many=True)
-        return Response(serializer.data)
+        cached_key = f'{user.email}__rooms_list'
+        cached_data =  cache.get(cached_key)
+        if cached_data:
+            display_cache_message(f'room list shared via cached')
+            return Response(cached_data)
+        rooms = MemoryRoom.objects.filter(user=user, is_deleted=False).order_by('-updated_at')
+        serializer_data = MemoryRoomSerializer(rooms, many=True).data
+        cache.set(cached_key, serializer_data, 60*60*24)
+        return Response(serializer_data)
 
 class MemoryRoomTemplateDefaultViewSet(SecuredView):
     """
@@ -155,11 +168,13 @@ class CreateMemoryRoomView(SecuredView):
         serializer.is_valid(raise_exception=True)
         memory_room = serializer.validated_data.get('memory_room')
         serialized_data = MemoryRoomSerializer(memory_room).data if memory_room else {}
-
-        return Response({
+        response = {
             'message': 'Memory created successfully',
             'memory_room': serialized_data
-        })
+        }
+        cache.delete(f'{user.email}__rooms_list')
+        display_cache_message('Room cache deleted while new room creation')
+        return Response(response)
 
     def delete(self, request, memory_room_id, format=None):
         logger.info("CreateMemoryRoomView.delete called")
@@ -176,6 +191,8 @@ class CreateMemoryRoomView(SecuredView):
         )
         media_file = memory_room.memory_media_files.filter(is_deleted = False)
         media_file.update(is_deleted = True)
+        cache.delete(f'{user.email}__rooms_list')
+        display_cache_message('Room list cache deleted while room deletion')
         return Response(
             {'message': f'Memory deleted successfully named as : {room_name}'},
             status=status.HTTP_204_NO_CONTENT
@@ -192,6 +209,8 @@ class CreateMemoryRoomView(SecuredView):
 
         if serializer.is_valid():
             updated_room = serializer.save()
+            cache.delete(f'{user.email}__rooms_list')
+            display_cache_message('Room cache deleted while room updation ')
             return Response(MemoryRoomSerializer(updated_room).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -228,6 +247,8 @@ class SetMemoryRoomCoverImageAPIView(SecuredView):
                 other_media = MemoryRoomMediaFile.objects.filter(memory_room = memory_room, is_deleted=False, user = user).exclude(id = media_file.id)
                 other_media.update(is_cover_image = False)
                 logger.info(f'Memory Room cover set successfully by {user.email} room: {memory_room_id} media id: {media_file_id} ')
+                cache.delete(f'{user.email}__rooms_list')
+                display_cache_message('Room cache deleted setting new cover image')
             else:
                 logger.info(f'Memory Room cover already set by {user.email} room: {memory_room_id} media id: {media_file_id} ')
                 
@@ -253,9 +274,17 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
         List all media files of a memory room.
         """
         user = self.get_current_user(request)
+        cache_key = f'{user.email}_room_{memory_room_id}_media_list'
+        cached_data  = cache.get(cache_key)
+        if cached_data:
+            display_cache_message('media serve from cache')
+            return Response(cached_data)
+        
         memory_room = self.get_memory_room(user, memory_room_id)
-        media_files = MemoryRoomMediaFile.objects.filter(memory_room=memory_room, user=user, is_deleted=False).order_by('-created_at')
-        return Response(MemoryRoomMediaFileSerializer(media_files, many=True).data)
+        media_files = MemoryRoomMediaFile.objects.filter(memory_room=memory_room, user=user, is_deleted=False).order_by('-updated_at')
+        serializer_data =  MemoryRoomMediaFileSerializer(media_files, many=True).data
+        cache.set(cache_key, serializer_data, 60*60*24)
+        return Response(serializer_data)
         
    
     def post(self, request, memory_room_id):
@@ -348,6 +377,8 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                             media_updation='memory_room',
                             media_file=media_file
                         )
+                        cache.delete(f'{user.email}_room_{memory_room_id}_media_list')
+                        display_cache_message('media cached list cleared at new file upload')
 
                         update_file_progress(file_index, 98, 'Upload completed successfully', 'success')
                         
@@ -474,6 +505,9 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
         media_file.memory_room = new_room
         media_file.save()
+        cache.delete(f'{user.email}_room_{memory_room_id}_media_list') # 
+        cache.delete(f'{user.email}_room_{media_file.memory_room.id}_media_list')
+        display_cache_message('media cached list cleared at file move to another ')
         return Response({'message': "Media files moved successfully"}, status=status.HTTP_200_OK)
     
     def delete(self, request, memory_room_id, media_file_id):
@@ -495,16 +529,8 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
             media_updation='memory_room',
             media_file=media_file
         )
-        # update_memory_room_occupied_storage.apply_async( 
-        #     args=[media_file.id, 'remove'],
-        # )
-        # update_user_storage(
-        #     user=user,
-        #     media_id=media_file.id,
-        #     file_size=media_file.file_size,
-        #     cache_key=f'user_storage_id_{user.id}',
-        #     operation_type='remove'
-        # )
+        cache.delete(f'{user.email}_room_{media_file.memory_room.id}_media_list')
+        display_cache_message('media cached list cleared at file deleted ')
         return Response({'message': 'Media file deleted successfully'}, status=status.HTTP_204_NO_CONTENT)
 
 class UpdateMediaFileDescriptionView(SecuredView):
@@ -519,6 +545,8 @@ class UpdateMediaFileDescriptionView(SecuredView):
         serializer = MemoryRoomMediaFileDescriptionUpdateSerializer(media_file, data=request.data, partial=True)
         if serializer.is_valid():
             updated_data = serializer.save()
+            cache.delete(f'{user.email}_room_{memory_room_id}_media_list')
+            display_cache_message('media cached list cleared media description updation')
 
             return Response({'message': 'Description updated successfully.', 'data': MemoryRoomMediaFileReadOnlySerializer(updated_data).data})
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -2041,6 +2069,8 @@ class MemoryRoomDuplicationApiView(SecuredView):
         duplicate_room = create_duplicate_room(memory_room)
         serializer = MemoryRoomSerializer(duplicate_room)
         logger.info(f'Memory room duplicate created successfully for room: {memory_room.id} for user {user.email} ')
+        cache.delete(f'{user.email}__rooms_list')
+        display_cache_message('Room cache deleted while duplicate room creation')
         return Response(serializer.data, status=status.HTTP_201_CREATED)
         
         

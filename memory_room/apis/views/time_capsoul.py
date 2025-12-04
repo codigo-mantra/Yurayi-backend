@@ -3760,7 +3760,7 @@ class TimeCapsoulDuplicationApiView(SecuredView):
             else:
                 if is_media_created:
                     new_media_count += 1
-                    
+        cache.delete(f'{user.email}_capsouls')
         print(f"Old media count: {old_media_count}, New media count: {new_media_count}")
         serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
         logger.info(f'Caposul  duplicate created successfully for user {user.email} capsoul: old {time_capsoul_id} new: {duplicate_room.id} old media count: {old_media_count} new-media-count: {new_media_count} ')
