@@ -129,6 +129,8 @@ class CreateTimeCapSoulView(SecuredView):
         serializer.is_valid(raise_exception=True)
         timecapsoul = serializer.validated_data.get('time_capsoul')
         serialized_data = TimeCapSoulSerializer(timecapsoul, context={'user': user}).data if timecapsoul else {}
+        cache.delete(f'{user.email}_capsouls')
+        print(f'\n ----- Cached cleared for Capsoul at: post request ---- ')
 
         return Response({
             'message': 'Time CapSoul created successfully',
@@ -139,6 +141,11 @@ class CreateTimeCapSoulView(SecuredView):
         logger.info("CreateTimeCapSoulView.get list called")
         """Time CapSoul list"""
         user = self.get_current_user(request)
+        cache_key = f'{user.email}_capsouls'
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            print(f'Cached reponse ---- capsoul list ---- ')
+            return Response(cached_data)
         
         time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False).order_by('-updated_at') # owner capsoul
         try: 
@@ -165,29 +172,35 @@ class CreateTimeCapSoulView(SecuredView):
             user=user,
             capsoul_replica_refrence__in=time_capsouls,
             is_deleted = False
-            
         ).order_by('-updated_at')
         if tagged_time_capsouls:
             time_capsouls = time_capsouls.union(tagged_time_capsouls)
         
 
-        serializer = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user})
-        replica_serializer = TimeCapSoulSerializer(time_capsoul_replicas, many=True, context={'user': user})
-
+        # serializer = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user})
+        # replica_serializer = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user})
+        
+        combined_queryset = (time_capsouls | time_capsoul_replicas).order_by('-updated_at')
+        serializer_data = TimeCapSoulSerializer(combined_queryset, many=True, context={'user': user}).data
         response = {
-            'time_capsoul': serializer.data,
-            'replica_capsoul': replica_serializer.data
+            'time_capsoul': serializer_data,
+            'replica_capsoul': []
         }
+        cache.set(cache_key, response, 60*60*24)
         return Response(response)
         
 class TimeCapSoulUpdationView(SecuredView):
     def patch(self, request, time_capsoul_id):
         logger.info("TimeCapSoulUpdationView.patch called")
+        
         user = self.get_current_user(request)
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         serializer = TimeCapSoulUpdationSerializer(instance = time_capsoul, data=request.data, partial = True, context={'is_owner': True if time_capsoul.user == user else False, 'current_user': user})
         if serializer.is_valid():
             update_time_capsoul = serializer.save()
+            cache.delete(f'{user.email}_capsouls')
+            print(f'\n ----- Cached cleared for Capsoul at: path request ---- ')
+            
             return Response(TimeCapSoulSerializer(update_time_capsoul, context={'user': user}).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
     
@@ -215,6 +228,8 @@ class TimeCapSoulUpdationView(SecuredView):
                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
             recipient.is_capsoul_deleted = True 
             recipient.save()
+            cache.delete(f'{user.email}_capsouls')
+            print(f'\n ----- Cached cleared for Capsoul at: delete request ---- ')
             return Response({'message': f'Time Capsoul deleted successfully for {user.email}'})
         else:
             if  time_capsoul.is_deleted == False:
@@ -223,8 +238,11 @@ class TimeCapSoulUpdationView(SecuredView):
                 )
                 time_capsoul.is_deleted = True
                 time_capsoul.save()
+                cache.delete(f'{user.email}_capsouls')
                 media_files = time_capsoul.timecapsoul_media_files.filter(is_deleted = False)
                 media_files.update(is_deleted  = True)
+                cache.delete(f'{user.email}_capsouls')
+                print(f'\n ----- Cached cleared for Capsoul at: delete request ---- ')
             return Response({'message': "Time capsoul deleted successfully"})
 
 class TimeCapSoulMediaFilesView(SecuredView):
@@ -252,6 +270,11 @@ class TimeCapSoulMediaFilesView(SecuredView):
         """
         from django.utils import timezone
         user = self.get_current_user(request)
+        cache_key = f'{user.email}_capsoul_{time_capsoul_id}'
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            print(f'\n media list served from cache for capsuul: {time_capsoul_id}')
+            return Response(cached_data)
         
         # if user is Owner of the time-capsoul 
         try:
@@ -296,6 +319,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
             'time_capsoul': capsoul_data,
             'media_files': serializer.data
         }
+        cache.set(cache_key, response, 60*60*24)
         return Response(response)
 
     
@@ -346,6 +370,9 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     current_user = user,
                     option_type = 'replica_creation',
                 )
+                cache.delete(f'{user.email}_capsouls')
+                print(f'\n ----- Cached cleared for Capsoul at replica creation ---- ')
+    
                 if user.id == time_capsoul.user.id: # if user is owner of the capsoul
                     parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False).order_by('-updated_at')
                 else:
@@ -628,6 +655,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
                                     if isinstance(existing_media_ids, list):
                                         existing_media_ids.append(media_file.id)
                                         capsoul_recipients.update(parent_media_refrences=str(existing_media_ids))
+                                    
+                                    
                                         
                                 except Exception as e:
                                     logger.error(f'Error updating parent media refs: {e} for user {user.email}, capsoul {time_capsoul.id}')
@@ -641,6 +670,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
                                 media_updation='capsoul',
                                 media_file=media_file
                             )
+                            cache.delete(f'{user.email}_capsoul_{media_file.time_capsoul.id}')
+                            print(f'\n Cache cleared at when file uploaded')
                             if not is_updated:
                                 logger.warning(f"Storage update returned False for media {media_file.id}")
                         except Exception as e:
@@ -796,6 +827,7 @@ class SetTimeCapSoulCover(SecuredView):
         summary = request.data.get('summary', capsoul_template.summary)
         set_as_cover = request.data.get('set_as_cover', None)
         cover_image = capsoul_template.cover_image
+        print(f'\n Set As Cover media:{media_file_id} cap: {capsoul_id}')
 
         
         if time_capsoul.status == 'unlocked':
@@ -893,6 +925,11 @@ class MoveTimeCapSoulMediaFile(SecuredView):
             # Update the FK on media file
             media_file.time_capsoul = new_time_capsoul
             media_file.save()
+            
+            cache.delete(f'{user.email}_capsoul_{old_cap_soul_id}')
+            cache.delete(f'{user.email}_capsoul_{new_capsoul_id}')
+            print(f'\n Cached cleared at move ')
+            
 
             return Response({'message': 'Media file moved successfully'}, status=200)
             
@@ -938,6 +975,8 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
                     media_updation='capsoul',
                     media_file=media_file
                 )
+                cache.delete(f'{user.email}_capsoul_{time_capsoul_id}')
+                print(f'\n Media cached cleare at delete for cap: {time_capsoul_id}')
             return Response({'message': 'Time Capsoul media deleted successfully'})
         else:
             # check is tagged recipient checking here
@@ -970,6 +1009,8 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
             #   recipient.parent_media_refrences  = ','.join(map(str, parent_files_id)) if parent_files_id else None
                 recipient.parent_media_refrences  = parent_files_id if parent_files_id else []
                 recipient.save()
+                cache.delete(f'{user.email}_capsoul_{time_capsoul_id}')
+                print(f'\n Media cached cleare at delete for cap: {time_capsoul_id}')
             return Response(status=status.HTTP_204_NO_CONTENT)
     
     def patch(self, request, time_capsoul_id, media_file_id):

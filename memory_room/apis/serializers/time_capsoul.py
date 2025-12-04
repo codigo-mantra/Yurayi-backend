@@ -746,6 +746,7 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 option_type = 'replica_creation',
                 cover_image = cover_image 
             )
+            cache.delete(f'{current_user.email}_capsouls')
             if current_user == time_capsoul.user: # if user is owner of the capsoul
                 parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False)
             else:
@@ -785,6 +786,8 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                 else:
                     if is_media_created:
                         new_media_count += 1
+            cache.delete(f'{user.email}_capsoul_{time_capsoul.id}')
+            cache.delete(f'{user.email}_capsoul_{replica_instance.id}')
             print(f"Old media count: {old_media_count}, New media count: {new_media_count}")
             return instance
 
@@ -824,6 +827,8 @@ class TimeCapsoulMediaFileUpdationSerializer(serializers.ModelSerializer):
                         other_media = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted=False, user = user).exclude(id = media_file.id)
                         other_media.update(is_cover_image = False)
             instance.save()
+            cache.delete(f'{user.email}_capsoul_{time_capsoul.id}')
+            
         return instance
 
 
