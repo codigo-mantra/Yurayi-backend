@@ -2,6 +2,7 @@ import logging
 from django.db import DatabaseError
 from django.core.exceptions import ValidationError
 from memory_room.models import Notification
+from django.core.cache import cache
 from memory_room.notification_message import NOTIFICATIONS
 
 
@@ -32,6 +33,8 @@ class NotificationService:
                 memory_room=memory_room,
                 time_capsoul=time_capsoul,
             )
+            cache_key = f'{notification.user.email}__notifications'
+            cache.delete(cache_key)
             return notification
 
         except (ValidationError, DatabaseError, ValueError) as e:
@@ -88,6 +91,9 @@ class NotificationService:
                     memory_room=memory_room,
                     time_capsoul=time_capsoul,
                 )
+            
+            cache_key = f'{notification.user.email}__notifications'
+            cache.delete(cache_key)
             return notification
 
         except (ValidationError, DatabaseError, ValueError) as e:

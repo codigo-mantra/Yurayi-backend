@@ -188,6 +188,8 @@ def capsoul_notification_generator(recipient, notification_key, message=None):
                     time_capsoul=time_capsoul,
                 )
                 is_created = True
+                cache_key = f'{notification.user.email}__notifications'
+                cache.delete(cache_key)
                 return is_created
                 
             except User.DoesNotExist as e:

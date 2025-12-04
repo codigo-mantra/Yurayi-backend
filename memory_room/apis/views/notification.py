@@ -10,6 +10,8 @@ from rest_framework import serializers
 from django.http import StreamingHttpResponse
 from django.utils.timezone import now
 import json, time
+from django.core.cache import cache
+
 
 from memory_room.models import Notification
 from userauth.apis.views.views import SecuredView
@@ -22,8 +24,13 @@ class NotificationListView(SecuredView):
     def get(self, request):
         logger.info("NotificationListView.get called")
         user  = self.get_current_user(request)
+        cache_key = f'{user.email}__notifications'
+        cache_data = cache.get(cache_key)
+        if cache_data:
+            return Response(cache_data)
         notications = Notification.objects.filter(user=user, is_deleted = False).order_by("-created_at")
         data  = NotificationSerializer(notications, many=True).data
+        cache.set(cache_key, data, 60*60*24)
         return Response(data)
         
 
@@ -37,6 +44,7 @@ class UpdateNotificationView(SecuredView):
         serializer = NotificationUpdateSerializer(instance = notication, data = request.data)
         serializer.is_valid(raise_exception= True)
         serializer.save()
+        cache.delete(f'{user.email}__notifications')
         logger.info(f"UpdateNotificationView.post called with notification_id: {notification_id}")
 
         return Response(serializer.data,  status=status.HTTP_200_OK)
@@ -54,10 +62,13 @@ class NotificationMarkAllReadView(SecuredView):
         if updation_type == 'marks_as_all_read':
             Notification.objects.filter(user=user, is_read=False, is_deleted = False).update(is_read=True)
             message = {"detail": "All notifications marked as read."}
+            cache.delete(f'{user.email}__notifications')
+            
         elif updation_type == 'clear_all':
             logger.info(f"NotificationMarkAllReadView.post data saved with updation_type: {updation_type} for user: {user.email}")
             Notification.objects.filter(user=user, is_deleted = False).update(is_deleted=True)
             message = {"detail": "All notifications cleared."}
+            cache.delete(f'{user.email}__notifications')
         else:
             raise serializers.ValidationError({'updation_type': "Invalid value for updation it can marks_as_all_read or clear_all"})
             

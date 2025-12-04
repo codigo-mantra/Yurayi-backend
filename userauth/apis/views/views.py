@@ -59,7 +59,6 @@ from userauth.helpers import (
 )
 from memory_room.media_helper import decrypt_s3_file_chunked
 from memory_room.s3_helpers import s3_helper
-from django.core.cache import cache
 from django.http import StreamingHttpResponse, Http404,HttpResponse, JsonResponse, HttpResponseNotFound
 from django.core.cache import cache
 import mimetypes
@@ -199,6 +198,7 @@ class GoogleAuthView(APIView):
                     latitude = latitude,
                     longitude = longitude
                 )
+                cache.delete(f'{user.email}_sessions')
                 logger.info(f'New Session create for user {user.email}')
                 
             else:
@@ -294,6 +294,8 @@ class RegistrationView(APIView):
             latitude = latitude,
             longitude = longitude
         )
+        cache.delete(f'{user.email}_sessions')
+        
         
         access_token, refresh_token = create_tokens_for_user(user, session)
 
@@ -440,6 +442,8 @@ class LoginView(APIView):
                     latitude = latitude,
                     longitude = longitude
                 )
+                cache.delete(f'{user.email}_sessions')
+                
                 logger.info(f'New Session create for user {user.email}')
                 
             else:
@@ -913,7 +917,12 @@ class DashboardAPIView(SecuredView):
         user   = self.current_user
         if user is None:
             raise NotAuthenticated()
-        user_mapper = UserMapper.objects.get_or_create(user = user)
+        cache_key = f'{user.email}_dashboard'
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
+        
+        # user_mapper = UserMapper.objects.get_or_create(user = user)
         user_profile = UserProfile.objects.get(user = user)
         response = {
             'first_name': user.first_name,
@@ -923,7 +932,7 @@ class DashboardAPIView(SecuredView):
             'last_login': user.last_login,
             'free_storage_limit': 0,
         }
-
+        cache.set(cache_key, response, 60*60*24)
         return Response(response,status=status.HTTP_200_OK)
 
 
@@ -977,6 +986,8 @@ class PasswordResetConfirmView(APIView):
         ua = (request.META.get("HTTP_USER_AGENT") or "")[:1000]
         ip = request.META.get("REMOTE_ADDR") or request.META.get("HTTP_X_FORWARDED_FOR")
         session = Session.objects.create(user=user, name=device_name, user_agent=ua, ip_address=ip)
+        cache.delete(f'{user.email}_sessions')
+        
 
         # access = create_access_jwt_for_user(user, session_id=session.id)
         # refresh_value = _gen_refresh_value()
@@ -1068,10 +1079,17 @@ class UserProfileUpdateView(SecuredView):
     def get(self, request):
         logger.info("UserProfileUpdateView.get called")
         user = self.get_current_user(request)
+        cache_key = f'{user.email}_profile'
+        cache_data = cache.get(cache_key)
+        if cache_data:
+            return Response(cache_data)
         if user is None:
             raise NotAuthenticated()
-        serializer = UserProfileUpdateSerializer(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        serializer_data = UserProfileUpdateSerializer(user).data
+        cache.set(cache_key, serializer_data, 60*60*24)
+        return Response(serializer_data)
+        
+        
 
     def patch(self, request):
         user = self.get_current_user(request)
@@ -1089,6 +1107,8 @@ class UserProfileUpdateView(SecuredView):
                 allow_multiple=True
             )
             logger.info(f"Profile updated for {user.email}")
+            cache.delete(f'{user.email}_profile')
+            
             return Response({
                 "message": "Profile updated successfully",
                 "data": serializer.data
@@ -1102,11 +1122,17 @@ class UserAddressListCreateView(SecuredView):
     def get(self, request):
         logger.info("UserAddressListCreateView.get called")
         user = self.current_user
+        cache_key = f'{user.email}_adress_list'
+        cached_data = cache.get(cache_key)
+        if cached_data:
+            return Response(cached_data)
         if user is None:
             raise NotAuthenticated()
-        addresses = UserAddress.objects.filter(user=user)
-        serializer = UserAddressSerializer(addresses, many=True)
-        return Response(serializer.data)
+        addresses = UserAddress.objects.filter(user=user, is_deleted = False)
+        serializer_data = UserAddressSerializer(addresses, many=True).data
+        cache.set(cache_key, serializer_data, 60*60*24)
+        return Response(serializer_data)
+
 
     def post(self, request):
         logger.info("UserAddressListCreateView.post called")
@@ -1116,6 +1142,7 @@ class UserAddressListCreateView(SecuredView):
         serializer = UserAddressSerializer(data=request.data, context={'user': user})
         if serializer.is_valid():
             serializer.save(user=user)
+            cache.delete(f'{user.email}_adress_list')
             return Response(serializer.data, status=status.HTTP_201_CREATED)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1123,21 +1150,27 @@ class UserAddressListCreateView(SecuredView):
 class UserAddressDetailView(SecuredView):
     def get_object(self, pk, user):
         try:
-            return UserAddress.objects.get(pk=pk, user=user)
+            return UserAddress.objects.get(pk=pk, user=user, is_deleted = False)
         except UserAddress.DoesNotExist:
             return None
 
     def get(self, request, pk):
         logger.info("UserAddressDetailView.get called")
         user = self.current_user
+        cache_key = f'{user.email}_address_detail_{pk}'
+        cache_data = cache.get(cache_key)
+        if cache_data:
+            return Response(cache_data)
+        
         if user is None:
             raise NotAuthenticated()
         address = self.get_object(pk, user)
         if not address:
             return Response({"detail": "Address not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        serializer = UserAddressSerializer(address)
-        return Response(serializer.data)
+        serializer_data = UserAddressSerializer(address).data
+        cache.set(cache_key, serializer_data, 60*60*24)
+        return Response(serializer_data)
 
     def put(self, request, pk):
         logger.info("UserAddressDetailView.put called")
@@ -1151,6 +1184,7 @@ class UserAddressDetailView(SecuredView):
         serializer = UserAddressSerializer(address, data=request.data, context={'request': request}, partial = True)
         if serializer.is_valid():
             serializer.save()
+            cache.delete(f'{user.email}_address_detail_{pk}')
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1164,7 +1198,10 @@ class UserAddressDetailView(SecuredView):
         if not address:
             return Response({"detail": "Address not found."}, status=status.HTTP_404_NOT_FOUND)
 
-        address.delete()
+        address.is_deleted = True
+        address.save()
+        cache.delete(f'{user.email}_address_detail_{pk}')
+        
         return Response({"detail": "Address deleted."}, status=status.HTTP_204_NO_CONTENT)
 
 
@@ -1196,9 +1233,15 @@ class YurayiPolicyView(APIView):
         name = self.request.query_params.get("name") 
         if name:
             queryset = queryset.filter(name__icontains=name, is_deleted = False)
+            data = YurayiPolicySerializer(queryset, many=True).data
         else:
+            cache_key = 'yurayi_policies'
+            cached_data = cache.get(cache_key)
+            if cached_data:
+                return Response(cached_data)
             queryset = YurayiPolicy.objects.filter(is_deleted = False)
-        data = YurayiPolicySerializer(queryset, many=True).data
+            data = YurayiPolicySerializer(queryset, many=True).data
+            cache.set(cache_key, data, 60*60*24)
             
         return Response(data)
     
@@ -1207,6 +1250,7 @@ class SessionListAPIView(SecuredView):
 
     def get(self, request):
         user  = self.get_current_user(request)
+        cache_key = f'{user.email}_sessions'
         logger.info(f"SessionListAPIView called by {user.email}")
         
         
@@ -1216,6 +1260,7 @@ class SessionListAPIView(SecuredView):
             'current_session_id': self.session.id,
             'others_sessions': serializer.data
         }
+        cache.set(cache_key, response, 60*60*24)
         logger.info(f"SessionListAPIView all session served to {user.email}")
         return Response(response, status=status.HTTP_200_OK)
     
@@ -1233,6 +1278,7 @@ class SessionDeleteAPIView(SecuredView):
         session.revoked = True
         session.last_used_at = timezone.now()
         session.save()
+        cache.delete(f'{user.email}_sessions')
         logger.info(f"SessionDeleteAPIView revoked successfully for {user.email} session-id: {session_id}")
         return Response({"detail": "Session revoked successfully"}, status=status.HTTP_200_OK)
 
@@ -1251,6 +1297,7 @@ class SessionClearOthersAPIView(SecuredView):
         
         sessions = Session.objects.filter(user=user, revoked=False).exclude(id=current_session_id)
         count = sessions.update(revoked=True, last_used_at=timezone.now())
+        cache.delete(f'{user.email}_sessions')
         logger.info(f"SessionClearOthersAPIView {count} sessions revoked by {user.email}")
         return Response({"detail": f"{count} sessions revoked (except current)"}, status=status.HTTP_200_OK)
 
@@ -1327,113 +1374,14 @@ class RevokeOldUserSession(APIView):
             #     domain=settings.COOKIE_DOMAIN,
             #     path=settings.ACCESS_COOKIE_PATH,
             # )
+        
+            
             logger.info(f"Session logout success for session-id: {session_id} by user: {user.email}")
             return Response(status=status.HTTP_200_OK)
             
         except Exception as e:
             logger.error(f'Exception while logout user session for session-id: ')
             return Response(status=status.HTTP_400_BAD_REQUEST)
-
-# class ServeProfileImage(SecuredView):
-#     """
-#     Serves profile images with intelligent caching strategy.
-#     - Downloads from S3 in memory-efficient chunks
-#     - Caches the final image bytes for fast repeated access
-#     - Optimized specifically for images (typically <10MB)
-#     """
-#     CACHE_TIMEOUT = 60 * 60 * 24  # 24 hours
-    
-#     def get_mime_type(self, filename):
-#         """Get MIME type from filename."""
-#         mime_type, _ = mimetypes.guess_type(filename)
-#         return mime_type or "application/octet-stream"
-
-#     def _serve_svg_safely(self, file_bytes, filename):
-#         """
-#         Secure SVG response with CSP to prevent script injection.
-#         """
-#         response = HttpResponse(file_bytes, content_type="image/svg+xml")
-#         response["Content-Length"] = str(len(file_bytes))
-#         response["Content-Disposition"] = f'inline; filename="{filename}"'
-#         response["Cache-Control"] = f"private, max-age={self.CACHE_TIMEOUT}"
-#         response["Content-Security-Policy"] = (
-#             "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
-#         )
-#         response["X-Content-Type-Options"] = "nosniff"
-#         return response
-
-#     def _create_image_response(self, file_bytes, content_type, filename):
-#         """
-#         Create HTTP response for regular images.
-#         """
-#         response = HttpResponse(file_bytes, content_type=content_type)
-#         response["Content-Length"] = str(len(file_bytes))
-#         response["Content-Disposition"] = f'inline; filename="{filename}"'
-#         response["Cache-Control"] = f"private, max-age={self.CACHE_TIMEOUT}"
-#         response["X-Content-Type-Options"] = "nosniff"
-#         response["Content-Security-Policy"] = "frame-ancestors 'self';"
-#         return response
-
-#     def get(self, request, *args, **kwargs):
-#         try:
-#             user = self.get_current_user(request)
-#             base_s3_key = kwargs.get("s3_key")
-#             bytes_cache_key = get_profile_s3_key(user, base_s3_key=base_s3_key)
-            
-#             filename = bytes_cache_key.split("/")[-1].lower()
-            
-#             # === Step 1: Check for cached image bytes ===
-#             image_cache_key = f"profile_image_bytes:{bytes_cache_key}"
-#             cached_data = cache.get(image_cache_key)
-            
-#             if cached_data:
-#                 file_bytes, content_type = cached_data
-#                 logger.debug(f"✓ Serving cached image: {filename} ({len(file_bytes)/1024:.1f} KB)")
-                
-#                 # Create and return response from cache
-#                 if filename.endswith(".svg"):
-#                     return self._serve_svg_safely(file_bytes, filename)
-#                 else:
-#                     return self._create_image_response(file_bytes, content_type, filename)
-            
-#             file_data, content_type = s3_helper.decrypt_s3_file_chunked_streaming(
-#                 bytes_cache_key,
-#                 chunk_size=2*1024*1024  # 2MB chunks (good for images)
-#             )
-            
-#             if not file_data or not content_type:
-#                 logger.error(f"Failed to download {bytes_cache_key} from S3")
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
-            
-#             # === Step 3: Read image bytes from BytesIO ===
-#             file_bytes = file_data.read()
-#             file_data.close()
-            
-#             # Override content type if needed
-#             content_type = self.get_mime_type(filename) or content_type
-            
-#             logger.info(f"✓ Downloaded image: {filename} ({len(file_bytes)/1024:.1f} KB)")
-            
-#             # === Step 4: Cache the image bytes ===
-#             cache.set(
-#                 image_cache_key, 
-#                 (file_bytes, content_type), 
-#                 timeout=self.CACHE_TIMEOUT
-#             )
-#             logger.debug(f"✓ Cached image bytes for {filename}")
-            
-#             # === Step 5: Create and return response ===
-#             if filename.endswith(".svg"):
-#                 response = self._serve_svg_safely(file_bytes, filename)
-#             else:
-#                 response = self._create_image_response(file_bytes, content_type, filename)
-            
-#             return response
-
-#         except Exception as e:
-#             logger.exception(f"Error serving profile image {base_s3_key}: {e}")
-#             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 
 class ServeProfileImage(SecuredView):
@@ -1493,11 +1441,11 @@ class ServeProfileImage(SecuredView):
                 return cached_response
             
             # === Step 2: Download from S3 (cache miss) ===
-            logger.info(f"📥 Downloading from S3: {filename}")
+            logger.info(f" Downloading from S3: {filename}")
             
             file_data, content_type = s3_helper.decrypt_s3_file_chunked_streaming(
                 bytes_cache_key,
-                chunk_size=2*1024*1024  # 2MB chunks (good for images)
+                chunk_size=5*1024*1024  # 2MB chunks (good for images)
             )
             
             if not file_data or not content_type:

@@ -23,7 +23,7 @@ class UserAdmin(BaseUserAdmin):
     )
 
 @admin.register(YurayiPolicy)
-class UserProfileAdmin(admin.ModelAdmin):
+class YurayiPolicyAdminModel(admin.ModelAdmin):
     list_display = ('name', 'policy_content')
 
 @admin.register(Session)

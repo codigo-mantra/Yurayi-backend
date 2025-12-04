@@ -1,14 +1,26 @@
 from django.db.models.signals import post_save,post_delete
 from django.dispatch import receiver
 from django.conf import settings
-from .models import  User, UserProfile,Assets
+from .models import  User, UserProfile,Assets, YurayiPolicy
 from django.core.cache import cache
 from timecapsoul.utils import send_html_email
 import logging
 logger = logging.getLogger(__name__)
 import os, uuid
-from memory_room.models import TimeCapSoulRecipient
+from memory_room.models import TimeCapSoulRecipient, Notification
 from memory_room.notification_service import NotificationService
+
+def clear_cache(cache_key:str):
+    """Clear Cache Using Cache Key It will return as True or False"""
+    
+    is_cleared = False
+    try:
+        cache.delete(cache_key)
+        is_cleared = True
+    except Exception as e:
+        logger.error(f'Exception while clearing cache for key {cache_key}')
+    finally:
+        return is_cleared
 
 
 
@@ -46,10 +58,8 @@ def create_user_profile(sender, instance, created, **kwargs):
 @receiver([post_save, post_delete], sender=Assets)
 def delete_cover_cache(sender, instance, **kwargs):
     # Clear cached data 
-    cache_key = f"memory_room_covers"
-    capsoul_cover = 'time_capsoul_covers'
-    cache.delete(cache_key)
-    cache.delete(capsoul_cover)
+    clear_cache("memory_room_covers")
+    clear_cache('time_capsoul_covers')
 
 
 # @receiver(post_save, sender=UserProfile)
@@ -59,4 +69,16 @@ def delete_cover_cache(sender, instance, **kwargs):
 #             user=instance.user,
 #             notification_key='profile_updated'
 #             )
+
+
+@receiver([post_delete, post_save], sender=YurayiPolicy)
+def delete_policy_cache(sender, instance, **kwargs):
+    clear_cache(f"yurayi_policies")
     
+
+@receiver(post_save, sender=Notification)
+def delete_notification_cache(sender, instance,created,*args, **kwargs):
+    if created:
+        cache_key = f'{instance.user.email}__notifications'
+        clear_cache(cache_key)
+
