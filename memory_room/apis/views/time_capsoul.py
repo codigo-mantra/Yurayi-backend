@@ -177,14 +177,14 @@ class CreateTimeCapSoulView(SecuredView):
             time_capsouls = time_capsouls.union(tagged_time_capsouls)
         
 
-        # serializer = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user})
-        # replica_serializer = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user})
+        serializer_data = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user}).data
+        replica_serializer = TimeCapSoulSerializer(time_capsouls, many=True, context={'user': user}).data
         
-        combined_queryset = (time_capsouls | time_capsoul_replicas).order_by('-updated_at')
-        serializer_data = TimeCapSoulSerializer(combined_queryset, many=True, context={'user': user}).data
+        # combined_queryset = (time_capsouls | time_capsoul_replicas).order_by('-updated_at')
+        # serializer_data = TimeCapSoulSerializer(combined_queryset, many=True, context={'user': user}).data
         response = {
             'time_capsoul': serializer_data,
-            'replica_capsoul': []
+            'replica_capsoul': replica_serializer
         }
         cache.set(cache_key, response, 60*60*24)
         return Response(response)
