@@ -1108,6 +1108,7 @@ class UserProfileUpdateView(SecuredView):
             )
             logger.info(f"Profile updated for {user.email}")
             cache.delete(f'{user.email}_profile')
+            cache.delete(f'{user.email}_dashboard')
             
             return Response({
                 "message": "Profile updated successfully",
