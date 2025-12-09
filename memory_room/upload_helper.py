@@ -1264,8 +1264,8 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
             except Exception as e:
                 logger.error(f'Fallback thumbnail extraction failed for s3-key: {s3_key}, error: {str(e)}')
             
-        if not thumbnail_data:
-            logger.error(f'All thumbnail extraction attempts failed for s3-key: {s3_key} ')
+        if not thumbnail_data and file_type in ['video', 'audio']:
+            logger.warning(f'All thumbnail extraction attempts failed for s3-key: {s3_key} ')
 
         # Log metrics
         elapsed_time = time.time() - start_time
