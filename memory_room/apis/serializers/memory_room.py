@@ -442,7 +442,7 @@ class MemoryRoomMediaFileCreationSerializer(serializers.ModelSerializer):
                     s3_key=s3_key,
                     encrypted_file=file,
                     iv_str=iv,
-                    # progress_callback=progress_callback,
+                    progress_callback=progress_callback,
                     file_ext=os.path.splitext(file.name)[1].lower(),
                 )
             else:
