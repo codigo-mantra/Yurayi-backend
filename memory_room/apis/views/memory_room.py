@@ -328,7 +328,7 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
         # Thread-safe progress tracking
         progress_lock = threading.Lock()
-        file_progress = {i: {'progress': 1, 'message': 'Queued', 'status': 'pending'} for i in range(total_files)}
+        file_progress = {i: {'progress': 0, 'message': 'Queued', 'status': 'pending'} for i in range(total_files)}
         
         def update_file_progress(file_index, progress, message, status='processing'):
             with progress_lock:

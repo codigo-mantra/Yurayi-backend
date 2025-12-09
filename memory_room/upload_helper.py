@@ -1058,11 +1058,14 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
         if encrypted_data_size <= 5 * 1024 * 1024:  # < 5MB
             effective_chunk_size = max(encrypted_data_size, 2 * 1024 * 1024)
         elif encrypted_data_size <= 50 * 1024 * 1024:  # 5-50MB
-            effective_chunk_size = 5 * 1024 * 1024
-        elif encrypted_data_size <= 200 * 1024 * 1024:  # 50-200MB
             effective_chunk_size = 8 * 1024 * 1024
-        else:  # > 200MB
+        elif encrypted_data_size <= 200 * 1024 * 1024:  # 50-200MB
             effective_chunk_size = 12 * 1024 * 1024
+        else:  # > 200MB
+            effective_chunk_size = 18 * 1024 * 1024
+            
+        
+        # print(f'\n ----- effective_chunk_size : {effective_chunk_size} ----')
 
         # Calculate strategic thumbnail extraction points
         if file_type in ('video', 'audio'):

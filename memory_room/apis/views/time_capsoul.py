@@ -449,7 +449,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
         # Thread-safe progress tracking
         progress_lock = threading.Lock()
         file_progress = {
-            i: {'progress': 1, 'message': 'Queued', 'status': 'pending'}
+            i: {'progress': 0, 'message': 'Queued', 'status': 'pending'}
             for i in range(total_files)
         }
 
