@@ -45,7 +45,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import time
 from django.http import HttpResponseForbidden, HttpResponseRedirect,Http404
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView,NewSecuredView
@@ -2832,6 +2832,43 @@ class ServeTimeCapSoulMedia(SecuredView):
         response["Content-Security-Policy"] = f"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; frame-ancestors 'self' {frame_ancestors};"
         
         return response
+    
+    def _stream_file_with_range(self, request, file_bytes, content_type, filename):
+        file_size = len(file_bytes)
+        range_header = request.headers.get("Range", "").strip()
+
+        if range_header:
+            import re
+            match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        else:
+            match = None
+
+        if match:
+            start = int(match.group(1))
+            end = match.group(2)
+            end = int(end) if end else file_size - 1
+            length = end - start + 1
+
+            resp = StreamingHttpResponse(
+                FileWrapper(BytesIO(file_bytes[start:end+1])),
+                status=206,
+                content_type=content_type
+            )
+            resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+            resp["Content-Length"] = str(length)
+
+        else:
+            resp = StreamingHttpResponse(
+                FileWrapper(BytesIO(file_bytes)),
+                content_type=content_type
+            )
+            resp["Content-Length"] = str(file_size)
+
+        resp["Accept-Ranges"] = "bytes"
+        resp["Content-Disposition"] = f'inline; filename="{filename}"'
+        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+        resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+        return resp
 
     def _create_response(self, content, content_type, filename, streaming=False, 
                         range_support=False, start=0, end=None, total_size=None):
@@ -3008,7 +3045,7 @@ class ServeTimeCapSoulMedia(SecuredView):
         is_pdf = self._is_pdf_file(filename)
         is_csv = self._is_csv_file(filename)
         is_json = self._is_json_file(filename)
-        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv'}
+        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov'}
         is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
         
         # Route 1: Streaming with range support (video/audio that don't need conversion)
@@ -3062,6 +3099,9 @@ class ServeTimeCapSoulMedia(SecuredView):
             else:
                 file_bytes, _ = decrypt_s3_file_chunked(s3_key)
                 if not file_bytes:
+                    file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+
+                if not file_bytes:
                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
             
@@ -3103,6 +3143,9 @@ class ServeTimeCapSoulMedia(SecuredView):
                             file_bytes=file_bytes
                         )
                         cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+                    except Exception as e:
+                        mp4_bytes = convert_mov_bytes_to_mp4_bytes(file_bytes)
+                    
                     except Exception as e:
                         logger.error(f"Conversion failed for {filename}: {e}")
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)

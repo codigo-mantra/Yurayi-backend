@@ -849,7 +849,68 @@ def convert_video_to_mp4_bytes(file_bytes, source_format):
                     os.remove(file_path)
             except Exception as cleanup_err:
                 logger.warning(f"Failed to clean up {file_path}: {cleanup_err}")
-                
+
+
+def convert_mov_bytes_to_mp4_bytes(mov_bytes: bytes) -> bytes:
+    """
+    Convert MOV video bytes to MP4 video bytes using FFmpeg.
+    Ignores invalid audio/data streams (fixes APAC / 'none' audio issue).
+    """
+
+    with tempfile.NamedTemporaryFile(suffix=".mov", delete=False) as tmp_in:
+        input_path = tmp_in.name
+        tmp_in.write(mov_bytes)
+
+    output_fd, output_path = tempfile.mkstemp(suffix=".mp4")
+    os.close(output_fd)
+
+    try:
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-analyzeduration", "100M",
+            "-probesize", "100M",
+
+            "-i", input_path,
+
+            # ✨ IMPORTANT FIX: ignore bad audio/video/data streams
+            "-map", "0:v:0",
+            "-map", "0:a:0?",   # optional audio (in case missing)
+
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "22",
+            "-pix_fmt", "yuv420p",
+
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+
+            output_path
+        ]
+
+        p = subprocess.run(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False
+        )
+
+        if p.returncode != 0:
+            raise Exception(
+                f"FFmpeg failed with code {p.returncode}\n"
+                f"{p.stderr.decode(errors='ignore')}"
+            )
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+    finally:
+        if os.path.exists(input_path):
+            os.remove(input_path)
+        if os.path.exists(output_path):
+            os.remove(output_path)
+          
                 
 def convert_audio_to_mp3_bytes(file_bytes, source_format):
     """
