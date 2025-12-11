@@ -288,14 +288,18 @@ def decrypt_and_get_image(key: str, chunk_size: int = 10 * 1024 * 1024 + 28):
     plaintext = bytearray()
     offset = 0
 
-    while offset < len(encrypted_blob):
-        # Each chunk = nonce (12 bytes) + ciphertext_chunk
-        nonce = encrypted_blob[offset:offset + 12]
-        ciphertext_chunk = encrypted_blob[offset + 12:offset + chunk_size]
-        offset += len(nonce) + len(ciphertext_chunk)
+    try:
+        while offset < len(encrypted_blob):
+            # Each chunk = nonce (12 bytes) + ciphertext_chunk
+            nonce = encrypted_blob[offset:offset + 12]
+            ciphertext_chunk = encrypted_blob[offset + 12:offset + chunk_size]
+            offset += len(nonce) + len(ciphertext_chunk)
 
-        chunk_plaintext = aesgcm.decrypt(nonce, ciphertext_chunk, None)
-        plaintext.extend(chunk_plaintext)
+            chunk_plaintext = aesgcm.decrypt(nonce, ciphertext_chunk, None)
+            plaintext.extend(chunk_plaintext)
+    except Exception as e:
+        logger.error(f'Error during chunked decryption: {e}')
+        return None, None
 
     content_type = metadata.get("orig-content-type", "application/octet-stream")
     return bytes(plaintext), content_type
@@ -807,6 +811,142 @@ from django.core.cache import cache
 from rest_framework.response import Response
 from rest_framework import status
 
+
+
+def decrypt_and_get_old_media_files(key: str, candidate_plain_chunk_sizes=None):
+    """
+    Decrypts a file uploaded via upload_file_to_s3_kms_chunked.
+    This version is robust to the uploader choosing different plaintext chunk sizes
+    (we try a list of candidate sizes and accept whichever decrypts).
+    Arguments:
+        key: S3 key
+        candidate_plain_chunk_sizes: iterable of plaintext chunk sizes (bytes) to try.
+            If None, defaults to sizes your uploader uses, e.g. 5MB, 8MB, 10MB.
+    Returns:
+        (plaintext_bytes, content_type) or (None, None) on error
+    """
+    try:
+        obj = s3.get_object(Bucket=MEDIA_FILES_BUCKET, Key=key)
+    except Exception as e:
+        logger.error(f'Error fetching object from S3: {e}')
+        return None, None
+
+    encrypted_blob = obj["Body"].read()
+    metadata = obj.get("Metadata", {})
+
+    # Decrypt data key from metadata
+    try:
+        encrypted_data_key_b64 = metadata["edk"]
+    except KeyError:
+        logger.error("Missing 'edk' metadata. Can't decrypt.")
+        return None, None
+
+    encrypted_data_key = base64.b64decode(encrypted_data_key_b64)
+    data_key = kms.decrypt(CiphertextBlob=encrypted_data_key)["Plaintext"]
+    aesgcm = AESGCM(data_key)
+
+    # Default candidate plaintext chunk sizes (bytes) — tune to match your uploader
+    if candidate_plain_chunk_sizes is None:
+        candidate_plain_chunk_sizes = [
+            5 * 1024 * 1024,   # 5MB
+            8 * 1024 * 1024,   # 8MB
+            10 * 1024 * 1024,  # 10MB
+            2 * 1024 * 1024,   # 2MB (in case)
+        ]
+
+    # Each encrypted chunk body is: nonce(12) + ciphertext(plaintext_len + 16)
+    # So candidate total chunk body sizes = 12 + plaintext_candidate + 16 = plaintext_candidate + 28
+    candidate_total_chunk_sizes = [p + 28 for p in candidate_plain_chunk_sizes]
+
+    plaintext = bytearray()
+    offset = 0
+    total_len = len(encrypted_blob)
+
+    # Helper to try decrypting with a given ciphertext_chunk bytes
+    def try_decrypt_with_nonce_and_cipher(nonce, ciphertext_chunk):
+        try:
+            return aesgcm.decrypt(nonce, ciphertext_chunk, None)
+        except Exception:
+            return None
+
+    # Loop until all bytes consumed
+    while offset < total_len:
+        # remaining bytes
+        rem = total_len - offset
+
+        # must have at least 12 (nonce) + 16 (tag)
+        if rem < 12 + 16:
+            logger.error("Remaining bytes too small to be a chunk; aborting")
+            return None, None
+
+        # read the nonce (12 bytes)
+        nonce = encrypted_blob[offset: offset + 12]
+
+        # Now attempt candidate sizes. For the last chunk, allow variable length (remaining-12)
+        decrypted = None
+        used_cipher_len = None
+
+        # If remaining bytes are small (likely last chunk), try decrypting with entire rest
+        if rem <= max(candidate_total_chunk_sizes):
+            # take full remainder as ciphertext for last chunk
+            cipher_chunk = encrypted_blob[offset + 12: offset + rem]
+            decrypted = try_decrypt_with_nonce_and_cipher(nonce, cipher_chunk)
+            if decrypted is not None:
+                used_cipher_len = len(cipher_chunk)
+                offset += 12 + used_cipher_len
+                plaintext.extend(decrypted)
+                continue  # go to next
+
+        # Otherwise try each candidate total length
+        for total_chunk_size in candidate_total_chunk_sizes:
+            # ensure we don't slice beyond buffer
+            if rem < total_chunk_size:
+                continue
+            start = offset + 12
+            end = offset + total_chunk_size
+            cipher_chunk = encrypted_blob[start:end]
+            decrypted = try_decrypt_with_nonce_and_cipher(nonce, cipher_chunk)
+            if decrypted is not None:
+                used_cipher_len = len(cipher_chunk)
+                offset += 12 + used_cipher_len
+                plaintext.extend(decrypted)
+                break
+
+        # If none of the candidates worked, try a small search window fallback:
+        if decrypted is None:
+            # search for a reasonable ciphertext length by trying sizes from min to rem
+            # but limit attempts to avoid O(n^2) for huge files:
+            fallback_attempts = [
+                # Prefer sizes that produce plaintext lengths aligned to common chunk sizes
+                (rem - 12),  # try entire remainder as ciphertext (already tried above but safe)
+                (min(rem, max(candidate_total_chunk_sizes)) - 12)
+            ]
+            tried = set()
+            for c_len in fallback_attempts:
+                if c_len <= 0 or c_len in tried:
+                    continue
+                tried.add(c_len)
+                cipher_chunk = encrypted_blob[offset + 12: offset + 12 + c_len]
+                decrypted = try_decrypt_with_nonce_and_cipher(nonce, cipher_chunk)
+                if decrypted is not None:
+                    used_cipher_len = len(cipher_chunk)
+                    offset += 12 + used_cipher_len
+                    plaintext.extend(decrypted)
+                    break
+
+        if decrypted is None:
+            # give a helpful error: most likely chunk-size mismatch or corrupted file
+            logger.error(
+                "Failed to find a decryptable chunk at offset %d (remaining %d). "
+                "Likely chunk-size mismatch or corrupt object." % (offset, rem)
+            )
+            return None, None
+
+    content_type = metadata.get("orig-content-type", "application/octet-stream")
+    return bytes(plaintext), content_type
+
+
+
 def get_media_file_bytes_with_content_type(media_file, user):
     try:
         bytes_cache_key = str(media_file.s3_key)
@@ -818,9 +958,12 @@ def get_media_file_bytes_with_content_type(media_file, user):
         
         if not file_bytes or  not content_type:
             try:
-                file_bytes, content_type = get_decrypt_file_bytes(str(media_file.s3_key))
-            except Exception as e:
+            
                 file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
+                if not file_bytes:
+                    file_bytes, content_type = decrypt_and_get_old_media_files(str(media_file.s3_key))
+            except Exception as e:
+                file_bytes, content_type = get_decrypt_file_bytes(str(media_file.s3_key))
             except Exception as e:
                 file_bytes, content_type = decrypt_and_replicat_files(str(media_file.s3_key))
             
