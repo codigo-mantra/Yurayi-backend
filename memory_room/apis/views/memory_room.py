@@ -328,6 +328,8 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
 
         # Thread-safe progress tracking
         progress_lock = threading.Lock()
+        progress_event = threading.Event()
+
         file_progress = {i: {'progress': 0, 'message': 'Queued', 'status': 'pending'} for i in range(total_files)}
         
         def update_file_progress(file_index, progress, message, status='processing'):
@@ -337,6 +339,8 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                     'message': message,
                     'status': status
                 }
+                progress_event.set()
+
                 # print(f'\n File {file_progress}')
 
         def calculate_overall_progress():
@@ -429,6 +433,9 @@ class MemoryRoomMediaFileListCreateAPI(SecuredView):
                 last_sent_progress = {i: -1 for i in range(total_files)}  # track last sent progress
                 
                 while len(results) < total_files:
+                    progress_event.wait(timeout=1.0)   # wakes immediately when set OR after 1s
+                    progress_event.clear()
+
                     with progress_lock:
                         for file_index, progress_data in file_progress.items():
                             file_name = files[file_index].name
@@ -613,7 +620,7 @@ class MediaFileDownloadView(SecuredView):
     
     DOWNLOAD_CHUNK_SIZE = 256 * 1024  # 256KB chunks for downloads
     
-    def _stream_chunked_decrypt_download(self, s3_key):
+    def _stream_chunked_decrypt_download(self, s3_key, media_file=None, user=None):
         """Generator that streams decrypted chunks for download."""
         # with ChunkedDecryptor(s3_key) as decryptor:
         #     for decrypted_chunk in decryptor.decrypt_chunks():
@@ -627,6 +634,11 @@ class MediaFileDownloadView(SecuredView):
             # If no chunk-size present in metadata => full decryption mode
             if not decryptor.metadata.get("chunk-size"):
                 full_plaintext, content = get_file_bytes(s3_key)
+
+                if not full_plaintext and media_file and user:
+                    full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
+
+
 
 
                 # Yield in streamable pieces
@@ -729,7 +741,7 @@ class MediaFileDownloadView(SecuredView):
             # Stream directly without any conversions
             logger.info(f"Streaming download for {filename}")
             response = StreamingHttpResponse(
-                streaming_content=self._stream_chunked_decrypt_download(s3_key),
+                streaming_content=self._stream_chunked_decrypt_download(s3_key, media_file, user),
                 content_type=content_type
             )
             
