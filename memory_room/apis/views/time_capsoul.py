@@ -452,6 +452,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
             i: {'progress': 0, 'message': 'Queued', 'status': 'pending'}
             for i in range(total_files)
         }
+        progress_event = threading.Event()
+
 
         def update_file_progress(file_index, progress, message, status='processing'):
             with progress_lock:
@@ -460,6 +462,8 @@ class TimeCapSoulMediaFilesView(SecuredView):
                     'message': message,
                     'status': status
                 }
+                progress_event.set()
+
                 # print(f"\n File {file_progress}")
 
         # def file_upload_stream():
@@ -733,6 +737,10 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                     # Monitor progress and stream updates
                     while completed_count < total_files:
+                        progress_event.wait(timeout=1.0)   # wakes immediately when set OR after 1s
+                        progress_event.clear()
+
+
                         # Send progress updates
                         with progress_lock:
                             for file_index, progress_data in file_progress.items():
