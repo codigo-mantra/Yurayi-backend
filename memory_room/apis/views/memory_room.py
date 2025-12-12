@@ -1741,7 +1741,7 @@ class ServeMedia(SecuredView):
         
         return response
     
-    def _stream_chunked_decrypt(self, s3_key, start_byte=0, end_byte=None):
+    def _stream_chunked_decrypt(self, s3_key, start_byte=0, end_byte=None, media_file=None ,user=None):
         """Generator that streams decrypted chunks."""
         with ChunkedDecryptor(s3_key) as decryptor:
         
@@ -1749,6 +1749,9 @@ class ServeMedia(SecuredView):
             if not decryptor.metadata.get("chunk-size"):
                 # full_plaintext = decryptor.decrypt_full()
                 full_plaintext, content = get_file_bytes(s3_key)
+
+                if not full_plaintext and media_file and user:
+                    full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
 
 
                 # Yield in streamable pieces
@@ -1846,7 +1849,7 @@ class ServeMedia(SecuredView):
             
             logger.info(f"Streaming {category}: {filename}")
             return self._create_response(
-                self._stream_chunked_decrypt(s3_key, start, end),
+                self._stream_chunked_decrypt(s3_key, start, end, media_file, user),
                 content_type, filename,
                 streaming=True, range_support=True,
                 start=start, end=end, total_size=file_size
@@ -1860,7 +1863,7 @@ class ServeMedia(SecuredView):
             
             logger.info(f"Progressive image: {filename}")
             return self._create_response(
-                self._stream_chunked_decrypt(s3_key),
+                self._stream_chunked_decrypt(s3_key=s3_key, media_file=media_file, user=user),
                 content_type, filename,
                 streaming=True, range_support=False
             )
@@ -1878,7 +1881,9 @@ class ServeMedia(SecuredView):
             else:
                 file_bytes, _ = decrypt_s3_file_chunked(s3_key)
                 if not file_bytes:
-                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    file_bytes, _ = get_media_file_bytes_with_content_type(media_file, user)
+                    if not file_bytes:
+                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
             
             # Check if PDF, CSV, or JSON after decryption

@@ -3347,21 +3347,22 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
     
     def _stream_chunked_decrypt_download(self, s3_key,media_file=None, user=None):
         """Generator that streams decrypted chunks for download."""
-        # with ChunkedDecryptor(s3_key) as decryptor:
-        #     for decrypted_chunk in decryptor.decrypt_chunks():
-        #         chunk_offset = 0
-        #         while chunk_offset < len(decrypted_chunk):
-        #             yield decrypted_chunk[chunk_offset:chunk_offset + self.DOWNLOAD_CHUNK_SIZE]
-        #             chunk_offset += self.DOWNLOAD_CHUNK_SIZE
-        
         with ChunkedDecryptor(s3_key) as decryptor:
         
             # If no chunk-size present in metadata => full decryption mode
             if not decryptor.metadata.get("chunk-size"):
-                full_plaintext, content = get_file_bytes(s3_key)
+                cache_key = f"media_bytes_{s3_key}"
+                full_plaintext = cache.get(cache_key)
+                
+                if not full_plaintext:
+                    full_plaintext, content = get_file_bytes(s3_key)
 
-                if not full_plaintext and media_file and user:
-                    full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                    if not full_plaintext and media_file and user:
+                        full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                   
+                    if full_plaintext:
+                        cache.set(cache_key, full_plaintext, timeout=60*60*24)
+
 
 
                 # Yield in streamable pieces
@@ -3533,108 +3534,6 @@ class TaggedCapsoulTracker(SecuredView):
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# class UserStorageTracker(SecuredView):
-    
-#     def get(self, request, format=None):
-#         user = self.get_current_user(request)
-#         logger.info(f"UserStorageTracker  called {user.email}")
-#         user_tracker_cache_key= f'user_storage_id_{user.id}'
-#         user_storage_data = cache.get(user_tracker_cache_key)
-#         if not user_storage_data:
-#             try:
-#                 user_mapper = user.user_mapper.first() 
-#                 total_space_occupied = 0
-#                 user_storage_limit = parse_into_mbs(user_mapper.max_storage_limit)
-#                 user_storage_limit = to_gb(user_storage_limit[0], user_storage_limit[-1])
-                
-                
-#                 user_storage_data= {
-#                     'user_storage_limit': user_storage_limit,
-#                     'free_storage': 0,
-#                     'current_used_storage': 0,
-#                     'storage_usage_percentage': 0,
-#                     'images': {
-#                         'percentge': 0,
-#                         'amount': 0
-#                     },
-#                     'videos': {
-#                         'percentge': 0,
-#                         'amount': 0
-#                     },
-#                     'documents': {
-#                         'percentge': 0,
-#                         'amount': 0
-#                     },
-#                     'audio': {
-#                         'percentge': 0,
-#                         'amount': 0
-#                     },
-#                 }
-                
-#                 user_capsouls = TimeCapSoul.objects.filter(user = user, is_deleted = False)
-#                 memory_room = MemoryRoom.objects.filter(user= user, is_deleted = False)
-#                 logger.info(f"UserStorageTracker  storage callculation started {user.email}")
-                
-                
-#                 for capsoul in user_capsouls: # time-capsoul files calculations
-#                     media_files = capsoul.timecapsoul_media_files.filter(is_deleted = False)
-#                     for media in media_files: 
-#                         file_size = parse_into_mbs(media.file_size)
-#                         file_size = to_gb(file_size[0], file_size[-1])
-#                         total_space_occupied += file_size
-                        
-#                         if media.file_type == 'image':
-#                             user_storage_data['images']['amount'] += file_size
-                            
-#                         elif media.file_type == 'video':
-#                             user_storage_data['videos']['amount'] += file_size
-                        
-#                         elif media.file_type == 'audio':
-#                             user_storage_data['audio']['amount'] += file_size
-                            
-#                         else:
-#                             user_storage_data['documents']['amount'] += file_size
-                
-#                 for capsoul in memory_room:   # memory-room file calculations
-#                     media_files = capsoul.memory_media_files.filter(is_deleted=False)
-#                     for media in media_files: 
-#                         # file_size = parse_into_mbs(media.file_size)[0]
-#                         file_size = parse_into_mbs(media.file_size)
-#                         file_size = to_gb(file_size[0], file_size[-1])
-                        
-                        
-#                         total_space_occupied += file_size
-                        
-#                         if media.file_type == 'image':
-#                             user_storage_data['images']['amount'] += file_size
-                            
-#                         elif media.file_type == 'video':
-#                             user_storage_data['videos']['amount'] += file_size
-                        
-#                         elif media.file_type == 'audio':
-#                             user_storage_data['audio']['amount'] += file_size
-                            
-#                         else:
-#                             user_storage_data['documents']['amount'] += file_size
-                            
-#                 logger.info(f"UserStorageTracker  storage callculation completed {user.email}")
-                
-#                 user_storage_data['images']['percentge'] = round((user_storage_data['images']['amount']*100)/user_storage_limit, 3)
-#                 user_storage_data['videos']['percentge'] = round((user_storage_data['videos']['amount']*100)/user_storage_limit, 3)
-#                 user_storage_data['documents']['percentge'] = round((user_storage_data['documents']['amount']*100)/user_storage_limit, 3)
-#                 user_storage_data['audio']['percentge'] = round((user_storage_data['audio']['amount']*100)/user_storage_limit, 3)
-                
-#                 user_storage_data['current_used_storage'] = round(total_space_occupied, 5)
-#                 user_storage_data['free_storage'] = round(user_storage_limit - total_space_occupied, 5)
-#                 user_storage_data['storage_usage_percentage'] = round(( total_space_occupied * 100  )/user_storage_limit, 3)
-#                 cache.set(user_tracker_cache_key, user_storage_data, timeout=60*60*2)
-                
-#             except Exception as e:
-#                 logger.error(f'Exception occur at UserStorageTracker  while getting storage data for {user.email} error-message: \n {e}')
-                
-            
-#         logger.info(f"UserStorageTracker  data served {user.email}")
-#         return Response(user_storage_data)
 
 class UserStorageTracker(SecuredView):
 
@@ -3763,8 +3662,6 @@ class UserStorageTracker(SecuredView):
         logger.info(f"UserStorageTracker data served {user.email}")
         return Response(user_storage_data)
 
-
-
   
       
 class TimeCapsoulDuplicationApiView(SecuredView):
@@ -3819,15 +3716,7 @@ class TimeCapsoulDuplicationApiView(SecuredView):
         serializer = TimeCapSoulSerializer(duplicate_room, context = {'user': user})
         logger.info(f'Caposul  duplicate created successfully for user {user.email} capsoul: old {time_capsoul_id} new: {duplicate_room.id} old media count: {old_media_count} new-media-count: {new_media_count} ')
         return Response(serializer.data, status=status.HTTP_201_CREATED)
-        
 
-
-# class GetMediaThumbnailPreview(SecuredView):
-    
-#     def get(self, request, path, media_file_id=None):
-#         return Response()
-        
-#         pass
 
 class ServeCoverTimecapsoulImages(SecuredView):
     """
@@ -4028,6 +3917,10 @@ class ServeCoverTimecapsoulImages(SecuredView):
                 file_bytes, _ = cached_data
             else:
                 file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+                if not file_bytes:
+                    media_file = TimeCapSoulMediaFile.objects.filter(s3_key=s3_key, user=user).first()
+                    file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+
                 if not file_bytes:
                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)

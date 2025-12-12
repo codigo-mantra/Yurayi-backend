@@ -1813,7 +1813,10 @@ def decrypt_s3_file_chunked(key: str):
 
             # Decrypt chunk
             try:
-                decrypted_chunk = aesgcm.decrypt(nonce, ciphertext_chunk, None)
+                try:
+                    decrypted_chunk = aesgcm.decrypt(nonce, ciphertext_chunk, None)
+                except Exception as e:
+                    return None, None
                 plaintext.write(decrypted_chunk)
                 
                 # Track detected chunk sizes for debugging

@@ -962,6 +962,8 @@ def get_media_file_bytes_with_content_type(media_file, user):
                 file_bytes, content_type = decrypt_and_get_image(str(media_file.s3_key))
                 if not file_bytes:
                     file_bytes, content_type = decrypt_and_get_old_media_files(str(media_file.s3_key))
+                    if not file_bytes:
+                        file_bytes, content_type = get_decrypt_file_bytes(str(media_file.s3_key))
             except Exception as e:
                 file_bytes, content_type = get_decrypt_file_bytes(str(media_file.s3_key))
             except Exception as e:
