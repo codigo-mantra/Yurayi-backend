@@ -2609,7 +2609,7 @@ class ServeTimeCapSoulMedia(SecuredView):
     AUDIO_EXTENSIONS = {'.mp3', '.wav', '.aac', '.flac', '.ogg', '.wma', '.alac', 
                         '.aiff', '.m4a', '.opus', '.amr'}
     
-    def _get_file_extension(self, filename):
+    def _get_file_extension(self, filename,):
         """Extract file extension from filename."""
         return '.' + filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
     
@@ -3012,7 +3012,7 @@ class ServeTimeCapSoulMedia(SecuredView):
 
         # Optimize: Only get s3_key and file_type from DB (minimal data)
         try:
-            media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
+            media_file = TimeCapSoulMediaFile.objects.only('s3_key','title', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
                 id=media_file_id, user=user
             )
         except TimeCapSoulMediaFile.DoesNotExist:
@@ -3046,6 +3046,8 @@ class ServeTimeCapSoulMedia(SecuredView):
         s3_key = media_file.s3_key
         filename = s3_key.split("/")[-1]
         extension = self._get_file_extension(filename)
+        if extension == '':
+            extension = '.' + media_file.title.lower().split('.', 1)[-1] 
         category = self._categorize_file(filename)
         content_type = self._guess_content_type(filename)
         
@@ -3502,6 +3504,8 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
         except Exception as e:
             logger.error(f"Download failed for time capsule media {media_file_id}: {e}")
             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
 
 class TaggedCapsoulTracker(SecuredView):
     
