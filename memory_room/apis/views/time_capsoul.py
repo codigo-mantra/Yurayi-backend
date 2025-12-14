@@ -3105,7 +3105,7 @@ class ServeTimeCapSoulMedia(SecuredView):
             cached_data = cache.get(bytes_cache_key)
             
             if cached_data:
-                file_bytes, _ = cached_data
+                file_bytes = cached_data
             else:
                 file_bytes, _ = decrypt_s3_file_chunked(s3_key)
                 if not file_bytes:
@@ -3113,7 +3113,7 @@ class ServeTimeCapSoulMedia(SecuredView):
 
                 if not file_bytes:
                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+                cache.set(bytes_cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
             
             # Check if PDF, CSV, or JSON after decryption
             if is_pdf:
