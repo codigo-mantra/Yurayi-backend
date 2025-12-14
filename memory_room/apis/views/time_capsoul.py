@@ -3198,147 +3198,7 @@ class ServeTimeCapSoulMedia(SecuredView):
             # For non-converted files, return simple response
             return self._create_response(file_bytes, content_type, filename)
 
-class MediaFileDownloadView(SecuredView):
-    """
-    Securely stream media file downloads from S3 without loading full file into memory.
-    """
-    
-    DOWNLOAD_CHUNK_SIZE = 256 * 1024  # 256KB chunks for downloads
-    
-    def _stream_chunked_decrypt_download(self, s3_key):
-        """Generator that streams decrypted chunks for download."""
-        # with ChunkedDecryptor(s3_key) as decryptor:
-        #     for decrypted_chunk in decryptor.decrypt_chunks():
-        #         chunk_offset = 0
-        #         while chunk_offset < len(decrypted_chunk):
-        #             yield decrypted_chunk[chunk_offset:chunk_offset + self.DOWNLOAD_CHUNK_SIZE]
-        #             chunk_offset += self.DOWNLOAD_CHUNK_SIZE
-        
-        with ChunkedDecryptor(s3_key) as decryptor:
-        
-            # If no chunk-size present in metadata => full decryption mode
-            if not decryptor.metadata.get("chunk-size"):
-                full_plaintext, content = get_file_bytes(s3_key)
-
-
-                # Yield in streamable pieces
-                offset = 0
-                while offset < len(full_plaintext):
-                    yield full_plaintext[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
-                    offset += self.DOWNLOAD_CHUNK_SIZE
-
-            else:
-                # Chunked mode (large files)
-                for decrypted_chunk in decryptor.decrypt_chunks():
-                    if not decrypted_chunk:
-                        continue
-                    
-                    offset = 0
-                    while offset < len(decrypted_chunk):
-                        yield decrypted_chunk[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
-                        offset += self.DOWNLOAD_CHUNK_SIZE
-    
-    def _get_file_size_from_metadata(self, s3_key):
-        """Calculate decrypted file size from S3 metadata."""
-        try:
-            obj = s3.head_object(Bucket=MEDIA_FILES_BUCKET, Key=s3_key)
-            encrypted_size = obj['ContentLength']
-            chunk_size = int(obj['Metadata'].get('chunk-size', 10 * 1024 * 1024))
-            
-            num_chunks = (encrypted_size + chunk_size + 27) // (chunk_size + 28)
-            overhead = num_chunks * 28
-            decrypted_size = encrypted_size - overhead
-            
-            return decrypted_size
-        except Exception as e:
-            logger.error(f"Failed to calculate file size for {s3_key}: {e}")
-            return None
-    
-    def _guess_content_type(self, filename):
-        """Guess content type from filename extension."""
-        import mimetypes
-        content_type, _ = mimetypes.guess_type(filename)
-        
-        lower_filename = filename.lower()
-        
-        # Quick lookup for common types
-        type_map = {
-            # Video
-            '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
-            '.mov': 'video/quicktime', '.mkv': 'video/x-matroska', '.avi': 'video/x-msvideo',
-            '.mpeg': 'video/mpeg', '.mpg': 'video/mpeg', '.3gp': 'video/3gpp',
-            # Audio
-            '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/aac',
-            '.wav': 'audio/wav', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
-            # Image
-            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
-            '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
-            # Documents
-            '.pdf': 'application/pdf',
-            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            '.csv': 'text/csv',
-            '.json': 'application/json',
-            '.txt': 'text/plain',
-            '.zip': 'application/zip',
-        }
-        
-        for ext, mime in type_map.items():
-            if lower_filename.endswith(ext):
-                return mime
-        
-        return content_type or 'application/octet-stream'
-    
-    def get(self, request, memory_room_id, media_file_id):
-        """
-        Securely stream a media file from S3 - returns original file without conversions.
-        """
-        user = self.get_current_user(request)
-        memory_room = get_object_or_404(MemoryRoom, id=memory_room_id, user=user)
-        media_file = get_object_or_404(
-            MemoryRoomMediaFile,
-            id=media_file_id,
-            user=user,
-            memory_room=memory_room
-        )
-
-        try:
-            s3_key = media_file.s3_key
-            filename = s3_key.split("/")[-1]
-            
-            # Clean up the download filename
-            file_name = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{s3_key.split(".")[-1]}'
-            
-            # Get file size without downloading
-            file_size = self._get_file_size_from_metadata(s3_key)
-            if not file_size:
-                logger.error(f"Failed to get file size for {s3_key}")
-                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
-            # Determine content type
-            content_type = self._guess_content_type(filename)
-            
-            # Stream directly without any conversions
-            logger.info(f"Streaming download for {filename}")
-            response = StreamingHttpResponse(
-                streaming_content=self._stream_chunked_decrypt_download(s3_key),
-                content_type=content_type
-            )
-            
-            # Set download headers
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
-            response['Content-Length'] = str(file_size)
-            response['Accept-Ranges'] = 'bytes'
-            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response['Access-Control-Expose-Headers'] = 'Content-Length, Content-Disposition'
-            response['X-Content-Type-Options'] = 'nosniff'
-
-            return response
-
-        except Exception as e:
-            logger.error(f"Download failed for media {media_file_id}: {e}")
-            return Response(status=status.HTTP_404_NOT_FOUND)
-
+import math
 
 class TimeCapSoulMediaFileDownloadView(SecuredView):
     """
@@ -3353,25 +3213,29 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
         
             # If no chunk-size present in metadata => full decryption mode
             if not decryptor.metadata.get("chunk-size"):
-                cache_key = f"media_bytes_{s3_key}"
-                full_plaintext = cache.get(cache_key)
+                # cache_key = f"media_bytes_{s3_key}"
+                # full_plaintext = cache.get(cache_key)
                 
-                if not full_plaintext:
-                    full_plaintext, content = get_file_bytes(s3_key)
+                # if not full_plaintext:
+                full_plaintext, content = get_file_bytes(s3_key)
 
-                    if not full_plaintext and media_file and user:
-                        full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                if not full_plaintext and media_file and user:
+                    full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
                    
-                    if full_plaintext:
-                        cache.set(cache_key, full_plaintext, timeout=60*60*24)
+                    # if full_plaintext:
+                    #     cache.set(cache_key, full_plaintext, timeout=60*60*24)
 
-
+                self._actual_file_size = len(full_plaintext)
+                total = self._actual_file_size
 
                 # Yield in streamable pieces
                 offset = 0
-                while offset < len(full_plaintext):
+                # while offset < len(full_plaintext):
+                while offset < total:
                     yield full_plaintext[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
                     offset += self.DOWNLOAD_CHUNK_SIZE
+                    time.sleep(0.02)  # 20ms is enough
+
 
             else:
                 # Chunked mode (large files)
@@ -3435,6 +3299,15 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
         
         return content_type or 'application/octet-stream'
     
+    def _stream_full_bytes(self, full_plaintext):
+        total = len(full_plaintext)
+        offset = 0
+
+        while offset < total:
+            yield full_plaintext[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
+            offset += self.DOWNLOAD_CHUNK_SIZE
+            time.sleep(0.02)  # optional
+
     def get(self, request, timecapsoul_id, media_file_id):
         """
         Download a media file from a TimeCapSoul securely - streams original file without conversions.
@@ -3475,36 +3348,55 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
             # Clean up the download filename
             file_name = f'{media_file.title.split(".", 1)[0].replace(" ", "_")}.{s3_key.split(".")[-1]}'
             
-            # Get file size without downloading
-            file_size = self._get_file_size_from_metadata(s3_key)
-            if not file_size:
-                logger.error(f"Failed to get file size for {s3_key}")
-                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
             # Determine content type
             content_type = self._guess_content_type(file_name)
-            
-            # Stream directly without any conversions
-            logger.info(f"Streaming download for {file_name}")
-            response = StreamingHttpResponse(
-                streaming_content=self._stream_chunked_decrypt_download(s3_key,media_file, user),
-                content_type=content_type
-            )
-            
-            # Set download headers
-            response['Content-Disposition'] = f'attachment; filename="{file_name}"'
-            response['Content-Length'] = str(file_size)
-            response['Accept-Ranges'] = 'bytes'
-            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-            response['Access-Control-Expose-Headers'] = 'Content-Length, Content-Disposition'
-            response['X-Content-Type-Options'] = 'nosniff'
 
+            with ChunkedDecryptor(s3_key) as decryptor:
+
+                if not decryptor.metadata.get("chunk-size"):
+
+                    full_plaintext, _ = get_file_bytes(s3_key)
+
+                    if not full_plaintext:
+                        full_plaintext, _ = get_media_file_bytes_with_content_type(
+                            media_file, user
+                        )
+
+                    if not full_plaintext:
+                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                    file_size = len(full_plaintext)
+
+                    response = StreamingHttpResponse(
+                        streaming_content=self._stream_full_bytes(full_plaintext),
+                        content_type=content_type,
+                    )
+
+                # ================= CHUNKED MODE =================
+                else:
+                    file_size = self._get_file_size_from_metadata(s3_key)
+                    if not file_size:
+                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                    response = StreamingHttpResponse(
+                        streaming_content=self._stream_chunked_bytes(decryptor),
+                        content_type=content_type,
+                    )
+
+            # ================= HEADERS =================
+            response["Content-Disposition"] = f'attachment; filename="{file_name}"'
+            response["Content-Length"] = str(file_size)
+            response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+            response["Access-Control-Expose-Headers"] = "Content-Length, Content-Disposition"
+            response["X-Content-Type-Options"] = "nosniff"
+
+            logger.info(f"Streaming download for {file_name}")
             return response
 
         except Exception as e:
             logger.error(f"Download failed for time capsule media {media_file_id}: {e}")
             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 
 class TaggedCapsoulTracker(SecuredView):
