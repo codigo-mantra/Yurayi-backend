@@ -3429,6 +3429,10 @@ class TaggedCapsoulTracker(SecuredView):
                 time_capsoul=time_caspsoul,
                 custom_message = message
             )
+            cache_key_list = f'{user.email}_capsouls'
+            cache_key = f'{user.email}_capsoul_{capsoul_id}'
+            cache.delete(cache_key)
+            cache.delete(cache_key_list)
             return Response(serializer.data, status=status.HTTP_200_OK)
         
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
