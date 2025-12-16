@@ -633,10 +633,18 @@ class MediaFileDownloadView(SecuredView):
         
             # If no chunk-size present in metadata => full decryption mode
             if not decryptor.metadata.get("chunk-size"):
-                full_plaintext, content = get_file_bytes(s3_key)
+                cache_key = f"media_bytes_{s3_key}"
+                cached_data = cache.get(cache_key)
+                if cached_data:
+                    full_plaintext = cached_data
+                else:
+                    full_plaintext, content = get_file_bytes(s3_key)
 
-                if not full_plaintext and media_file and user:
-                    full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                    if not full_plaintext and media_file and user:
+                        full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
+
+                    if full_plaintext:
+                        cache.set(cache_key, full_plaintext, timeout=self.CACHE_TIMEOUT)
 
 
 
@@ -1827,7 +1835,7 @@ class ServeMedia(SecuredView):
         is_pdf = self._is_pdf_file(filename)
         is_csv = self._is_csv_file(filename)
         is_json = self._is_json_file(filename)
-        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv'}
+        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov'}
         is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
         
         # Route 1: Streaming with range support (video/audio that don't need conversion)
