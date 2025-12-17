@@ -3302,6 +3302,19 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
         
         return content_type or 'application/octet-stream'
     
+    def _stream_chunked_bytes(self, s3_key):
+        with ChunkedDecryptor(s3_key) as decryptor:
+            for decrypted_chunk in decryptor.decrypt_chunks():
+                if not decrypted_chunk:
+                    continue
+
+                offset = 0
+                size = len(decrypted_chunk)
+
+                while offset < size:
+                    yield decrypted_chunk[offset:offset + self.DOWNLOAD_CHUNK_SIZE]
+                    offset += self.DOWNLOAD_CHUNK_SIZE
+    
     def _stream_full_bytes(self, full_plaintext):
         total = len(full_plaintext)
         offset = 0
@@ -3383,7 +3396,7 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
                     response = StreamingHttpResponse(
-                        streaming_content=self._stream_chunked_bytes(decryptor),
+                        streaming_content=self._stream_chunked_bytes(s3_key),
                         content_type=content_type,
                     )
 
