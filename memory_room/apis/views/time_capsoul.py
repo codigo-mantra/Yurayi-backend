@@ -2878,95 +2878,105 @@ class ServeTimeCapSoulMedia(SecuredView):
         resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
         return resp
 
-    def _create_response(self, content, content_type, filename, streaming=False, 
-                        range_support=False, start=0, end=None, total_size=None):
-        """
-        Unified response creator for all file types.
-        
-        Args:
-            content: File bytes or generator for streaming
-            content_type: MIME type
-            filename: Original filename
-            streaming: Whether to use StreamingHttpResponse
-            range_support: Whether to add Range headers
-            start: Start byte for range requests
-            end: End byte for range requests
-            total_size: Total file size for range requests
-        """
-        # Create appropriate response type
+    
+    def _create_response(
+        self,
+        content,
+        content_type,
+        filename,
+        streaming=False,
+        range_support=False,
+        start=0,
+        end=None,
+        total_size=None
+    ):
         if streaming:
             response = StreamingHttpResponse(content, content_type=content_type)
-            if range_support and start > 0:
-                response.status_code = 206
         else:
             response = HttpResponse(content, content_type=content_type)
-        
-        # Set content length
-        if streaming and total_size:
-            length = (end - start) if end else total_size
-            response["Content-Length"] = str(length)
-        elif not streaming:
-            if content:
-                response["Content-Length"] = str(len(content))
-        
-        # Range headers
-        if range_support:
+
+        # ---------- RANGE HEADERS ----------
+        if range_support and total_size is not None and (start > 0 or end is not None):
+            response.status_code = 206
             response["Accept-Ranges"] = "bytes"
-            if start > 0 and end and total_size:
-                response["Content-Range"] = f"bytes {start}-{end-1}/{total_size}"
-        
-        # Security headers
+
+            actual_end = (end - 1) if end is not None else (total_size - 1)
+            content_length = actual_end - start + 1
+
+            response["Content-Length"] = str(content_length)
+            response["Content-Range"] = f"bytes {start}-{actual_end}/{total_size}"
+        else:
+            response.status_code = 200
+            if not streaming and content:
+                response["Content-Length"] = str(len(content))
+
+        # ---------- COMMON HEADERS ----------
         response["Content-Disposition"] = "inline"
         response["X-Content-Type-Options"] = "nosniff"
         response["Cache-Control"] = "private, max-age=3600"
-        
-        # Special CSP for SVG
+
+        # ---------- CSP ----------
         if content_type == "image/svg+xml":
-            response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+            response["Content-Security-Policy"] = (
+                "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+            )
         else:
             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
             csp = f"frame-ancestors 'self' {frame_ancestors};"
             if range_support:
                 csp = f"media-src *; {csp}"
             response["Content-Security-Policy"] = csp
-        
-        # CORS headers
+
+        # ---------- CORS ----------
         response["Cross-Origin-Resource-Policy"] = "cross-origin"
         response["Access-Control-Allow-Origin"] = "*"
         if range_support:
-            response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
-        
+            response["Access-Control-Expose-Headers"] = (
+                "Accept-Ranges, Content-Range, Content-Length"
+            )
+
         return response
-    
+
     def _stream_chunked_decrypt(self, s3_key, start_byte=0, end_byte=None, media_file=None, user=None):
-        """Generator that streams decrypted chunks."""
+        """Generator that streams decrypted chunks with proper Range support."""
         with ChunkedDecryptor(s3_key) as decryptor:
-        
-            # If no chunk-size present in metadata => full decryption mode
+
+            # ---------- FULL DECRYPT MODE ----------
             if not decryptor.metadata.get("chunk-size"):
-                # full_plaintext = decryptor.decrypt_full()
-                full_plaintext, content = get_file_bytes(s3_key)
+                cache_key = f"media_bytes_{s3_key}"
+                full_plaintext = cache.get(cache_key)
 
-                if not full_plaintext and media_file and user:
-                    full_plaintext, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                if not full_plaintext:
+                    full_plaintext, _ = get_file_bytes(s3_key)
+                    if not full_plaintext and media_file and user:
+                        full_plaintext, _ = get_media_file_bytes_with_content_type(media_file, user)
+                    if full_plaintext:
+                        cache.set(cache_key, full_plaintext, timeout=self.CACHE_TIMEOUT)
 
+                if not full_plaintext:
+                    return
 
-                # Yield in streamable pieces
-                offset = 0
-                while offset < len(full_plaintext):
-                    yield full_plaintext[offset:offset + self.STREAMING_CHUNK_SIZE]
-                    offset += self.STREAMING_CHUNK_SIZE
+                # ✅ RANGE-AWARE STREAMING 
+                offset = start_byte
+                limit = end_byte if end_byte is not None else len(full_plaintext)
 
+                while offset < limit:
+                    chunk_end = min(offset + self.STREAMING_CHUNK_SIZE, limit)
+                    yield full_plaintext[offset:chunk_end]
+                    offset = chunk_end
+
+            # ---------- CHUNKED DECRYPT MODE ----------
             else:
-                # Chunked mode (large files)
                 for decrypted_chunk in decryptor.decrypt_chunks(start_byte, end_byte):
                     if not decrypted_chunk:
                         continue
-                    
+
                     offset = 0
                     while offset < len(decrypted_chunk):
-                        yield decrypted_chunk[offset:offset + self.STREAMING_CHUNK_SIZE]
-                        offset += self.STREAMING_CHUNK_SIZE
+                        chunk_end = min(offset + self.STREAMING_CHUNK_SIZE, len(decrypted_chunk))
+                        yield decrypted_chunk[offset:chunk_end]
+                        offset = chunk_end
+
     
     def _get_file_size_from_metadata(self, s3_key):
         """Calculate decrypted file size from S3 metadata."""
