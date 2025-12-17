@@ -1053,6 +1053,9 @@ class TimeCapSoulUnlockView(SecuredView):
 
         if serializer.is_valid():
             serializer.save()
+            cache_key = f'{user.email}_capsouls'
+            cache.delete(cache_key)
+
             return Response({"message": "TimeCapsoul locked successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
