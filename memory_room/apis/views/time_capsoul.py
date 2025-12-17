@@ -289,7 +289,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                 media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul=time_capsoul,user=user, is_deleted =False).order_by('-updated_at')
             else:
-                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_deleted = False).first()
+                recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email, is_capsoul_deleted = False).first()
                 if not recipient:
                     logger.info(f'User is not owner and recipient not found for tagged capsoul {time_capsoul.id} and user {user.email}')
                     return Response(status=status.HTTP_404_NOT_FOUND)
