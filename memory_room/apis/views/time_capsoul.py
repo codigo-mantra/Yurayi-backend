@@ -3262,7 +3262,7 @@ class ServeTimeCapSoulMedia(SecuredView):
                 # )
             
             # For non-converted files, return simple response
-            # return self._create_response(file_bytes, content_type, filename)
+            return self._create_response(file_bytes, content_type, filename)
 
             
 
