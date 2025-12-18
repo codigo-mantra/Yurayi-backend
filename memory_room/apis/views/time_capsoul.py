@@ -3075,29 +3075,53 @@ class ServeTimeCapSoulMedia(SecuredView):
         is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
         
         # Route 1: Streaming with range support (video/audio that don't need conversion)
-        if (category in ['video', 'audio']) and not needs_conversion and not is_special:
-            file_size = self._get_file_size_from_metadata(s3_key)
-            if not file_size:
-                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        # if (category in ['video', 'audio']) and not needs_conversion and not is_special:
+        #     file_size = self._get_file_size_from_metadata(s3_key)
+        #     if not file_size:
+        #         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-            # Parse range header
-            start, end = 0, file_size
-            range_header = request.headers.get("Range", "")
-            if range_header:
-                import re
-                m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-                if m:
-                    start = int(m.group(1))
-                    end = int(m.group(2)) + 1 if m.group(2) else file_size
-                    end = min(end, file_size)
+        #     # Parse range header
+        #     start, end = 0, file_size
+        #     range_header = request.headers.get("Range", "")
+        #     if range_header:
+        #         import re
+        #         m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+        #         if m:
+        #             start = int(m.group(1))
+        #             end = int(m.group(2)) + 1 if m.group(2) else file_size
+        #             end = min(end, file_size)
             
-            logger.info(f"Streaming {category}: {filename}")
-            return self._create_response(
-                self._stream_chunked_decrypt(s3_key, start, end, media_file, user),
-                content_type, filename,
-                streaming=True, range_support=True,
-                start=start, end=end, total_size=file_size
+        #     logger.info(f"Streaming {category}: {filename}")
+        #     return self._create_response(
+        #         self._stream_chunked_decrypt(s3_key, start, end, media_file, user),
+        #         content_type, filename,
+        #         streaming=True, range_support=True,
+        #         start=start, end=end, total_size=file_size
+        #     )
+
+        # Route 1: VIDEO / AUDIO — decrypt once & serve with byte-range
+        if category in ['video', 'audio'] and not needs_conversion and not is_special:
+            logger.info(f"Serving {category} via byte-range: {filename}")
+
+            cache_key = f"media_bytes_{s3_key}"
+            file_bytes = cache.get(cache_key)
+
+            if not file_bytes:
+                file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+                if not file_bytes:
+                    file_bytes, _ = get_media_file_bytes_with_content_type(media_file, user)
+                if not file_bytes:
+                    return Response(status=500)
+
+                cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+
+            return self._stream_file_with_range(
+                request,
+                file_bytes,
+                content_type,
+                filename
             )
+
         
         # Route 2: Progressive streaming (images, no special handling)
         elif category == 'image' and not is_special:
@@ -3158,9 +3182,10 @@ class ServeTimeCapSoulMedia(SecuredView):
                 filename = filename.rsplit('.', 1)[0] + '.jpg'
             
             elif needs_conversion:
+
                 cache_key = f'{bytes_cache_key}_mp4'
                 mp4_bytes = cache.get(cache_key)
-                
+
                 if not mp4_bytes:
                     try:
                         logger.info(f"Converting {extension} to MP4 for {filename}")
@@ -3176,43 +3201,70 @@ class ServeTimeCapSoulMedia(SecuredView):
                         logger.error(f"Conversion failed for {filename}: {e}")
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
-                file_bytes = mp4_bytes
-                content_type = "video/mp4"
-                filename = filename.rsplit('.', 1)[0] + '.mp4'
+
+                return self._stream_file_with_range(
+                    request,
+                    mp4_bytes,
+                    "video/mp4",
+                    filename.rsplit('.', 1)[0] + ".mp4"
+            )
+                # cache_key = f'{bytes_cache_key}_mp4'
+                # mp4_bytes = cache.get(cache_key)
                 
-                # Now stream the converted MP4 with range support
-                logger.info(f"Streaming converted MP4: {filename}")
-                file_size = len(file_bytes)
+                # if not mp4_bytes:
+                #     try:
+                #         logger.info(f"Converting {extension} to MP4 for {filename}")
+                #         mp4_bytes, _ = convert_video_to_mp4_bytes(
+                #             source_format=extension,
+                #             file_bytes=file_bytes
+                #         )
+                #         cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+                #     except Exception as e:
+                #         mp4_bytes = convert_mov_bytes_to_mp4_bytes(file_bytes)
+
+                #     except Exception as e:
+                #         logger.error(f"Conversion failed for {filename}: {e}")
+                #         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
-                # Parse range header
-                start, end = 0, file_size
-                range_header = request.headers.get("Range", "")
-                if range_header:
-                    import re
-                    m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-                    if m:
-                        start = int(m.group(1))
-                        end = int(m.group(2)) + 1 if m.group(2) else file_size
-                        end = min(end, file_size)
+                # file_bytes = mp4_bytes
+                # content_type = "video/mp4"
+                # filename = filename.rsplit('.', 1)[0] + '.mp4'
                 
-                # Create generator for range
-                def generate_range():
-                    chunk_size = self.STREAMING_CHUNK_SIZE
-                    pos = start
-                    while pos < end:
-                        chunk_end = min(pos + chunk_size, end)
-                        yield file_bytes[pos:chunk_end]
-                        pos = chunk_end
+                # # Now stream the converted MP4 with range support
+                # logger.info(f"Streaming converted MP4: {filename}")
+                # file_size = len(file_bytes)
                 
-                return self._create_response(
-                    generate_range(),
-                    content_type, filename,
-                    streaming=True, range_support=True,
-                    start=start, end=end, total_size=file_size
-                )
+                # # Parse range header
+                # start, end = 0, file_size
+                # range_header = request.headers.get("Range", "")
+                # if range_header:
+                #     import re
+                #     m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+                #     if m:
+                #         start = int(m.group(1))
+                #         end = int(m.group(2)) + 1 if m.group(2) else file_size
+                #         end = min(end, file_size)
+                
+                # # Create generator for range
+                # def generate_range():
+                #     chunk_size = self.STREAMING_CHUNK_SIZE
+                #     pos = start
+                #     while pos < end:
+                #         chunk_end = min(pos + chunk_size, end)
+                #         yield file_bytes[pos:chunk_end]
+                #         pos = chunk_end
+                
+                # return self._create_response(
+                #     generate_range(),
+                #     content_type, filename,
+                #     streaming=True, range_support=True,
+                #     start=start, end=end, total_size=file_size
+                # )
             
             # For non-converted files, return simple response
-            return self._create_response(file_bytes, content_type, filename)
+            # return self._create_response(file_bytes, content_type, filename)
+
+            
 
 import math
 
