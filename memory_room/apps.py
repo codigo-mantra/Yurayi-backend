@@ -7,6 +7,8 @@ class MemoryRoomConfig(AppConfig):
     name = 'memory_room'
 
     def ready(self):
+        cache.clear()
+        print(f'\n ------- Cache Cleared -----')
         # clear_all_cache.apply_async()
         if not settings.DEBUG:
             # cache.clear()
