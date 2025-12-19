@@ -851,6 +851,472 @@ def convert_video_to_mp4_bytes(file_bytes, source_format):
                 logger.warning(f"Failed to clean up {file_path}: {cleanup_err}")
 
 
+import subprocess
+import tempfile
+import os
+import shutil
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+class VideoConversionError(Exception):
+    pass
+
+
+def convert_mov_bytes_to_mp4_bytes_strict(
+    mov_bytes: bytes,
+    timeout: int = 300
+) -> bytes:
+    """
+    Strict MOV → MP4 conversion.
+    Guarantees video presence or raises error.
+    """
+
+    if not mov_bytes:
+        raise VideoConversionError("Empty MOV bytes")
+
+    if not isinstance(mov_bytes, (bytes, bytearray)):
+        raise VideoConversionError("Input must be bytes")
+
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        raise VideoConversionError("FFmpeg / FFprobe not installed")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        input_path = os.path.join(tmp_dir, "input.mov")
+        output_path = os.path.join(tmp_dir, "output.mp4")
+
+        # Write MOV bytes
+        with open(input_path, "wb") as f:
+            f.write(mov_bytes)
+
+        # -------- VERIFY VIDEO STREAM --------
+        probe_cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            input_path
+        ]
+
+        probe = subprocess.run(
+            probe_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        if not probe.stdout.strip():
+            raise VideoConversionError("No video stream found in MOV")
+
+        # -------- SAFE RE-ENCODE --------
+        convert_cmd = [
+            "ffmpeg",
+            "-y",
+            "-err_detect", "ignore_err",
+            "-i", input_path,
+            "-map", "0:v:0",
+            "-map", "0:a:0?",
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "high",
+            "-level", "4.2",
+            "-movflags", "+faststart",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            output_path
+        ]
+
+        try:
+            subprocess.run(
+                convert_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise VideoConversionError(
+                f"FFmpeg failed: {e.stderr.decode(errors='ignore')}"
+            )
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise VideoConversionError("MP4 output invalid")
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
+def convert_ts_bytes_to_mp4_bytes_strict(
+    ts_bytes: bytes,
+    timeout: int = 300
+) -> bytes:
+    """
+    Strict TS → MP4 conversion.
+    Guarantees video presence or raises error.
+    """
+
+    if not ts_bytes:
+        raise VideoConversionError("Empty TS bytes")
+
+    if not isinstance(ts_bytes, (bytes, bytearray)):
+        raise VideoConversionError("Input must be bytes")
+
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        raise VideoConversionError("FFmpeg / FFprobe not installed")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        input_path = os.path.join(tmp_dir, "input.ts")
+        output_path = os.path.join(tmp_dir, "output.mp4")
+
+        # Write TS bytes
+        with open(input_path, "wb") as f:
+            f.write(ts_bytes)
+
+        # -------- VERIFY VIDEO STREAM --------
+        probe_cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            input_path
+        ]
+
+        probe = subprocess.run(
+            probe_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        if not probe.stdout.strip():
+            raise VideoConversionError("No video stream found in TS")
+
+        # -------- FORCE SAFE RE-ENCODE --------
+        convert_cmd = [
+            "ffmpeg",
+            "-y",
+            "-fflags", "+genpts+discardcorrupt",
+            "-err_detect", "ignore_err",
+            "-i", input_path,
+            "-map", "0:v:0",
+            "-map", "0:a:0?",
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "main",
+            "-level", "4.0",
+            "-movflags", "+faststart",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-max_muxing_queue_size", "4096",
+            output_path
+        ]
+
+        try:
+            subprocess.run(
+                convert_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise VideoConversionError(
+                f"FFmpeg failed: {e.stderr.decode(errors='ignore')}"
+            )
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise VideoConversionError("MP4 output invalid")
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
+def convert_mpg_bytes_to_mp4_bytes_strict(
+    mpg_bytes: bytes,
+    timeout: int = 300
+) -> bytes:
+    """
+    Strict MPG → MP4 conversion.
+    Guarantees video presence or raises error.
+    """
+
+    if not mpg_bytes:
+        raise VideoConversionError("Empty MPG bytes")
+
+    if not isinstance(mpg_bytes, (bytes, bytearray)):
+        raise VideoConversionError("Input must be bytes")
+
+    if not shutil.which("ffmpeg") or not shutil.which("ffprobe"):
+        raise VideoConversionError("FFmpeg / FFprobe not installed")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        input_path = os.path.join(tmp_dir, "input.mpg")
+        output_path = os.path.join(tmp_dir, "output.mp4")
+
+        # Write MPG bytes
+        with open(input_path, "wb") as f:
+            f.write(mpg_bytes)
+
+        # -------- VERIFY VIDEO STREAM --------
+        probe_cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            input_path
+        ]
+
+        probe = subprocess.run(
+            probe_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        if not probe.stdout.strip():
+            raise VideoConversionError("No video stream found in MPG")
+
+        # -------- FORCE SAFE RE-ENCODE --------
+        convert_cmd = [
+            "ffmpeg",
+            "-y",
+            "-fflags", "+genpts",
+            "-err_detect", "ignore_err",
+            "-i", input_path,
+            "-map", "0:v:0",
+            "-map", "0:a:0?",
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "main",
+            "-level", "4.0",
+            "-movflags", "+faststart",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            output_path
+        ]
+
+        try:
+            subprocess.run(
+                convert_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise VideoConversionError(
+                f"FFmpeg failed: {e.stderr.decode(errors='ignore')}"
+            )
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise VideoConversionError("MP4 output invalid")
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
+def convert_mpeg_bytes_to_mp4_bytes_strict(
+    mpeg_bytes: bytes,
+    timeout: int = 300
+) -> bytes:
+    """
+    Strict MPEG → MP4 conversion.
+    Guarantees video presence or fails.
+    """
+
+    if not mpeg_bytes:
+        raise VideoConversionError("Empty MPEG bytes")
+
+    if not shutil.which("ffmpeg"):
+        raise VideoConversionError("FFmpeg not installed")
+
+    if not shutil.which("ffprobe"):
+        raise VideoConversionError("FFprobe not installed")
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        input_path = os.path.join(tmp_dir, "input.mpeg")
+        output_path = os.path.join(tmp_dir, "output.mp4")
+
+        # Write MPEG bytes
+        with open(input_path, "wb") as f:
+            f.write(mpeg_bytes)
+
+        # --------- VERIFY VIDEO STREAM ---------
+        probe_cmd = [
+            "ffprobe",
+            "-v", "error",
+            "-select_streams", "v",
+            "-show_entries", "stream=index",
+            "-of", "csv=p=0",
+            input_path
+        ]
+
+        probe = subprocess.run(
+            probe_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE
+        )
+
+        if not probe.stdout.strip():
+            raise VideoConversionError("No video stream found in MPEG")
+
+        # --------- FORCE RE-ENCODE (NO STREAM COPY) ---------
+        convert_cmd = [
+            "ffmpeg",
+            "-y",
+            "-err_detect", "ignore_err",
+            "-i", input_path,
+            "-map", "0:v:0",
+            "-map", "0:a:0?",
+            "-c:v", "libx264",
+            "-pix_fmt", "yuv420p",
+            "-profile:v", "main",
+            "-level", "4.0",
+            "-movflags", "+faststart",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            output_path
+        ]
+
+        try:
+            subprocess.run(
+                convert_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=True
+            )
+        except subprocess.CalledProcessError as e:
+            raise VideoConversionError(
+                f"FFmpeg failed: {e.stderr.decode(errors='ignore')}"
+            )
+
+        if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
+            raise VideoConversionError("MP4 output invalid")
+
+        with open(output_path, "rb") as f:
+            return f.read()
+
+
+def convert_mpeg_bytes_to_mp4_bytes(
+    mpeg_bytes: bytes,
+    timeout: int = 300
+):
+    """
+    Convert MPEG video bytes to MP4 bytes using FFmpeg.
+
+    Args:
+        mpeg_bytes (bytes): Input MPEG file bytes
+        timeout (int): FFmpeg timeout in seconds
+
+    Returns:
+        bytes: Converted MP4 bytes
+
+    Raises:
+        VideoConversionError
+    """
+
+    # ---------- VALIDATION ----------
+    if not mpeg_bytes:
+        raise VideoConversionError("Empty MPEG byte stream")
+
+    if not isinstance(mpeg_bytes, (bytes, bytearray)):
+        raise VideoConversionError("Input must be bytes")
+
+    if not shutil.which("ffmpeg"):
+        raise VideoConversionError("FFmpeg not installed or not in PATH")
+
+    # ---------- TEMP FILES ----------
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        input_path = os.path.join(tmp_dir, "input.mpeg")
+        output_path = os.path.join(tmp_dir, "output.mp4")
+
+        # Write input bytes
+        try:
+            with open(input_path, "wb") as f:
+                f.write(mpeg_bytes)
+        except Exception as e:
+            raise VideoConversionError(f"Failed to write temp MPEG file: {e}")
+
+        # ---------- FFmpeg COMMANDS ----------
+        stream_copy_cmd = [
+            "ffmpeg",
+            "-y",
+            "-err_detect", "ignore_err",
+            "-i", input_path,
+            "-c", "copy",
+            "-movflags", "+faststart",
+            output_path
+        ]
+
+        reencode_cmd = [
+            "ffmpeg",
+            "-y",
+            "-err_detect", "ignore_err",
+            "-i", input_path,
+            "-map", "0:v:0?",
+            "-map", "0:a:0?",
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-pix_fmt", "yuv420p",
+            "-movflags", "+faststart",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            output_path
+        ]
+
+        # ---------- CONVERSION ----------
+        try:
+            # 1️⃣ Try stream copy
+            subprocess.run(
+                stream_copy_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=True
+            )
+
+            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
+                with open(output_path, "rb") as f:
+                    return f.read()
+
+            raise VideoConversionError("Stream copy produced empty output")
+
+        except Exception as stream_err:
+            logger.warning(f"Stream copy failed, retrying re-encode: {stream_err}")
+
+        # 2️⃣ Full re-encode fallback
+        try:
+            subprocess.run(
+                reencode_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=timeout,
+                check=True
+            )
+
+            if not os.path.exists(output_path):
+                raise VideoConversionError("MP4 output file not created")
+
+            if os.path.getsize(output_path) == 0:
+                raise VideoConversionError("Converted MP4 is empty")
+
+            with open(output_path, "rb") as f:
+                return f.read()
+
+        except subprocess.TimeoutExpired:
+            raise VideoConversionError("FFmpeg conversion timed out")
+
+        except subprocess.CalledProcessError as e:
+            raise VideoConversionError(
+                f"FFmpeg failed: {e.stderr.decode(errors='ignore')}"
+            )
+
+        except Exception as e:
+            raise VideoConversionError(str(e))
+
+
 def convert_mov_bytes_to_mp4_bytes(mov_bytes: bytes) -> bytes:
     """
     Convert MOV video bytes to MP4 video bytes using FFmpeg.

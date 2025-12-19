@@ -45,7 +45,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import time
 from django.http import HttpResponseForbidden, HttpResponseRedirect,Http404
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes,convert_mpeg_bytes_to_mp4_bytes_strict,convert_mpg_bytes_to_mp4_bytes_strict,convert_ts_bytes_to_mp4_bytes_strict,convert_mov_bytes_to_mp4_bytes_strict
+
 
 from userauth.models import Assets
 from userauth.apis.views.views import SecuredView,NewSecuredView
@@ -3071,7 +3072,7 @@ class ServeTimeCapSoulMedia(SecuredView):
         is_pdf = self._is_pdf_file(filename)
         is_csv = self._is_csv_file(filename)
         is_json = self._is_json_file(filename)
-        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov'}
+        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov', '.ts'}
         is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
         
         # Route 1: Streaming with range support (video/audio that don't need conversion)
@@ -3189,25 +3190,41 @@ class ServeTimeCapSoulMedia(SecuredView):
                 if not mp4_bytes:
                     try:
                         logger.info(f"Converting {extension} to MP4 for {filename}")
-                        mp4_bytes, _ = convert_video_to_mp4_bytes(
-                            source_format=extension,
-                            file_bytes=file_bytes
-                        )
-                        cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
-                    except Exception as e:
-                        mp4_bytes = convert_mov_bytes_to_mp4_bytes(file_bytes)
+                        if extension == '.mpeg':
+                            mp4_bytes = convert_mpeg_bytes_to_mp4_bytes_strict(file_bytes)
+                        elif extension == '.mpg':
+                            mp4_bytes = convert_mpg_bytes_to_mp4_bytes_strict(file_bytes)
+                        elif extension == '.ts':
+                            mp4_bytes = convert_ts_bytes_to_mp4_bytes_strict(file_bytes)
+                        elif extension == '.mov':
+                            mp4_bytes = convert_mov_bytes_to_mp4_bytes_strict(file_bytes)
+                        else:
+                            try:
+                                mp4_bytes, _ = convert_video_to_mp4_bytes(
+                                    source_format=extension,
+                                    file_bytes=file_bytes
+                                )
+                            except Exception as e:
+                                mp4_bytes = convert_mov_bytes_to_mp4_bytes(file_bytes)
+                            except Exception as e:
+                                logger.error(f"Conversion failed for {filename}: {e}")
+                                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    
+                        if mp4_bytes:
+                            logger.info(f"Convereted {extension} to MP4 for {filename}")
+                            cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
 
                     except Exception as e:
                         logger.error(f"Conversion failed for {filename}: {e}")
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                
-
+    
                 return self._stream_file_with_range(
                     request,
                     mp4_bytes,
                     "video/mp4",
                     filename.rsplit('.', 1)[0] + ".mp4"
-            )
+                )
+            
                 # cache_key = f'{bytes_cache_key}_mp4'
                 # mp4_bytes = cache.get(cache_key)
                 

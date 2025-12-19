@@ -78,6 +78,7 @@ from memory_room.s3_helpers import s3_helper
 from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file,get_decrypt_file_bytes,get_media_file_bytes_with_content_type,generate_room_media_s3_key
 from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_file_size, convert_video_to_mp4_bytes, convert_audio_to_mp3_bytes, convert_mpeg_to_mp4_bytes
 
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes,convert_mpeg_bytes_to_mp4_bytes_strict,convert_mpg_bytes_to_mp4_bytes_strict,convert_ts_bytes_to_mp4_bytes_strict,convert_mov_bytes_to_mp4_bytes_strict
 
 MEDIA_FILES_BUCKET = 'yurayi-media'
 
@@ -1975,7 +1976,7 @@ class ServeMedia(SecuredView):
         is_pdf = self._is_pdf_file(filename)
         is_csv = self._is_csv_file(filename)
         is_json = self._is_json_file(filename)
-        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov'}
+        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov', '.ts'}
         is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
         
         # Route 1: Streaming with range support (video/audio that don't need conversion)
@@ -2067,11 +2068,30 @@ class ServeMedia(SecuredView):
                 if not mp4_bytes:
                     try:
                         logger.info(f"Converting {extension} to MP4 for {filename}")
-                        mp4_bytes, _ = convert_video_to_mp4_bytes(
-                            source_format=extension,
-                            file_bytes=file_bytes
-                        )
-                        cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+                        if extension == '.mpeg':
+                            mp4_bytes = convert_mpeg_bytes_to_mp4_bytes_strict(file_bytes)
+                        elif extension == '.mpg':
+                            mp4_bytes = convert_mpg_bytes_to_mp4_bytes_strict(file_bytes)
+                        elif extension == '.ts':
+                            mp4_bytes = convert_ts_bytes_to_mp4_bytes_strict(file_bytes)
+                        elif extension == '.mov':
+                            mp4_bytes = convert_mov_bytes_to_mp4_bytes_strict(file_bytes)
+                        else:
+                            try:
+                                mp4_bytes, _ = convert_video_to_mp4_bytes(
+                                    source_format=extension,
+                                    file_bytes=file_bytes
+                                )
+                            except Exception as e:
+                                mp4_bytes = convert_mov_bytes_to_mp4_bytes(file_bytes)
+                            except Exception as e:
+                                logger.error(f"Conversion failed for {filename}: {e}")
+                                return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    
+                        if mp4_bytes:
+                            logger.info(f"Convereted {extension} to MP4 for {filename}")
+                            cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+
                     except Exception as e:
                         logger.error(f"Conversion failed for {filename}: {e}")
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)

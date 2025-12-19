@@ -21,6 +21,10 @@ from io import BytesIO
 import time
 import subprocess
 from PIL import Image
+import io
+import numpy as np
+from PIL import Image, ImageDraw
+from mutagen import File as MutagenFile
 
 logger = logging.getLogger(__name__)
 
@@ -969,6 +973,104 @@ def extract_thumbnail_full_decrypt(s3_key, file_ext):
 #         except Exception:
 #             pass
 
+
+def generate_waveform_thumbnail(size=(512, 512)) -> bytes:
+    """
+    Generate a clean waveform placeholder image.
+    """
+
+    width, height = size
+    img = Image.new("RGB", size, "#0f172a")
+    draw = ImageDraw.Draw(img)
+
+    samples = np.random.randint(20, height // 2, width // 4)
+
+    center = height // 2
+    x = 0
+
+    for s in samples:
+        draw.line((x, center - s, x, center + s), fill="#38bdf8", width=2)
+        x += 4
+
+    output = io.BytesIO()
+    img.save(output, format="JPEG", quality=85)
+    return output.getvalue()
+
+
+
+def extract_audio_thumbnail_from_bytes(
+    audio_bytes: bytes,
+    extension: str,
+    fallback_waveform: bool = True,
+    thumb_size=(512, 512),
+) -> bytes | None:
+    """
+    Extract embedded audio cover art from audio bytes.
+    Returns JPEG bytes or None.
+    """
+
+    if not audio_bytes or not isinstance(audio_bytes, (bytes, bytearray)):
+        logger.warning("Empty or invalid audio bytes")
+        return None
+
+    try:
+        audio = MutagenFile(BytesIO(audio_bytes), easy=False)
+    except Exception as e:
+        logger.error(f"Mutagen failed to parse audio: {e}")
+        audio = None
+
+    image_bytes = None
+
+    # 🎵 MP3 / ID3
+    try:
+        if audio and hasattr(audio, "tags"):
+            for tag in audio.tags.values():
+                if hasattr(tag, "data"):
+                    image_bytes = tag.data
+                    break
+    except Exception:
+        pass
+
+    # 🎵 MP4 / M4A
+    try:
+        if not image_bytes and audio and hasattr(audio, "tags"):
+            covr = audio.tags.get("covr")
+            if covr:
+                image_bytes = covr[0]
+    except Exception:
+        pass
+
+    # 🎵 FLAC / OGG
+    try:
+        if not image_bytes and audio and hasattr(audio, "pictures"):
+            if audio.pictures:
+                image_bytes = audio.pictures[0].data
+    except Exception:
+        pass
+
+    # 🎨 Convert image → JPEG
+    if image_bytes:
+        try:
+            img = Image.open(BytesIO(image_bytes)).convert("RGB")
+            img.thumbnail(thumb_size)
+
+            output = BytesIO()
+            img.save(output, format="JPEG", quality=90)
+            return output.getvalue()
+        except Exception as e:
+            logger.error(f"Image conversion failed: {e}")
+
+    # 🔊 Fallback waveform thumbnail
+    if fallback_waveform:
+        try:
+            return generate_waveform_thumbnail(thumb_size)
+        except Exception as e:
+            logger.error(f"Waveform fallback failed: {e}")
+
+    return None
+
+
+
 def decrypt_upload_and_extract_audio_thumbnail_chunked(
         key: str,
         encrypted_file,
@@ -1264,6 +1366,12 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                         extension=file_ext,
                         decrypted_bytes=full_data
                     )
+                    if not thumbnail_data:
+                        thumbnail_data = extract_audio_thumbnail_from_bytes(
+                            extension=file_ext,
+                            audio_bytes=full_data,
+                        )
+
             except Exception as e:
                 logger.error(f'Fallback thumbnail extraction failed for s3-key: {s3_key}, error: {str(e)}')
             
