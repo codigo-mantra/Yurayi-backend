@@ -45,7 +45,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import time
 from django.http import HttpResponseForbidden, HttpResponseRedirect,Http404
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes,convert_mpeg_bytes_to_mp4_bytes_strict,convert_mpg_bytes_to_mp4_bytes_strict,convert_ts_bytes_to_mp4_bytes_strict,convert_mov_bytes_to_mp4_bytes_strict
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes,convert_mpeg_bytes_to_mp4_bytes_strict,convert_mpg_bytes_to_mp4_bytes_strict,convert_ts_bytes_to_mp4_bytes_strict,convert_mov_bytes_to_mp4_bytes_strict,convert_3gp_bytes_to_mp4_bytes_strict,convert_m4v_bytes_to_mp4_bytes_strict
 
 
 from userauth.models import Assets
@@ -3072,7 +3072,7 @@ class ServeTimeCapSoulMedia(SecuredView):
         is_pdf = self._is_pdf_file(filename)
         is_csv = self._is_csv_file(filename)
         is_json = self._is_json_file(filename)
-        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov', '.ts'}
+        needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov', '.ts', '.m4v', '.3gp'}
         is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
         
         # Route 1: Streaming with range support (video/audio that don't need conversion)
@@ -3198,6 +3198,12 @@ class ServeTimeCapSoulMedia(SecuredView):
                             mp4_bytes = convert_ts_bytes_to_mp4_bytes_strict(file_bytes)
                         elif extension == '.mov':
                             mp4_bytes = convert_mov_bytes_to_mp4_bytes_strict(file_bytes)
+                        elif extension == '.3gp':
+                            mp4_bytes = convert_3gp_bytes_to_mp4_bytes_strict(file_bytes)
+                        
+                        elif extension == '.m4v':
+                            mp4_bytes = convert_m4v_bytes_to_mp4_bytes_strict(file_bytes)
+
                         else:
                             try:
                                 mp4_bytes, _ = convert_video_to_mp4_bytes(
