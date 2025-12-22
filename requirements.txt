@@ -68,8 +68,10 @@ python-crontab==3.3.0
 python-dateutil==2.9.0.post0
 python-decouple==3.8
 python-dotenv==1.1.1
+python-magic==0.4.27
 PyYAML==6.0.2
 QtPy==2.4.3
+rawpy==0.25.1
 redis==6.2.0
 referencing==0.36.2
 requests==2.32.4
