@@ -69,6 +69,11 @@ from memory_room.apis.serializers.time_capsoul import (
 from memory_room.apis.serializers.notification import TimeCapSoulRecipientUpdateSerializer
 from memory_room.crypto_utils import get_file_bytes, encrypt_and_upload_file, decrypt_and_get_image, save_and_upload_decrypted_file, decrypt_and_replicat_files, generate_signature, verify_signature,get_media_file_bytes_with_content_type,encrypt_and_upload_file_chunked,generate_capsoul_media_s3_key,clean_filename
 
+import hashlib
+
+def media_cache_key(prefix: str, s3_key: str) -> str:
+    digest = hashlib.sha256(s3_key.encode("utf-8")).hexdigest()
+    return f"{prefix}:{digest}"
 
 MEDIA_FILES_BUCKET = 'yurayi-media'
 
@@ -2845,44 +2850,86 @@ class ServeTimeCapSoulMedia(SecuredView):
         
         return response
     
+    # def _stream_file_with_range(self, request, file_bytes, content_type, filename):
+    #     file_size = len(file_bytes)
+    #     range_header = request.headers.get("Range", "").strip()
+
+    #     if range_header:
+    #         import re
+    #         match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #     else:
+    #         match = None
+
+    #     if match:
+    #         start = int(match.group(1))
+    #         end = match.group(2)
+    #         end = int(end) if end else file_size - 1
+    #         length = end - start + 1
+
+    #         resp = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes[start:end+1])),
+    #             status=206,
+    #             content_type=content_type
+    #         )
+    #         resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    #         resp["Content-Length"] = str(length)
+
+    #     else:
+    #         resp = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes)),
+    #             content_type=content_type
+    #         )
+    #         resp["Content-Length"] = str(file_size)
+
+    #     resp["Accept-Ranges"] = "bytes"
+    #     resp["Content-Disposition"] = f'inline; filename="{filename}"'
+    #     frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #     resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #     return resp
+  
     def _stream_file_with_range(self, request, file_bytes, content_type, filename):
         file_size = len(file_bytes)
-        range_header = request.headers.get("Range", "").strip()
+        range_header = request.headers.get("Range")
 
         if range_header:
             import re
-            match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else file_size - 1
         else:
-            match = None
+            # ✅ FORCE RANGE ON FIRST REQUEST
+            start = 0
+            end = file_size - 1
 
-        if match:
-            start = int(match.group(1))
-            end = match.group(2)
-            end = int(end) if end else file_size - 1
-            length = end - start + 1
+        end = min(end, file_size - 1)
 
-            resp = StreamingHttpResponse(
-                FileWrapper(BytesIO(file_bytes[start:end+1])),
-                status=206,
-                content_type=content_type
-            )
-            resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-            resp["Content-Length"] = str(length)
+        def stream():
+            pos = start
+            while pos <= end:
+                chunk_end = min(pos + self.STREAMING_CHUNK_SIZE, end + 1)
+                yield file_bytes[pos:chunk_end]
+                pos = chunk_end
 
-        else:
-            resp = StreamingHttpResponse(
-                FileWrapper(BytesIO(file_bytes)),
-                content_type=content_type
-            )
-            resp["Content-Length"] = str(file_size)
+        response = StreamingHttpResponse(
+            stream(),
+            status=206,                     # ✅ ALWAYS 206
+            content_type=content_type
+        )
 
-        resp["Accept-Ranges"] = "bytes"
-        resp["Content-Disposition"] = f'inline; filename="{filename}"'
-        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-        resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-        return resp
+        response["Accept-Ranges"] = "bytes"
+        response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        response["Content-Length"] = str(end - start + 1)
+        response["Content-Disposition"] = "inline"
+        response["Cache-Control"] = "no-store"
+        response["X-Content-Type-Options"] = "nosniff"
 
-    
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Expose-Headers"] = (
+            "Accept-Ranges, Content-Range, Content-Length"
+        )
+
+        return response
+
     def _create_response(
         self,
         content,
@@ -3065,7 +3112,8 @@ class ServeTimeCapSoulMedia(SecuredView):
         extension = self._get_file_extension(filename)
         if extension == '':
             extension = '.' + media_file.title.lower().split('.', 1)[-1] 
-        category = self._categorize_file(filename)
+        # category = self._categorize_file(filename)
+        category = media_file.file_type
         content_type = self._guess_content_type(filename)
         
         # Check for special cases
@@ -3104,7 +3152,8 @@ class ServeTimeCapSoulMedia(SecuredView):
         if category in ['video', 'audio'] and not needs_conversion and not is_special:
             logger.info(f"Serving {category} via byte-range: {filename}")
 
-            cache_key = f"media_bytes_{s3_key}"
+            # cache_key = f"media_bytes_{s3_key}"
+            cache_key = media_cache_key('media_bytes_', s3_key)
             file_bytes = cache.get(cache_key)
 
             if not file_bytes:
@@ -3142,7 +3191,9 @@ class ServeTimeCapSoulMedia(SecuredView):
             logger.info(f"Full decrypt for {category}: {filename}")
             
             # Get or decrypt full file
-            bytes_cache_key = f"media_bytes_{s3_key}"
+            # bytes_cache_key = f"media_bytes_{s3_key}"
+            bytes_cache_key = media_cache_key('media_bytes_', s3_key)
+
             cached_data = cache.get(bytes_cache_key)
             
             if cached_data:
@@ -3803,16 +3854,27 @@ class ServeCoverTimecapsoulImages(SecuredView):
         """Generator that streams decrypted chunks."""
         with ChunkedDecryptor(s3_key) as decryptor:
             
-            # If no chunk-size present in metadata => full decryption mode
+            
             if not decryptor.metadata.get("chunk-size"):
-                full_plaintext, content = get_file_bytes(s3_key)
+                cache_key = f"media_bytes_{s3_key}"
+                full_plaintext = cache.get(cache_key)
+
+                if not full_plaintext:
+                    full_plaintext, _ = get_file_bytes(s3_key)
+                    media_file = TimeCapSoulMediaFile.objects.filter(s3_key = s3_key).first()
+                    if not full_plaintext and media_file and media_file.user:
+                        full_plaintext, _ = get_media_file_bytes_with_content_type(media_file, user)
+                    if full_plaintext:
+                        cache.set(cache_key, full_plaintext, timeout=self.CACHE_TIMEOUT)
+
+                if not full_plaintext:
+                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 
                 # Yield in streamable pieces
                 offset = 0
                 while offset < len(full_plaintext):
                     yield full_plaintext[offset:offset + self.STREAMING_CHUNK_SIZE]
                     offset += self.STREAMING_CHUNK_SIZE
-            
             else:
                 # Chunked mode (large files)
                 for decrypted_chunk in decryptor.decrypt_chunks():
@@ -3918,7 +3980,7 @@ class ServeCoverTimecapsoulImages(SecuredView):
             cached_data = cache.get(bytes_cache_key)
             
             if cached_data:
-                file_bytes, _ = cached_data
+                file_bytes = cached_data
             else:
                 file_bytes, _ = decrypt_s3_file_chunked(s3_key)
                 if not file_bytes:
@@ -3927,7 +3989,7 @@ class ServeCoverTimecapsoulImages(SecuredView):
 
                 if not file_bytes:
                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+                cache.set(bytes_cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
             
             # Handle HEIC/HEIF conversion
             if needs_conversion:
