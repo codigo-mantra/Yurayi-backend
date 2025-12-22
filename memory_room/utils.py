@@ -1283,6 +1283,140 @@ def convert_3gp_bytes_to_mp4_bytes_strict(
         with open(output_path, "rb") as f:
             return f.read()
 
+from PIL import Image, ImageSequence
+from io import BytesIO
+
+
+import rawpy
+import numpy as np
+from PIL import Image
+from io import BytesIO
+
+
+class ImageConversionError(Exception):
+    pass
+
+
+def convert_raw_bytes_to_jpg_bytes(
+    raw_bytes: bytes,
+    quality: int = 90,
+    max_size: tuple[int, int] | None = None,
+) -> bytes:
+    """
+    Convert RAW camera image bytes to JPG bytes.
+
+    Supported formats:
+    CR2, NEF, ARW, DNG, RAF, ORF, RW2, etc.
+    """
+
+    if not raw_bytes:
+        raise ImageConversionError("Empty RAW bytes")
+
+    if not isinstance(raw_bytes, (bytes, bytearray)):
+        raise ImageConversionError("Input must be bytes")
+
+    try:
+        # RAW → RGB array
+        with rawpy.imread(BytesIO(raw_bytes)) as raw:
+            rgb = raw.postprocess(
+                use_camera_wb=True,
+                no_auto_bright=True,
+                output_bps=8
+            )
+
+        # Convert numpy array → PIL Image
+        img = Image.fromarray(rgb, mode="RGB")
+
+        # Optional downscale (recommended for huge RAWs)
+        if max_size:
+            img.thumbnail(max_size, Image.LANCZOS)
+
+        output = BytesIO()
+        img.save(
+            output,
+            format="JPEG",
+            quality=quality,
+            optimize=True,
+            progressive=True
+        )
+
+        return output.getvalue()
+
+    except rawpy.LibRawFileUnsupportedError:
+        raise ImageConversionError("Unsupported RAW format")
+
+    except rawpy.LibRawIOError:
+        raise ImageConversionError("Corrupted RAW file")
+
+    except Exception as e:
+        raise ImageConversionError(f"RAW → JPG conversion failed: {e}")
+
+
+class ImageConversionError(Exception):
+    pass
+
+def convert_tiff_bytes_to_jpg_bytes(
+    tiff_bytes: bytes,
+    quality: int = 90,
+    max_size: tuple[int, int] | None = None,
+    page_index: int = 0,
+) -> bytes:
+    """
+    Convert TIFF image bytes to JPG bytes safely.
+
+    Args:
+        tiff_bytes (bytes): Input TIFF bytes
+        quality (int): JPG quality (1–100)
+        max_size (tuple): Optional (width, height) to downscale
+        page_index (int): Page index for multi-page TIFFs
+
+    Returns:
+        bytes: JPG bytes
+    """
+
+    if not tiff_bytes:
+        raise ImageConversionError("Empty TIFF bytes")
+
+    if not isinstance(tiff_bytes, (bytes, bytearray)):
+        raise ImageConversionError("Input must be bytes")
+
+    try:
+        with Image.open(BytesIO(tiff_bytes)) as img:
+            # Handle multi-page TIFF
+            try:
+                if getattr(img, "n_frames", 1) > 1:
+                    img.seek(page_index)
+            except Exception:
+                pass
+
+            # Convert color modes safely
+            if img.mode in ("RGBA", "LA"):
+                background = Image.new("RGB", img.size, (255, 255, 255))
+                background.paste(img, mask=img.split()[-1])
+                img = background
+            elif img.mode == "CMYK":
+                img = img.convert("RGB")
+            else:
+                img = img.convert("RGB")
+
+            # Optional resize (prevents massive JPGs)
+            if max_size:
+                img.thumbnail(max_size, Image.LANCZOS)
+
+            output = BytesIO()
+            img.save(
+                output,
+                format="JPEG",
+                quality=quality,
+                optimize=True,
+                progressive=True
+            )
+
+            return output.getvalue()
+
+    except Exception as e:
+        raise ImageConversionError(f"TIFF → JPG conversion failed: {e}")
+
 
 def convert_mpeg_bytes_to_mp4_bytes_strict(
     mpeg_bytes: bytes,

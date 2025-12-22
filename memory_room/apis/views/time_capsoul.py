@@ -45,7 +45,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import time
 from django.http import HttpResponseForbidden, HttpResponseRedirect,Http404
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes,convert_mpeg_bytes_to_mp4_bytes_strict,convert_mpg_bytes_to_mp4_bytes_strict,convert_ts_bytes_to_mp4_bytes_strict,convert_mov_bytes_to_mp4_bytes_strict,convert_3gp_bytes_to_mp4_bytes_strict,convert_m4v_bytes_to_mp4_bytes_strict
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes,convert_mpeg_bytes_to_mp4_bytes_strict,convert_mpg_bytes_to_mp4_bytes_strict,convert_ts_bytes_to_mp4_bytes_strict,convert_mov_bytes_to_mp4_bytes_strict,convert_3gp_bytes_to_mp4_bytes_strict,convert_m4v_bytes_to_mp4_bytes_strict,convert_tiff_bytes_to_jpg_bytes,convert_raw_bytes_to_jpg_bytes
 
 
 from userauth.models import Assets
@@ -3126,7 +3126,7 @@ class ServeTimeCapSoulMedia(SecuredView):
         is_csv = self._is_csv_file(filename)
         is_json = self._is_json_file(filename)
         needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov', '.ts', '.m4v', '.3gp'}
-        is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
+        is_special = extension in {'.svg', '.heic', '.heif', '.doc', '.tiff', '.raw'} or needs_conversion
         
         # Route 1: Streaming with range support (video/audio that don't need conversion)
         # if (category in ['video', 'audio']) and not needs_conversion and not is_special:
@@ -3234,6 +3234,29 @@ class ServeTimeCapSoulMedia(SecuredView):
             elif extension in {'.heic', '.heif'}:
                 cache_key = f'{bytes_cache_key}_jpeg'
                 file_bytes = cache.get(cache_key) or convert_heic_to_jpeg_bytes(file_bytes)[0]
+                cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+                content_type = "image/jpeg"
+                filename = filename.rsplit('.', 1)[0] + '.jpg'
+            elif extension  == '.tiff':
+                cache_key = f'{bytes_cache_key}_jpeg'
+                file_bytes = cache.get(cache_key) or convert_tiff_bytes_to_jpg_bytes(
+                                                        file_bytes,
+                                                        quality=85,
+                                                        max_size=(4000, 4000)  # optional
+                                                    )
+
+                cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+                content_type = "image/jpeg"
+                filename = filename.rsplit('.', 1)[0] + '.jpg'
+            
+            elif extension  == '.raw':
+                cache_key = f'{bytes_cache_key}_jpeg'
+                file_bytes = cache.get(cache_key) or convert_raw_bytes_to_jpg_bytes(
+                                                        file_bytes,
+                                                        quality=85,
+                                                        max_size=(4000, 4000)  # optional
+                                                    )
+
                 cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
                 content_type = "image/jpeg"
                 filename = filename.rsplit('.', 1)[0] + '.jpg'
