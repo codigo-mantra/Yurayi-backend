@@ -2969,8 +2969,11 @@ class ServeTimeCapSoulMedia(SecuredView):
         # ---------- CSP ----------
         if content_type == "image/svg+xml":
             response["Content-Security-Policy"] = (
-                "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+                "default-src 'none'; "
+                "img-src * data:; "
+                "style-src 'unsafe-inline';"
             )
+
         else:
             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
             csp = f"frame-ancestors 'self' {frame_ancestors};"
@@ -3115,6 +3118,8 @@ class ServeTimeCapSoulMedia(SecuredView):
         # category = self._categorize_file(filename)
         category = media_file.file_type
         content_type = self._guess_content_type(filename)
+        if extension == '.svg':
+            content_type = 'image/svg+xml'
         
         # Check for special cases
         is_pdf = self._is_pdf_file(filename)
@@ -3838,8 +3843,15 @@ class ServeCoverTimecapsoulImages(SecuredView):
         response["Cache-Control"] = "private, max-age=3600"
         
         # Special CSP for SVG
+        # if content_type == "image/svg+xml":
+        #     response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
         if content_type == "image/svg+xml":
-            response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+            response["Content-Security-Policy"] = (
+                "default-src 'none'; "
+                "img-src * data:; "
+                "style-src 'unsafe-inline';"
+            )
+
         else:
             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
             response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
