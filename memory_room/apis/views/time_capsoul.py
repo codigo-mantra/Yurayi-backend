@@ -2997,7 +2997,8 @@ class ServeTimeCapSoulMedia(SecuredView):
 
             # ---------- FULL DECRYPT MODE ----------
             if not decryptor.metadata.get("chunk-size"):
-                cache_key = f"media_bytes_{s3_key}"
+                # cache_key = f"media_bytes_{s3_key}"
+                cache_key = media_cache_key('media_bytes_', s3_key)
                 full_plaintext = cache.get(cache_key)
 
                 if not full_plaintext:

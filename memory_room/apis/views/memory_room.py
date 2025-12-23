@@ -78,9 +78,17 @@ from memory_room.s3_helpers import s3_helper
 from memory_room.crypto_utils import generate_signed_path,save_and_upload_decrypted_file,decrypt_and_get_image,encrypt_and_upload_file,get_decrypt_file_bytes,get_media_file_bytes_with_content_type,generate_room_media_s3_key
 from memory_room.utils import convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_file_size, convert_video_to_mp4_bytes, convert_audio_to_mp3_bytes, convert_mpeg_to_mp4_bytes
 
-from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes,convert_mpeg_bytes_to_mp4_bytes_strict,convert_mpg_bytes_to_mp4_bytes_strict,convert_ts_bytes_to_mp4_bytes_strict,convert_mov_bytes_to_mp4_bytes_strict,convert_3gp_bytes_to_mp4_bytes_strict,convert_m4v_bytes_to_mp4_bytes_strict
+from memory_room.utils import upload_file_to_s3_bucket, get_file_category, generate_unique_slug, convert_doc_to_docx_bytes,convert_heic_to_jpeg_bytes,convert_mkv_to_mp4_bytes, convert_video_to_mp4_bytes, convert_mov_bytes_to_mp4_bytes,convert_mpeg_bytes_to_mp4_bytes_strict,convert_mpg_bytes_to_mp4_bytes_strict,convert_ts_bytes_to_mp4_bytes_strict,convert_mov_bytes_to_mp4_bytes_strict,convert_3gp_bytes_to_mp4_bytes_strict,convert_m4v_bytes_to_mp4_bytes_strict,convert_tiff_bytes_to_jpg_bytes
 
 MEDIA_FILES_BUCKET = 'yurayi-media'
+
+
+import hashlib
+
+def media_cache_key(prefix: str, s3_key: str) -> str:
+    digest = hashlib.sha256(s3_key.encode("utf-8")).hexdigest()
+    return f"{prefix}:{digest}"
+
 
 s3 = boto3.client("s3", region_name='ap-south-1',
     aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
@@ -656,7 +664,9 @@ class MediaFileDownloadView(SecuredView):
         
             # If no chunk-size present in metadata => full decryption mode
             if not decryptor.metadata.get("chunk-size"):
-                cache_key = f"media_bytes_{s3_key}"
+                # cache_key = f"media_bytes_{s3_key}"
+                cache_key = media_cache_key('media_bytes_', s3_key)
+
                 cached_data = cache.get(cache_key)
                 if cached_data:
                     full_plaintext = cached_data
@@ -1884,7 +1894,8 @@ class ServeMedia(SecuredView):
 
             # ---------- FULL DECRYPT MODE ----------
             if not decryptor.metadata.get("chunk-size"):
-                cache_key = f"media_bytes_{s3_key}"
+                # cache_key = f"media_bytes_{s3_key}"
+                cache_key = media_cache_key('media_bytes_', s3_key)
                 full_plaintext = cache.get(cache_key)
 
                 if not full_plaintext:
@@ -1919,43 +1930,85 @@ class ServeMedia(SecuredView):
                         offset = chunk_end
 
     
+    # def _stream_file_with_range(self, request, file_bytes, content_type, filename):
+    #     file_size = len(file_bytes)
+    #     range_header = request.headers.get("Range", "").strip()
+
+    #     if range_header:
+    #         import re
+    #         match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #     else:
+    #         match = None
+
+    #     if match:
+    #         start = int(match.group(1))
+    #         end = match.group(2)
+    #         end = int(end) if end else file_size - 1
+    #         length = end - start + 1
+
+    #         resp = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes[start:end+1])),
+    #             status=206,
+    #             content_type=content_type
+    #         )
+    #         resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    #         resp["Content-Length"] = str(length)
+
+    #     else:
+    #         resp = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes)),
+    #             content_type=content_type
+    #         )
+    #         resp["Content-Length"] = str(file_size)
+
+    #     resp["Accept-Ranges"] = "bytes"
+    #     resp["Content-Disposition"] = f'inline; filename="{filename}"'
+    #     frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #     resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #     return resp
+    
     def _stream_file_with_range(self, request, file_bytes, content_type, filename):
         file_size = len(file_bytes)
-        range_header = request.headers.get("Range", "").strip()
+        range_header = request.headers.get("Range")
 
         if range_header:
             import re
-            match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else file_size - 1
         else:
-            match = None
+            # ✅ FORCE RANGE ON FIRST REQUEST
+            start = 0
+            end = file_size - 1
 
-        if match:
-            start = int(match.group(1))
-            end = match.group(2)
-            end = int(end) if end else file_size - 1
-            length = end - start + 1
+        end = min(end, file_size - 1)
 
-            resp = StreamingHttpResponse(
-                FileWrapper(BytesIO(file_bytes[start:end+1])),
-                status=206,
-                content_type=content_type
-            )
-            resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-            resp["Content-Length"] = str(length)
+        def stream():
+            pos = start
+            while pos <= end:
+                chunk_end = min(pos + self.STREAMING_CHUNK_SIZE, end + 1)
+                yield file_bytes[pos:chunk_end]
+                pos = chunk_end
 
-        else:
-            resp = StreamingHttpResponse(
-                FileWrapper(BytesIO(file_bytes)),
-                content_type=content_type
-            )
-            resp["Content-Length"] = str(file_size)
+        response = StreamingHttpResponse(
+            stream(),
+            status=206,                     # ✅ ALWAYS 206
+            content_type=content_type
+        )
 
-        resp["Accept-Ranges"] = "bytes"
-        resp["Content-Disposition"] = f'inline; filename="{filename}"'
-        frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-        resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-        return resp
+        response["Accept-Ranges"] = "bytes"
+        response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+        response["Content-Length"] = str(end - start + 1)
+        response["Content-Disposition"] = "inline"
+        response["Cache-Control"] = "no-store"
+        response["X-Content-Type-Options"] = "nosniff"
 
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Expose-Headers"] = (
+            "Accept-Ranges, Content-Range, Content-Length"
+        )
+
+        return response
 
     def _get_file_size_from_metadata(self, s3_key):
         """Calculate decrypted file size from S3 metadata."""
@@ -2006,7 +2059,8 @@ class ServeMedia(SecuredView):
         s3_key = media_file.s3_key
         filename = s3_key.split("/")[-1]
         extension = self._get_file_extension(filename)
-        category = self._categorize_file(filename)
+        # category = self._categorize_file(filename)
+        category = media_file.file_type
         content_type = self._guess_content_type(filename)
         
         # Check for special cases
@@ -2014,7 +2068,7 @@ class ServeMedia(SecuredView):
         is_csv = self._is_csv_file(filename)
         is_json = self._is_json_file(filename)
         needs_conversion = extension in {'.mkv', '.avi', '.wmv', '.mpeg', '.mpg', '.flv', '.mov', '.ts', '.m4v', '.3gp'}
-        is_special = extension in {'.svg', '.heic', '.heif', '.doc'} or needs_conversion
+        is_special = extension in {'.svg', '.heic', '.heif', '.doc','.tiff', '.raw'} or needs_conversion
         
         # Route 1: Streaming with range support (video/audio that don't need conversion)
         if (category in ['video', 'audio']) and not needs_conversion and not is_special:
@@ -2043,7 +2097,8 @@ class ServeMedia(SecuredView):
 
             logger.info(f"Serving {category} via byte-range: {filename}")
 
-            cache_key = f"media_bytes_{s3_key}"
+            # cache_key = f"media_bytes_{s3_key}"
+            cache_key = media_cache_key('media_bytes_', s3_key)
             file_bytes = cache.get(cache_key)
 
             if not file_bytes:
@@ -2080,7 +2135,9 @@ class ServeMedia(SecuredView):
             logger.info(f"Full decrypt for {category}: {filename}")
             
             # Get or decrypt full file
-            bytes_cache_key = f"media_bytes_{s3_key}"
+            # bytes_cache_key = f"media_bytes_{s3_key}"
+            bytes_cache_key = media_cache_key('media_bytes_', s3_key)
+
             cached_data = cache.get(bytes_cache_key)
             
             if cached_data:
@@ -2118,6 +2175,19 @@ class ServeMedia(SecuredView):
                 cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
                 content_type = "image/jpeg"
                 filename = filename.rsplit('.', 1)[0] + '.jpg'
+            
+            elif extension  == '.tiff':
+                cache_key = f'{bytes_cache_key}_jpeg'
+                file_bytes = cache.get(cache_key) or convert_tiff_bytes_to_jpg_bytes(
+                                                        file_bytes,
+                                                        quality=85,
+                                                        max_size=(4000, 4000)  # optional
+                                                    )
+
+                cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+                content_type = "image/jpeg"
+                filename = filename.rsplit('.', 1)[0] + '.jpg'
+            
             
             elif needs_conversion:
 
