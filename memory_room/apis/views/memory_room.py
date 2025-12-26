@@ -618,8 +618,8 @@ class ChunkedMediaUploadView(APIView):
         cache.delete(self._key(upload_id))
 
     def post(self, request, memory_room_id, action):
-        user = User.objects.get(email='tapendrakaul@gmail.com')
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id)
+        user = memory_room.user
 
         if action == "init":
             return self.initialize_uploads(request, user, memory_room)
