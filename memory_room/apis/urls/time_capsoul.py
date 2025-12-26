@@ -2,7 +2,7 @@ from django.urls import path
 from memory_room.apis.views.time_capsoul import (
     TimeCapSoulCoverView, TimeCapSoulDefaultTemplateAPI, CreateTimeCapSoulView,TimeCapSoulUpdationView,
     TimeCapSoulMediaFilesView, TimeCapSoulMediaFileUpdationView, TimeCapSoulUnlockView, MoveTimeCapSoulMediaFile,TimeCapSoulMediaFileDownloadView,RecipientsDetailCreateOrUpdateView,TimeCapsoulMediaFileFilterView, TimeCapsoulFilterView,
-    ServeTimeCapSoulMedia,SetTimeCapSoulCover,TaggedCapsoulTracker, UserStorageTracker, TimeCapsoulDuplicationApiView, ServeCoverTimecapsoulImages,
+    ServeTimeCapSoulMedia,SetTimeCapSoulCover,TaggedCapsoulTracker, UserStorageTracker, TimeCapsoulDuplicationApiView, ServeCoverTimecapsoulImages,ChunkedMediaFileUploadView
 )
 
 urlpatterns = [
@@ -26,6 +26,8 @@ urlpatterns = [
     
     path('recipients/tracker/<int:capsoul_id>/', TaggedCapsoulTracker.as_view()),
     path('user/storage/tracker/', UserStorageTracker.as_view()),
+    path('media-files/<int:time_capsoul_id>/chunked/upload/<str:action>', ChunkedMediaFileUploadView.as_view(), name='media_upload'),
+
 
     
 ]

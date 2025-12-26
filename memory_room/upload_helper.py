@@ -1422,3 +1422,166 @@ def decrypt_upload_and_extract_audio_thumbnail_chunked(
                     data_key_plain = b'\x00' * len(data_key_plain)
             except Exception as e:
                 logger.error(f"Failed to clear data key: {str(e)}")
+
+def truncate_filename(filename, max_length=100):
+    name, ext = os.path.splitext(filename)
+    return f"{name[:max_length - len(ext)]}{ext}"
+
+def media_cache_key(prefix: str, s3_key: str) -> str:
+    import hashlib
+    digest = hashlib.sha256(s3_key.encode("utf-8")).hexdigest()
+    return f"{prefix}:{digest}"
+
+
+class ChunkedUploadSession:
+    def __init__(
+        self,
+        upload_id,
+        user_id,
+        time_capsoul_id,
+        file_name,
+        file_size,
+        file_type,
+        total_chunks,
+        chunk_size,
+        s3_key,
+    ):
+        self.upload_id = upload_id
+        self.user_id = user_id
+        self.time_capsoul_id = time_capsoul_id
+        self.file_name = file_name
+        self.file_size = file_size
+        self.file_type = file_type
+        self.total_chunks = total_chunks
+        self.chunk_size = chunk_size
+        self.s3_key = s3_key
+
+        self.s3_upload_id = None
+        self.s3_parts = {}
+        self.uploaded_chunks = set()
+        
+        self.created_at = time.time()
+        self.last_activity = time.time()
+
+        self.data_key_plain = None
+        self.data_key_encrypted = None
+        self.aesgcm = None
+        
+        # JPG-specific fields
+        self.is_jpg = False
+        self.file_ext = None
+        self.jpg_chunks_key = None
+        
+        # Thread safety
+        self.lock = threading.Lock()
+
+    def to_dict(self):
+        """Serialize session to dictionary for cache storage"""
+        with self.lock:
+            return {
+                "upload_id": self.upload_id,
+                "user_id": self.user_id,
+                "time_capsoul_id": self.time_capsoul_id,
+                "file_name": self.file_name,
+                "file_size": self.file_size,
+                "file_type": self.file_type,
+                "total_chunks": self.total_chunks,
+                "chunk_size": self.chunk_size,
+                "s3_key": self.s3_key,
+                "s3_upload_id": self.s3_upload_id,
+                "s3_parts": self.s3_parts,
+                "uploaded_chunks": list(self.uploaded_chunks),
+                "created_at": self.created_at,
+                "last_activity": self.last_activity,
+                "data_key_encrypted": (
+                    base64.b64encode(self.data_key_encrypted).decode()
+                    if self.data_key_encrypted else None
+                ),
+                # JPG-specific fields
+                "is_jpg": self.is_jpg,
+                "file_ext": self.file_ext,
+                "jpg_chunks_key": self.jpg_chunks_key,
+            }
+
+    @classmethod
+    def from_dict(cls, data):
+        """Deserialize session from dictionary"""
+        session = cls(
+            data["upload_id"],
+            data["user_id"],
+            data["time_capsoul_id"],
+            data["file_name"],
+            data["file_size"],
+            data["file_type"],
+            data["total_chunks"],
+            data["chunk_size"],
+            data["s3_key"],
+        )
+
+        session.s3_upload_id = data["s3_upload_id"]
+        session.s3_parts = data["s3_parts"]
+        session.uploaded_chunks = set(data["uploaded_chunks"])
+        session.created_at = data["created_at"]
+        session.last_activity = data["last_activity"]
+
+        # Restore encryption key
+        if data.get("data_key_encrypted"):
+            encrypted = base64.b64decode(data["data_key_encrypted"])
+            resp = kms.decrypt(CiphertextBlob=encrypted)
+            session.data_key_plain = resp["Plaintext"]
+            session.data_key_encrypted = encrypted
+            session.aesgcm = AESGCM(session.data_key_plain)
+
+        # Restore JPG-specific fields
+        session.is_jpg = data.get("is_jpg", False)
+        session.file_ext = data.get("file_ext")
+        session.jpg_chunks_key = data.get("jpg_chunks_key")
+
+        return session
+
+    def is_expired(self, timeout=3600):
+        """Check if session has expired"""
+        return (time.time() - self.last_activity) > timeout
+
+    def get_progress(self):
+        """Get upload progress as percentage"""
+        if self.total_chunks == 0:
+            return 0.0
+        return (len(self.uploaded_chunks) / self.total_chunks) * 100
+
+    def is_complete(self):
+        """Check if all chunks have been uploaded"""
+        return len(self.uploaded_chunks) == self.total_chunks
+
+    def get_missing_chunks(self):
+        """Get list of chunks that haven't been uploaded yet"""
+        all_chunks = set(range(self.total_chunks))
+        return sorted(list(all_chunks - self.uploaded_chunks))
+
+    def mark_chunk_uploaded(self, chunk_index):
+        """Mark a chunk as successfully uploaded"""
+        with self.lock:
+            self.uploaded_chunks.add(chunk_index)
+            self.last_activity = time.time()
+
+    def add_s3_part(self, part_number, etag):
+        """Add an S3 part (for non-JPG files)"""
+        with self.lock:
+            self.s3_parts[str(part_number)] = etag
+            self.last_activity = time.time()
+
+    def get_s3_parts_list(self):
+        """Get sorted list of S3 parts for completion"""
+        parts = [
+            {"PartNumber": int(p), "ETag": et}
+            for p, et in self.s3_parts.items()
+        ]
+        return sorted(parts, key=lambda x: x["PartNumber"])
+
+    def __repr__(self):
+        return (
+            f"ChunkedUploadSession(upload_id={self.upload_id}, "
+            f"file_name={self.file_name}, "
+            f"progress={self.get_progress():.1f}%, "
+            f"is_jpg={self.is_jpg})"
+        )

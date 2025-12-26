@@ -2,7 +2,7 @@ from django.urls import path
 from memory_room.apis.views.memory_room import (
     UserMemoryRoomListView,MemoryRoomCoverView ,MediaFileDownloadView,SetMemoryRoomCoverImageAPIView,
     MemoryRoomTemplateDefaultViewSet, CreateMemoryRoomView, MemoryRoomMediaFileListCreateAPI, MemoryRoomMediaFileFilterView,UpdateMediaFileDescriptionView, ServeMedia,RefreshMediaURL,
-    MemoryRoomDuplicationApiView
+    MemoryRoomDuplicationApiView,ChunkedMediaUploadView
 
     )
 
@@ -15,6 +15,8 @@ urlpatterns = [
     
     path('list/', UserMemoryRoomListView.as_view(), name='user-memory-rooms'),
     path('media-files/<int:memory_room_id>/list', MemoryRoomMediaFileListCreateAPI.as_view(), name='memory-room-media-files'),
+    path('media-files/<int:memory_room_id>/chunked/upload/<str:action>', ChunkedMediaUploadView.as_view(), name='media_upload'),
+
     path('media-files/<int:memory_room_id>/<int:media_file_id>/', MemoryRoomMediaFileListCreateAPI.as_view(), name='memory-room-media-files-delete'),
     path('media-files/filter/', MemoryRoomMediaFileFilterView.as_view(), name='memory-media-filter'),
     path('default-templates/', MemoryRoomTemplateDefaultViewSet.as_view(), name='default-memory-templates'),

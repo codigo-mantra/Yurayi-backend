@@ -1075,7 +1075,7 @@ def get_file_bytes(s3_key):
         return None, None
 
 
-def generate_capsoul_media_s3_key(filename, user_storage, time_capsoul_id, old_name=None):
+def generate_capsoul_media_s3_key(filename, user_storage, time_capsoul_id, old_name=None,upload_id=None):
     
     filename = filename.lower()
     
@@ -1089,11 +1089,14 @@ def generate_capsoul_media_s3_key(filename, user_storage, time_capsoul_id, old_n
             old_name = f'{name}{random.choice(random_chars)}.{ext}'
         
         filename = old_name
-    s3_key = f'media/time-capsoul-files/{user_storage}/capsoul-id:{time_capsoul_id}/{filename}'.replace(" ", "_")
+    if upload_id:
+        s3_key = f'media/time-capsoul-files/{user_storage}/upload/{upload_id}/capsoul-id:{time_capsoul_id}/{filename}'.replace(" ", "_")
+    else:
+        s3_key = f'media/time-capsoul-files/{user_storage}/capsoul-id:{time_capsoul_id}/{filename}'.replace(" ", "_")
     return s3_key
 
 
-def generate_room_media_s3_key(filename, user_storage, room_id,old_name=None):
+def generate_room_media_s3_key(filename, user_storage, room_id,old_name=None, upload_id=None):
     filename = filename.lower()
     
     if old_name:
@@ -1106,7 +1109,12 @@ def generate_room_media_s3_key(filename, user_storage, room_id,old_name=None):
             old_name = f'{name}{random.choice(random_chars)}.{ext}'
         
         filename = old_name
-    s3_key = f'media/memory-room-files/{user_storage}/room-id:{room_id}/{filename}'.replace(" ", "_")
+    if not upload_id:
+        s3_key = f'media/memory-room-files/{user_storage}/room-id:{room_id}/{filename}'.replace(" ", "_")
+    else:
+        s3_key = f'media/memory-room-files/{user_storage}/upload/{upload_id}/room-id:{room_id}/{filename}'.replace(" ", "_")
+
+
     return s3_key
 
 

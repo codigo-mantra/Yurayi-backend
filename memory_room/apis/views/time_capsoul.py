@@ -49,7 +49,7 @@ from memory_room.utils import upload_file_to_s3_bucket, get_file_category, gener
 
 
 from userauth.models import Assets
-from userauth.apis.views.views import SecuredView,NewSecuredView
+from userauth.apis.views.views import SecuredView,NewSecuredView,APIView
 
 
 from memory_room.apis.serializers.memory_room import (
@@ -1035,6 +1035,784 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         serializer.is_valid(raise_exception=True)
         update_media_file = serializer.save()
         return Response(TimeCapSoulMediaFileReadOnlySerializer(update_media_file).data)
+
+
+
+from memory_room.upload_helper import (
+    ChunkedUploadSession,truncate_filename, s3, kms, AWS_KMS_KEY_ID
+    )
+
+executor = ThreadPoolExecutor(max_workers=10)
+
+from memory_room.jpg_images_handler import (
+    is_image_corrupted,try_fix_corrupted_jpg, opencv_repair_jpg, force_repair_jpeg, reencode_jpg
+)
+
+
+import uuid
+import os
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.backends import default_backend
+
+class ChunkedMediaFileUploadView(APIView):
+    CACHE_PREFIX = "chunked_upload"
+    SESSION_TIMEOUT = 3600
+    MAX_CHUNK_SIZE = 50 * 1024 * 1024
+
+
+    def save_session(self, session):
+        session.last_activity = time.time()
+        cache.set(
+            self._key(session.upload_id), 
+            json.dumps(session.to_dict()), 
+            self.SESSION_TIMEOUT
+        )
+
+    
+    def _key(self, upload_id):
+        return f"{self.CACHE_PREFIX}:{upload_id}"
+
+
+
+    def post(self, request, time_capsoul_id,action):
+        """
+        Handle chunked uploads with progress tracking.
+        Supports init, upload, complete, and abort actions.
+        """
+        # action = request.POST.get('action')
+        # user = self.get_current_user(request)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        user = time_capsoul.user
+        
+        # Handle replica creation for unlocked capsouls
+        replica_instance = self._handle_replica_creation(user, time_capsoul)
+        if replica_instance:
+            time_capsoul = replica_instance
+        
+        # Route to appropriate handler based on action
+        if action == "init":
+            return self.initialize_uploads(request, user, time_capsoul)
+        elif action == "upload":
+            return self.upload_chunk(request, user)
+        elif action == "complete":
+            return self.complete_upload(request, user)
+        elif action == "abort":
+            return self.abort_upload(request, user)
+        else:
+            return JsonResponse({"error": "Invalid action"}, status=400)
+
+    def _handle_replica_creation(self, user, time_capsoul):
+        """Handle replica creation for unlocked capsouls"""
+        replica_instance = None
+        
+        if time_capsoul.status == "sealed":
+            from django.utils import timezone
+            unlock_date = time_capsoul.unlock_date
+            current_datetime = timezone.now()
+            
+            if unlock_date and current_datetime > unlock_date:
+                time_capsoul.status = 'unlocked'
+                time_capsoul.save()
+        
+        if time_capsoul.status == 'unlocked':
+            try:
+                replica_instance = create_time_capsoul(
+                    old_time_capsoul=time_capsoul,
+                    current_user=user,
+                    option_type='replica_creation',
+                )
+                cache.delete(f'{user.email}_capsouls')
+                logger.info(f'Cached cleared for Capsoul at replica creation')
+                
+                # Copy parent media files
+                if user.id == time_capsoul.user.id:
+                    parent_media_files = TimeCapSoulMediaFile.objects.filter(
+                        time_capsoul=time_capsoul, 
+                        is_deleted=False
+                    ).order_by('-updated_at')
+                else:
+                    recipient = TimeCapSoulRecipient.objects.filter(
+                        time_capsoul=time_capsoul, 
+                        email=user.email
+                    ).first()
+                    
+                    if not recipient:
+                        logger.info(f"Recipient not found for tagged capsoul {time_capsoul.id} and user {user.email}")
+                        return None
+                    
+                    parent_files_id = get_recipient_capsoul_ids(recipient)
+                    parent_media_files = TimeCapSoulMediaFile.objects.filter(
+                        time_capsoul=time_capsoul,
+                        id__in=parent_files_id,
+                    ).order_by('-updated_at')
+                
+                new_media_count = 0
+                old_media_count = parent_media_files.count()
+                
+                for parent_file in parent_media_files:
+                    try:
+                        is_media_created = create_time_capsoul_media_file(
+                            old_media=parent_file,
+                            new_capsoul=replica_instance,
+                            current_user=user,
+                            option_type='replica_creation',
+                        )
+                        if is_media_created:
+                            new_media_count += 1
+                    except Exception as e:
+                        logger.exception(f'Exception while creating media-file replica for media-file id {parent_file.id}')
+                        pass
+                
+                logger.info(f"Replica created: Old media count: {old_media_count}, New media count: {new_media_count}")
+                
+            except Exception as e:
+                logger.error(f'Exception while creating time-capsoul replica user {user.email} capsoul-id: {time_capsoul_id} errors: {e}')
+        
+        return replica_instance
+
+    def _extract_thumbnail_async(self, media_id, s3_key, file_type, file_ext, user_id):
+        """Async thumbnail extraction to reduce response time"""
+        try:
+            from memory_room.crypto_utils import get_media_file_bytes_with_content_type
+            from memory_room.upload_helper import extract_thumbnail_from_segment
+            from memory_room.upload_helper import extract_audio_thumbnail_from_bytes
+
+
+            media = TimeCapSoulMediaFile.objects.get(id=media_id)
+
+            file_bytes, _ = get_media_file_bytes_with_content_type(media, media.user)
+            
+            cache_key = media_cache_key('media_bytes_', s3_key)
+            if file_bytes:
+                cache.set(cache_key, file_bytes, timeout=60*60*24)
+
+            thumbnail_data = None
+            
+            if file_type == 'video':
+                thumbnail_data = extract_thumbnail_from_segment(file_bytes, file_ext, "full_file")
+            else:
+                extractor = MediaThumbnailExtractor(file='', file_ext=file_ext)
+                thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
+                    extension=file_ext,
+                    decrypted_bytes=file_bytes
+                )
+                
+                if not thumbnail_data:
+                    thumbnail_data = extract_audio_thumbnail_from_bytes(
+                        extension=file_ext,
+                        audio_bytes=file_bytes,
+                    )
+
+            if thumbnail_data:
+                from django.core.files.base import ContentFile
+                from userauth.models import Assets
+                
+                image_file = ContentFile(
+                    thumbnail_data, 
+                    name=f"thumbnail_{media.title.split('.')[0]}.jpg"
+                )
+                if image_file:
+                    asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thumbnail/Audio')
+                    media.thumbnail = asset
+                    media.save()
+                    logger.info(f'Thumbnail updated for media: {media.id}')
+                    print(f'Thumbnail updated for media: {media.id}')
+
+        except Exception as e:
+            logger.error(f'Async thumbnail extraction failed for media {media_id}: {e}')
+
+    
+    def _key(self, upload_id):
+        return f"{self.CACHE_PREFIX}:{upload_id}"
+
+    def get_session(self, upload_id):
+        data = cache.get(self._key(upload_id))
+        return ChunkedUploadSession.from_dict(json.loads(data)) if data else None
+
+    def save_session(self, session):
+        session.last_activity = time.time()
+        cache.set(
+            self._key(session.upload_id), 
+            json.dumps(session.to_dict()), 
+            self.SESSION_TIMEOUT
+        )
+
+    def delete_session(self, upload_id):
+        cache.delete(self._key(upload_id))
+
+    def post(self, request, time_capsoul_id, action):
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        user = time_capsoul.user
+
+
+        if action == "init":
+            return self.initialize_uploads(request, user, time_capsoul)
+        if action == "upload":
+            return self.upload_chunk(request, user)
+        if action == "complete":
+            return self.complete_upload(request, user)
+        if action == "abort":
+            return self.abort_upload(request, user)
+
+        return JsonResponse({"error": "Invalid action"}, status=400)
+
+    def initialize_uploads(self, request, user, time_capsoul):
+        """Initialize multiple file uploads at once"""
+        try:
+            files_data = json.loads(request.POST.get("filesData", "[]"))
+            
+            if not files_data:
+                return JsonResponse({"error": "No files provided"}, status=400)
+            
+            initialized_files = []
+            
+            for file_data in files_data:
+                file_name = file_data["fileName"]
+                file_size = int(file_data["fileSize"])
+                total_chunks = int(file_data["totalChunks"])
+                chunk_size = int(file_data["chunkSize"])
+                
+                clean_name = clean_filename(truncate_filename(file_name))
+                file_type = get_file_category(clean_name)
+                
+                if file_type == "invalid":
+                    raise ValidationError({
+                        "file_type": f"Unsupported file type: {file_name}"
+                    })
+                
+                upload_id = str(uuid.uuid4())
+                file_ext = os.path.splitext(clean_name)[1].lower()
+
+                s3_key = generate_capsoul_media_s3_key(
+                    clean_name, 
+                    user.s3_storage_id, 
+                    time_capsoul.id, 
+                    upload_id=upload_id
+                )
+
+                session = ChunkedUploadSession(
+                    upload_id,
+                    user.id,
+                    time_capsoul.id,
+                    file_name,
+                    file_size,
+                    file_type,
+                    total_chunks,
+                    chunk_size,
+                    s3_key,
+                )
+
+                # Generate encryption key
+                key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+                session.data_key_plain = key["Plaintext"]
+                session.data_key_encrypted = key["CiphertextBlob"]
+                session.aesgcm = AESGCM(session.data_key_plain)
+                
+                # Check if file is JPG/JPEG
+                session.is_jpg = file_ext in ('.jpg', '.jpeg')
+                session.file_ext = file_ext
+                
+                if session.is_jpg:
+                    # Create temporary storage for decrypted JPG chunks
+                    session.jpg_chunks_key = f"jpg_chunks:{upload_id}"
+                    cache.set(session.jpg_chunks_key, json.dumps([]), self.SESSION_TIMEOUT)
+
+                # Start multipart upload
+                mp = s3.create_multipart_upload(
+                    Bucket=MEDIA_FILES_BUCKET,
+                    Key=s3_key,
+                    Metadata={
+                        "edk": base64.b64encode(session.data_key_encrypted).decode(),
+                        'chunk_size': str(chunk_size),
+                        'file_size': str(file_size),
+                        'totalChunks': str(total_chunks),
+                    },
+                )
+                session.s3_upload_id = mp["UploadId"]
+
+                self.save_session(session)
+
+                initialized_files.append({
+                    "uploadId": upload_id,
+                    "fileName": file_name,
+                    "s3Key": s3_key,
+                    "totalChunks": total_chunks,
+                    "isJpg": session.is_jpg
+                })
+
+            return JsonResponse({
+                "files": initialized_files,
+                "message": f"{len(initialized_files)} file(s) initialized successfully"
+            })
+
+        except Exception as e:
+            logger.exception(f"Init uploads failed: {e}")
+            return JsonResponse({"error": str(e)}, status=500)
+
+    def upload_chunk(self, request, user):
+        """Upload chunk - handles JPG differently by storing decrypted chunks"""
+        upload_id = request.POST.get("uploadId")
+        chunk_index = int(request.POST.get("chunkIndex", -1))
+        chunk_file = request.FILES.get("chunk")
+        iv = request.POST.get("iv")
+
+        lock_key = f"lock:{upload_id}:{chunk_index}"
+        if not cache.add(lock_key, "1", 10):
+            return JsonResponse({"error": "Chunk upload in progress"}, status=429)
+
+        try:
+            session = self.get_session(upload_id)
+            if not session:
+                return JsonResponse({"error": "Session expired"}, status=404)
+
+            # Check for duplicate
+            with session.lock:
+                if chunk_index in session.uploaded_chunks:
+                    uploaded_chunks = len(session.uploaded_chunks)
+                    # For JPG files, chunk upload is only 50% of total progress
+                    if session.is_jpg:
+                        percentage = (uploaded_chunks / session.total_chunks) * 50
+                    else:
+                        percentage = (uploaded_chunks / session.total_chunks) * 100
+                    
+                    return JsonResponse({
+                        "status": "duplicate",
+                        "uploadId": upload_id,
+                        "uploadedChunks": uploaded_chunks,
+                        "totalChunks": session.total_chunks,
+                        "percentage": round(percentage, 2)
+                    })
+
+            # Decrypt chunk
+            decrypted = self._decrypt_chunk(chunk_file, iv)
+            
+            if session.is_jpg:
+                # For JPG files, store decrypted chunks temporarily
+                jpg_chunks_data = json.loads(cache.get(session.jpg_chunks_key, '[]'))
+                
+                # Store chunk with index for proper reconstruction
+                jpg_chunks_data.append({
+                    'index': chunk_index,
+                    'data': base64.b64encode(decrypted).decode('utf-8')
+                })
+                
+                cache.set(session.jpg_chunks_key, json.dumps(jpg_chunks_data), self.SESSION_TIMEOUT)
+                
+                # Update session
+                with session.lock:
+                    session.uploaded_chunks.add(chunk_index)
+                
+                self.save_session(session)
+                
+                uploaded_chunks = len(session.uploaded_chunks)
+                # For JPG: Chunk reception is 50% of progress
+                percentage = (uploaded_chunks / session.total_chunks) * 50
+                
+                return JsonResponse({
+                    "status": "uploaded",
+                    "uploadId": upload_id,
+                    "uploadedChunks": uploaded_chunks,
+                    "totalChunks": session.total_chunks,
+                    "percentage": round(percentage, 2),
+                    "isJpg": True,
+                    "stage": "receiving"
+                })
+            else:
+                # For non-JPG files, encrypt and upload to S3 immediately
+                encrypted = self._encrypt_for_s3(decrypted, session.aesgcm)
+
+                part_no = chunk_index + 1
+                resp = s3.upload_part(
+                    Bucket=MEDIA_FILES_BUCKET,
+                    Key=session.s3_key,
+                    UploadId=session.s3_upload_id,
+                    PartNumber=part_no,
+                    Body=encrypted,
+                )
+
+                with session.lock:
+                    session.s3_parts[str(part_no)] = resp["ETag"]
+                    session.uploaded_chunks.add(chunk_index)
+                
+                self.save_session(session)
+
+                uploaded_chunks = len(session.uploaded_chunks)
+                percentage = (uploaded_chunks / session.total_chunks) * 100
+
+                return JsonResponse({
+                    "status": "uploaded",
+                    "uploadId": upload_id,
+                    "uploadedChunks": uploaded_chunks,
+                    "totalChunks": session.total_chunks,
+                    "percentage": round(percentage, 2)
+                })
+
+        except Exception as e:
+            logger.exception(f"Error uploading chunk {chunk_index}: {e}")
+            return JsonResponse({"error": str(e)}, status=500)
+        finally:
+            cache.delete(lock_key)
+
+    def complete_upload(self, request, user):
+        """Complete a single file upload or multiple files"""
+        upload_ids = request.POST.getlist("uploadIds[]") or [request.POST.get("uploadId")]
+        
+        if not upload_ids or not upload_ids[0]:
+            return JsonResponse({"error": "No upload IDs provided"}, status=400)
+
+        completed_files = []
+        failed_files = []
+
+        for upload_id in upload_ids:
+            try:
+                result = self._complete_single_upload(upload_id, user)
+                if result["status"] == "success":
+                    completed_files.append(result)
+                else:
+                    failed_files.append({"uploadId": upload_id, "error": result.get("error")})
+            except Exception as e:
+                logger.exception(f"Complete upload failed for {upload_id}: {e}")
+                failed_files.append({"uploadId": upload_id, "error": str(e)})
+
+        response_data = {
+            "completedFiles": completed_files,
+            "failedFiles": failed_files,
+            "totalCompleted": len(completed_files),
+            "totalFailed": len(failed_files)
+        }
+
+        if failed_files:
+            response_data["message"] = f"{len(completed_files)} file(s) completed, {len(failed_files)} failed"
+            return JsonResponse(response_data, status=207)
+        
+        response_data["message"] = f"All {len(completed_files)} file(s) completed successfully"
+        return JsonResponse(response_data)
+
+    def _complete_single_upload(self, upload_id, user):
+        """Complete a single file upload"""
+        session = self.get_session(upload_id)
+
+        if not session:
+            return {"status": "error", "error": "Session missing", "uploadId": upload_id}
+
+        if len(session.uploaded_chunks) != session.total_chunks:
+            return {
+                "status": "error",
+                "error": f"Incomplete upload: {len(session.uploaded_chunks)}/{session.total_chunks} chunks",
+                "uploadId": upload_id
+            }
+
+        try:
+            if session.is_jpg:
+                # Process JPG file: check corruption, fix if needed, then upload
+                # This represents the remaining 50% of progress
+                result = self._process_jpg_file(session, user, upload_id)
+                if result["status"] == "error":
+                    return result
+            else:
+                # Complete multipart upload for non-JPG files
+                if len(session.s3_parts) != session.total_chunks:
+                    return {
+                        "status": "error",
+                        "error": f"Incomplete S3 upload: {len(session.s3_parts)}/{session.total_chunks} parts",
+                        "uploadId": upload_id
+                    }
+                
+                parts = [
+                    {"PartNumber": int(p), "ETag": et}
+                    for p, et in session.s3_parts.items()
+                ]
+                parts.sort(key=lambda x: x["PartNumber"])
+
+                s3.complete_multipart_upload(
+                    Bucket=MEDIA_FILES_BUCKET,
+                    Key=session.s3_key,
+                    UploadId=session.s3_upload_id,
+                    MultipartUpload={"Parts": parts},
+                )
+
+            # Create database record
+            time_capsoul = TimeCapSoul.objects.get(id=session.time_capsoul_id)
+            
+            from memory_room.utils import get_readable_file_size_from_bytes
+            file_size = get_readable_file_size_from_bytes(session.file_size)
+
+            media = TimeCapSoulMediaFile.objects.create(
+                user=user,
+                time_capsoul=time_capsoul,
+                thumbnail=None,
+                title=session.file_name,
+                file_size=file_size,
+                s3_key=session.s3_key,
+                file_type=session.file_type
+            )
+
+            # Clear cache
+            cache_key = f'{user.email}_capsoul_{time_capsoul.id}'
+            cache.delete(cache_key)
+            
+            if session.is_jpg:
+                cache.delete(session.jpg_chunks_key)
+
+            # Async thumbnail extraction for video/audio
+            if session.file_type in ['video', 'audio']:
+                self._extract_thumbnail_async(
+                    media.id,
+                    session.s3_key,
+                    session.file_type,
+                    session.file_ext,
+                    user.id
+                )
+
+            update_users_storage("addition", "capsoul", media)
+            self.delete_session(upload_id)
+
+            return {
+                "status": "success",
+                "uploadId": upload_id,
+                "id": media.id,
+                "fileName": session.file_name
+            }
+
+        except Exception as e:
+            logger.exception(f"Error completing upload {upload_id}: {e}")
+            return {
+                "status": "error",
+                "error": str(e),
+                "uploadId": upload_id
+            }
+
+    def _update_jpg_progress(self, upload_id, percentage, stage):
+        """Helper to update JPG processing progress in cache"""
+        progress_key = f"jpg_progress:{upload_id}"
+        cache.set(progress_key, {
+            "percentage": percentage,
+            "stage": stage,
+            "timestamp": time.time()
+        }, 300)  # 5 minutes TTL
+
+    def _process_jpg_file(self, session, user, upload_id):
+        """Process JPG file: check corruption, fix if needed, then upload"""
+        try:
+            logger.info(f"[JPG] Processing {session.file_name}...")
+            
+            # Progress: 50% (chunks received) → 55% (reconstructing)
+            self._update_jpg_progress(upload_id, 52, "reconstructing")
+            
+            # Retrieve all decrypted chunks
+            jpg_chunks_data = json.loads(cache.get(session.jpg_chunks_key, '[]'))
+            
+            if not jpg_chunks_data:
+                return {"status": "error", "error": "No JPG chunks found"}
+            
+            # Sort chunks by index
+            jpg_chunks_data.sort(key=lambda x: x['index'])
+            
+            # Reconstruct full file bytes
+            original_bytes = b''.join([
+                base64.b64decode(chunk['data']) 
+                for chunk in jpg_chunks_data
+            ])
+            
+            logger.info(f"[JPG] Reconstructed {len(original_bytes)} bytes for {session.file_name}")
+            
+            # Progress: 55% → 65% (checking/fixing)
+            self._update_jpg_progress(upload_id, 65, "checking")
+            
+            # Check and fix JPG corruption
+            final_bytes = self._check_and_fix_jpg(original_bytes, session.file_name, upload_id)
+            
+            # Progress: 65% → 100% (uploading to S3)
+            self._update_jpg_progress(upload_id, 75, "uploading")
+            
+            # Now encrypt and upload the final bytes in chunks
+            self._upload_processed_jpg(final_bytes, session, upload_id)
+            
+            # Progress: 100%
+            self._update_jpg_progress(upload_id, 100, "complete")
+            
+            logger.info(f"[JPG] Successfully processed and uploaded {session.file_name}")
+            return {"status": "success"}
+            
+        except Exception as e:
+            logger.exception(f"JPG processing failed: {e}")
+            return {"status": "error", "error": f"JPG processing failed: {str(e)}"}
+
+    def _check_and_fix_jpg(self, original_bytes, file_name, upload_id):
+        """Check JPG corruption and fix if needed"""
+        logger.info(f"[JPG] Checking corruption for {file_name}...")
+        
+        if not is_image_corrupted(original_bytes):
+            logger.info(f"[JPG] File is valid, no repair needed")
+            self._update_jpg_progress(upload_id, 70, "valid")
+            return original_bytes
+        
+        logger.warning(f"[JPG] Corruption detected, attempting repair...")
+        self._update_jpg_progress(upload_id, 67, "repairing_pillow")
+        
+        # Try Pillow repair
+        repaired = try_fix_corrupted_jpg(original_bytes)
+        if repaired:
+            logger.info(f"[JPG] Repaired with Pillow")
+            self._update_jpg_progress(upload_id, 70, "repaired_pillow")
+            return repaired
+        
+        # Try OpenCV repair
+        logger.info(f"[JPG] Pillow failed, trying OpenCV...")
+        self._update_jpg_progress(upload_id, 68, "repairing_opencv")
+        cv_fixed = opencv_repair_jpg(original_bytes)
+        if cv_fixed:
+            logger.info(f"[JPG] Repaired with OpenCV")
+            self._update_jpg_progress(upload_id, 70, "repaired_opencv")
+            return cv_fixed
+        
+        # Try extreme header rebuild
+        logger.info(f"[JPG] OpenCV failed, trying extreme repair...")
+        self._update_jpg_progress(upload_id, 69, "repairing_extreme")
+        extreme_fix = force_repair_jpeg(original_bytes)
+        if extreme_fix:
+            logger.info(f"[JPG] Repaired with extreme method")
+            self._update_jpg_progress(upload_id, 70, "repaired_extreme")
+            return extreme_fix
+        
+        # Last resort: re-encode
+        logger.warning(f"[JPG] All repairs failed, attempting re-encode...")
+        self._update_jpg_progress(upload_id, 69, "reencoding")
+        try:
+            final_bytes = reencode_jpg(original_bytes)
+            logger.info(f"[JPG] Successfully re-encoded")
+            self._update_jpg_progress(upload_id, 70, "reencoded")
+            return final_bytes
+        except Exception as e:
+            logger.error(f"[JPG] Re-encoding failed: {e}")
+            raise Exception(f"Image totally unrecoverable: {str(e)}")
+
+    def _upload_processed_jpg(self, file_bytes, session, upload_id):
+        """Upload processed JPG file to S3 in encrypted chunks"""
+        logger.info(f"[JPG] Uploading {len(file_bytes)} bytes to S3...")
+        
+        # Split into chunks and upload
+        chunk_size = session.chunk_size
+        total_bytes = len(file_bytes)
+        total_parts = (total_bytes + chunk_size - 1) // chunk_size
+        part_number = 1
+        
+        for i in range(0, total_bytes, chunk_size):
+            chunk_data = file_bytes[i:i + chunk_size]
+            
+            # Encrypt chunk for S3
+            encrypted = self._encrypt_for_s3(chunk_data, session.aesgcm)
+            
+            # Upload part
+            resp = s3.upload_part(
+                Bucket=MEDIA_FILES_BUCKET,
+                Key=session.s3_key,
+                UploadId=session.s3_upload_id,
+                PartNumber=part_number,
+                Body=encrypted,
+            )
+            
+            session.s3_parts[str(part_number)] = resp["ETag"]
+            
+            # Update progress: 75% → 95% during upload
+            upload_progress = 75 + (part_number / total_parts) * 20
+            self._update_jpg_progress(upload_id, upload_progress, "uploading_s3")
+            
+            part_number += 1
+        
+        # Progress: 95% → 100% (completing)
+        self._update_jpg_progress(upload_id, 95, "completing")
+        
+        # Complete multipart upload
+        parts = [
+            {"PartNumber": int(p), "ETag": et}
+            for p, et in session.s3_parts.items()
+        ]
+        parts.sort(key=lambda x: x["PartNumber"])
+        
+        s3.complete_multipart_upload(
+            Bucket=MEDIA_FILES_BUCKET,
+            Key=session.s3_key,
+            UploadId=session.s3_upload_id,
+            MultipartUpload={"Parts": parts},
+        )
+        
+        logger.info(f"[JPG] Upload completed with {len(parts)} parts")
+
+    def abort_upload(self, request, user):
+        """Abort single or multiple uploads"""
+        upload_ids = request.POST.getlist("uploadIds[]") or [request.POST.get("uploadId")]
+        
+        aborted_count = 0
+        for upload_id in upload_ids:
+            if not upload_id:
+                continue
+                
+            session = self.get_session(upload_id)
+            if session:
+                try:
+                    s3.abort_multipart_upload(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=session.s3_key,
+                        UploadId=session.s3_upload_id,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to abort S3 upload {upload_id}: {e}")
+
+                # Clean up JPG chunks if applicable
+                if session.is_jpg:
+                    cache.delete(session.jpg_chunks_key)
+                    cache.delete(f"jpg_progress:{upload_id}")
+
+                self.delete_session(upload_id)
+                aborted_count += 1
+
+        return JsonResponse({
+            "status": "aborted",
+            "count": aborted_count
+        })
+
+    def _decrypt_chunk(self, chunk_file, iv_str):
+        """Decrypt chunk using AES-256-GCM"""
+        try:
+            if all(c in "0123456789abcdefABCDEF" for c in iv_str.strip()):
+                iv = bytes.fromhex(iv_str)
+            else:
+                iv = base64.b64decode(iv_str)
+        except Exception as e:
+            raise ValueError(f"Invalid IV format: {e}")
+
+        key_bytes = settings.ENCRYPTION_KEY
+        if isinstance(key_bytes, str):
+            key_bytes = base64.b64decode(key_bytes)
+
+        encrypted_data = chunk_file.read()
+
+        if len(encrypted_data) < 16:
+            raise ValueError("Encrypted chunk too short")
+
+        ciphertext = encrypted_data[:-16]
+        auth_tag = encrypted_data[-16:]
+
+        cipher = Cipher(
+            algorithms.AES(key_bytes),
+            modes.GCM(iv, auth_tag),
+            backend=default_backend()
+        )
+        decryptor = cipher.decryptor()
+        decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+
+        return decrypted
+
+    def _encrypt_for_s3(self, data, aesgcm):
+        if aesgcm is None:
+            raise RuntimeError("AESGCM is not initialized")
+
+        nonce = os.urandom(12)
+        ciphertext = aesgcm.encrypt(nonce, data, None)
+        return nonce + ciphertext
+
 
 
 
