@@ -4148,6 +4148,8 @@ class ServeTimeCapSoulMedia(SecuredView):
             
 
 import math
+from memory_room.media_helper import decrypt_s3_file_chunked,decrypt_s3_file_chunked_range,ChunkedDecryptor,S3MediaDecryptor
+
 
 class TimeCapSoulMediaFileDownloadView(SecuredView):
     """
@@ -4155,6 +4157,19 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
     """
     
     DOWNLOAD_CHUNK_SIZE = 1024 * 1024   # 256KB chunks for downloads
+
+    def _stream_decrypted_chunks_new(self, s3_key: str):
+        """
+        Stream using new S3MediaDecryptor with chunk metadata.
+        Yields 256KB chunks for download streaming.
+        """
+        decryptor = S3MediaDecryptor(s3_key)
+        
+        # Stream decrypted chunks
+        for chunk in decryptor.stream_decrypted_chunks(output_chunk_size=self.DOWNLOAD_CHUNK_SIZE):
+            yield chunk
+            # Optional: Add small sleep to prevent overwhelming the client
+            # time.sleep(0.02)
     
     def _stream_chunked_decrypt_download(self, s3_key,media_file=None, user=None):
         """Generator that streams decrypted chunks for download."""
@@ -4314,37 +4329,53 @@ class TimeCapSoulMediaFileDownloadView(SecuredView):
             # Determine content type
             content_type = self._guess_content_type(file_name)
 
-            with ChunkedDecryptor(s3_key) as decryptor:
+            decryptor = S3MediaDecryptor(s3_key)
+            file_info = decryptor.get_file_info()
+            has_chunk_metadata = (
+                    file_info.get('chunk_size') and 
+                    file_info.get('total_chunks')
+                )
+            if has_chunk_metadata:
+                    # Use new chunked streaming
+                    logger.info(f"Using new chunked decryption for {file_name}")
+                    file_size = file_info.get('decrypted_size')
+                    
+                    response = StreamingHttpResponse(
+                        streaming_content=self._stream_decrypted_chunks_new(s3_key),
+                        content_type=content_type,
+                    )
+            else:
+                with ChunkedDecryptor(s3_key) as decryptor:
 
-                if not decryptor.metadata.get("chunk-size"):
+                    if not decryptor.metadata.get("chunk-size"):
 
-                    full_plaintext, _ = get_file_bytes(s3_key)
+                        full_plaintext, _ = get_file_bytes(s3_key)
 
-                    if not full_plaintext:
-                        full_plaintext, _ = get_media_file_bytes_with_content_type(
-                            media_file, user
+                        if not full_plaintext:
+                            full_plaintext, _ = get_media_file_bytes_with_content_type(
+                                media_file, user
+                            )
+
+                        if not full_plaintext:
+                            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+                        file_size = len(full_plaintext)
+
+                        response = StreamingHttpResponse(
+                            streaming_content=self._stream_full_bytes(full_plaintext),
+                            content_type=content_type,
                         )
 
-                    if not full_plaintext:
-                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                    # ================= CHUNKED MODE =================
+                    else:
+                        file_size = self._get_file_size_from_metadata(s3_key)
+                        if not file_size:
+                            return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-                    file_size = len(full_plaintext)
-
-                    response = StreamingHttpResponse(
-                        streaming_content=self._stream_full_bytes(full_plaintext),
-                        content_type=content_type,
-                    )
-
-                # ================= CHUNKED MODE =================
-                else:
-                    file_size = self._get_file_size_from_metadata(s3_key)
-                    if not file_size:
-                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-                    response = StreamingHttpResponse(
-                        streaming_content=self._stream_chunked_bytes(s3_key),
-                        content_type=content_type,
-                    )
+                        response = StreamingHttpResponse(
+                            streaming_content=self._stream_chunked_bytes(s3_key),
+                            content_type=content_type,
+                        )
 
             # ================= HEADERS =================
             response["Content-Disposition"] = f'attachment; filename="{file_name}"'

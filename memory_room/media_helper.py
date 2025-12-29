@@ -2107,3 +2107,405 @@ class ChunkedDecryptor:
             except InvalidTag as e:
                 logger.error(f"InvalidTag at chunk {chunk_num}: {e} for media file: {self.s3_key}")
                 raise ValueError(f"Decryption failed at chunk {chunk_num}")
+            
+from django.core.cache import cache
+from typing import Generator, Optional, Tuple
+
+
+class S3MediaDecryptor:
+    """
+    Handles decryption of encrypted media files stored in S3.
+    Matches the exact upload implementation with chunk-wise encryption.
+    Supports both full file download and streaming chunk-wise decryption.
+    """
+    
+    # Default streaming chunk size (1MB for output)
+    DEFAULT_STREAM_CHUNK_SIZE = 1024 * 1024
+    
+    # Cache timeout for decryption keys (15 minutes)
+    KEY_CACHE_TIMEOUT = 900
+    
+    def __init__(self, s3_key: str, bucket: str = MEDIA_FILES_BUCKET):
+        """
+        Initialize the decryptor with S3 key and bucket.
+        
+        Args:
+            s3_key: The S3 object key
+            bucket: S3 bucket name (default: MEDIA_FILES_BUCKET)
+        """
+        self.s3_key = s3_key
+        self.bucket = bucket
+        self.metadata = None
+        self.aesgcm = None
+        self._file_size = None
+        self._encrypted_file_size = None
+        
+    def _get_cache_key(self, suffix: str = '') -> str:
+        """Generate cache key for decryption key."""
+        import hashlib
+        digest = hashlib.sha256(self.s3_key.encode()).hexdigest()
+        return f"decrypt_key:{digest}{suffix}"
+    
+    def _load_metadata_and_key(self) -> None:
+        """Load S3 object metadata and decrypt the data encryption key."""
+        if self.aesgcm is not None:
+            return  # Already loaded
+        
+        try:
+            # Check cache first
+            cache_key = self._get_cache_key()
+            cached_key = cache.get(cache_key)
+            
+            if cached_key:
+                plain_key = base64.b64decode(cached_key)
+                self.aesgcm = AESGCM(plain_key)
+                
+                # Still need to load metadata for chunk info
+                response = s3.head_object(Bucket=self.bucket, Key=self.s3_key)
+                self.metadata = response.get('Metadata', {})
+                self._encrypted_file_size = response.get('ContentLength', 0)
+                self._file_size = int(self.metadata.get('file_size', 0))
+                
+                logger.info(f"Using cached decryption key for {self.s3_key}")
+            else:
+                # Get metadata from S3
+                response = s3.head_object(Bucket=self.bucket, Key=self.s3_key)
+                self.metadata = response.get('Metadata', {})
+                self._encrypted_file_size = response.get('ContentLength', 0)
+                self._file_size = int(self.metadata.get('file_size', 0))
+                
+                # Get encrypted data key from metadata
+                edk_b64 = self.metadata.get('edk')
+                if not edk_b64:
+                    raise ValueError(f"No encryption key found in metadata for {self.s3_key}")
+                
+                # Decrypt the data key using KMS
+                encrypted_key = base64.b64decode(edk_b64)
+                kms_response = kms.decrypt(CiphertextBlob=encrypted_key)
+                plain_key = kms_response['Plaintext']
+                
+                # Initialize AESGCM cipher
+                self.aesgcm = AESGCM(plain_key)
+                
+                # Cache the plain key
+                cache.set(cache_key, base64.b64encode(plain_key).decode(), 
+                         self.KEY_CACHE_TIMEOUT)
+                
+                logger.info(f"Loaded and cached decryption key for {self.s3_key}")
+                
+        except Exception as e:
+            logger.exception(f"Failed to load metadata/key for {self.s3_key}: {e}")
+            raise
+    
+    def _decrypt_s3_chunk(self, encrypted_chunk: bytes) -> bytes:
+        """
+        Decrypt a chunk that was encrypted for S3 storage using AESGCM.
+        Format: [12-byte nonce][ciphertext with auth tag]
+        
+        Args:
+            encrypted_chunk: Encrypted bytes (nonce + ciphertext)
+            
+        Returns:
+            Decrypted bytes
+        """
+        if len(encrypted_chunk) < 12:
+            raise ValueError("Encrypted chunk too short (missing nonce)")
+        
+        # Extract nonce (first 12 bytes) and ciphertext (rest includes auth tag)
+        nonce = encrypted_chunk[:12]
+        ciphertext = encrypted_chunk[12:]
+        
+        # Decrypt using AESGCM (auth tag is handled internally)
+        try:
+            decrypted = self.aesgcm.decrypt(nonce, ciphertext, None)
+            return decrypted
+        except Exception as e:
+            logger.error(f"Decryption failed: {e}")
+            raise ValueError(f"Failed to decrypt chunk: {e}")
+    
+    def get_full_decrypted_bytes(self) -> bytes:
+        """
+        Download and decrypt the entire file, returning all bytes.
+        Uses chunk-wise decryption based on upload metadata.
+        
+        Returns:
+            Complete decrypted file as bytes
+        """
+        self._load_metadata_and_key()
+        
+        try:
+            # Get chunk metadata from S3 object (stored during upload)
+            upload_chunk_size = self.metadata.get('chunk_size')
+            total_chunks = self.metadata.get('totalchunks')
+            
+            if not upload_chunk_size or not total_chunks:
+                logger.warning("No chunk metadata found, downloading as single file")
+                # Fallback: download entire file and decrypt
+                response = s3.get_object(Bucket=self.bucket, Key=self.s3_key)
+                encrypted_data = response['Body'].read()
+                return self._decrypt_s3_chunk(encrypted_data)
+            
+            # Convert to integers (metadata values are strings)
+            upload_chunk_size = int(upload_chunk_size)
+            total_chunks = int(total_chunks)
+            
+            logger.info(f"Decrypting file with {total_chunks} chunks of {upload_chunk_size} bytes each")
+            
+            # Calculate encrypted chunk size
+            # Each chunk: 12 bytes (nonce) + upload_chunk_size + 16 bytes (GCM auth tag)
+            encrypted_chunk_size = 12 + upload_chunk_size + 16
+            
+            # Download and decrypt chunk by chunk
+            decrypted_chunks = []
+            
+            for chunk_index in range(total_chunks):
+                # Calculate byte range for this encrypted chunk in S3
+                start_byte = chunk_index * encrypted_chunk_size
+                
+                # Last chunk might be smaller
+                if chunk_index == total_chunks - 1:
+                    # Read to end of file
+                    range_header = f'bytes={start_byte}-'
+                else:
+                    end_byte = start_byte + encrypted_chunk_size - 1
+                    range_header = f'bytes={start_byte}-{end_byte}'
+                
+                # Download this encrypted chunk from S3
+                response = s3.get_object(
+                    Bucket=self.bucket, 
+                    Key=self.s3_key,
+                    Range=range_header
+                )
+                
+                encrypted_chunk = response['Body'].read()
+                
+                # Decrypt this chunk
+                decrypted_chunk = self._decrypt_s3_chunk(encrypted_chunk)
+                decrypted_chunks.append(decrypted_chunk)
+                
+                logger.debug(f"Decrypted chunk {chunk_index + 1}/{total_chunks}")
+            
+            # Combine all decrypted chunks
+            full_decrypted = b''.join(decrypted_chunks)
+            
+            logger.info(f"Successfully decrypted {len(full_decrypted)} bytes from {total_chunks} chunks")
+            return full_decrypted
+            
+        except Exception as e:
+            logger.exception(f"Failed to download/decrypt full file: {e}")
+            raise
+    
+    def stream_decrypted_chunks(
+        self, 
+        output_chunk_size: int = DEFAULT_STREAM_CHUNK_SIZE
+    ) -> Generator[bytes, None, None]:
+        """
+        Stream decrypted file in chunks. Decrypts uploaded chunks on-the-fly.
+        
+        This uses the chunk metadata stored during upload to decrypt each
+        encrypted chunk independently, enabling true streaming without loading
+        the entire file into memory.
+        
+        Args:
+            output_chunk_size: Size of output chunks to yield (default: 1MB)
+            
+        Yields:
+            Decrypted data chunks
+        """
+        self._load_metadata_and_key()
+        
+        try:
+            logger.info(f"Starting streaming download from S3: {self.s3_key}")
+            
+            # Get chunk metadata from S3 object (stored during upload)
+            upload_chunk_size = self.metadata.get('chunk_size')
+            total_chunks = self.metadata.get('totalchunks')
+            
+            if not upload_chunk_size or not total_chunks:
+                # Fallback to full file decryption if no chunk metadata
+                logger.warning("No chunk metadata found, falling back to full file decryption")
+                response = s3.get_object(Bucket=self.bucket, Key=self.s3_key)
+                encrypted_data = response['Body'].read()
+                decrypted_data = self._decrypt_s3_chunk(encrypted_data)
+                
+                offset = 0
+                while offset < len(decrypted_data):
+                    yield decrypted_data[offset:offset + output_chunk_size]
+                    offset += output_chunk_size
+                return
+            
+            # Convert to integers (metadata values are strings)
+            upload_chunk_size = int(upload_chunk_size)
+            total_chunks = int(total_chunks)
+            
+            logger.info(f"Streaming {total_chunks} chunks of {upload_chunk_size} bytes each")
+            
+            # Calculate encrypted chunk size
+            # Each chunk: 12 bytes (nonce) + upload_chunk_size + 16 bytes (GCM auth tag)
+            encrypted_chunk_size = 12 + upload_chunk_size + 16
+            
+            # Buffer for accumulating decrypted data
+            buffer = BytesIO()
+            bytes_processed = 0
+            
+            for chunk_index in range(total_chunks):
+                # Calculate byte range for this encrypted chunk in S3
+                start_byte = chunk_index * encrypted_chunk_size
+                
+                # Last chunk might be smaller
+                if chunk_index == total_chunks - 1:
+                    # Read to end of file
+                    range_header = f'bytes={start_byte}-'
+                else:
+                    end_byte = start_byte + encrypted_chunk_size - 1
+                    range_header = f'bytes={start_byte}-{end_byte}'
+                
+                # Download this encrypted chunk from S3
+                response = s3.get_object(
+                    Bucket=self.bucket, 
+                    Key=self.s3_key,
+                    Range=range_header
+                )
+                
+                encrypted_chunk = response['Body'].read()
+                
+                # Decrypt this chunk
+                decrypted_chunk = self._decrypt_s3_chunk(encrypted_chunk)
+                bytes_processed += len(decrypted_chunk)
+                
+                # Write to buffer
+                buffer.write(decrypted_chunk)
+                
+                # Yield output chunks from buffer when we have enough data
+                buffer.seek(0)
+                buffered_data = buffer.read()
+                
+                # Yield complete output chunks
+                offset = 0
+                while offset + output_chunk_size <= len(buffered_data):
+                    yield buffered_data[offset:offset + output_chunk_size]
+                    offset += output_chunk_size
+                
+                # Keep remaining data in buffer for next iteration
+                remaining_data = buffered_data[offset:]
+                buffer = BytesIO()
+                buffer.write(remaining_data)
+            
+            # Yield any remaining data in buffer
+            buffer.seek(0)
+            remaining = buffer.read()
+            if remaining:
+                yield remaining
+                
+            logger.info(f"Streaming complete: {bytes_processed} bytes decrypted from {total_chunks} chunks")
+            
+        except Exception as e:
+            logger.exception(f"Failed during streaming: {e}")
+            raise
+    
+    def get_decrypted_range(
+        self, 
+        start_byte: int, 
+        end_byte: Optional[int] = None
+    ) -> bytes:
+        """
+        Get a specific byte range from the decrypted file.
+        Useful for HTTP range requests (e.g., video seeking).
+        
+        Note: Due to chunk-based encryption, we need to decrypt relevant chunks.
+        This is more efficient than decrypting the entire file.
+        
+        Args:
+            start_byte: Starting byte position (0-indexed) in decrypted file
+            end_byte: Ending byte position (inclusive) in decrypted file. None means to end.
+            
+        Returns:
+            Decrypted bytes for the requested range
+        """
+        self._load_metadata_and_key()
+        
+        try:
+            upload_chunk_size = self.metadata.get('chunk_size')
+            total_chunks = self.metadata.get('totalchunks')
+            
+            if not upload_chunk_size or not total_chunks:
+                # Fallback: decrypt entire file
+                full_data = self.get_full_decrypted_bytes()
+                if end_byte is None:
+                    return full_data[start_byte:]
+                else:
+                    return full_data[start_byte:end_byte + 1]
+            
+            upload_chunk_size = int(upload_chunk_size)
+            total_chunks = int(total_chunks)
+            
+            # Determine which chunks contain the requested byte range
+            start_chunk = start_byte // upload_chunk_size
+            if end_byte is None:
+                end_chunk = total_chunks - 1
+                actual_end_byte = self._file_size - 1
+            else:
+                end_chunk = min(end_byte // upload_chunk_size, total_chunks - 1)
+                actual_end_byte = end_byte
+            
+            logger.info(f"Range request: bytes {start_byte}-{actual_end_byte}, chunks {start_chunk}-{end_chunk}")
+            
+            # Calculate encrypted chunk size
+            encrypted_chunk_size = 12 + upload_chunk_size + 16
+            
+            # Decrypt only the necessary chunks
+            decrypted_chunks = []
+            
+            for chunk_index in range(start_chunk, end_chunk + 1):
+                s3_start_byte = chunk_index * encrypted_chunk_size
+                
+                if chunk_index == total_chunks - 1:
+                    range_header = f'bytes={s3_start_byte}-'
+                else:
+                    s3_end_byte = s3_start_byte + encrypted_chunk_size - 1
+                    range_header = f'bytes={s3_start_byte}-{s3_end_byte}'
+                
+                response = s3.get_object(
+                    Bucket=self.bucket,
+                    Key=self.s3_key,
+                    Range=range_header
+                )
+                
+                encrypted_chunk = response['Body'].read()
+                decrypted_chunk = self._decrypt_s3_chunk(encrypted_chunk)
+                decrypted_chunks.append(decrypted_chunk)
+            
+            # Combine chunks
+            combined_data = b''.join(decrypted_chunks)
+            
+            # Extract the exact byte range requested
+            offset_in_first_chunk = start_byte % upload_chunk_size
+            if end_byte is None:
+                return combined_data[offset_in_first_chunk:]
+            else:
+                total_bytes_needed = actual_end_byte - start_byte + 1
+                return combined_data[offset_in_first_chunk:offset_in_first_chunk + total_bytes_needed]
+            
+        except Exception as e:
+            logger.exception(f"Failed to get range: {e}")
+            raise
+    
+    def get_file_info(self) -> dict:
+        """
+        Get metadata information about the encrypted file.
+        
+        Returns:
+            Dictionary with file information
+        """
+        self._load_metadata_and_key()
+        
+        return {
+            's3_key': self.s3_key,
+            'bucket': self.bucket,
+            'encrypted_size': self._encrypted_file_size,
+            'decrypted_size': self._file_size,
+            'chunk_size': int(self.metadata.get('chunk_size', 0)),
+            'total_chunks': int(self.metadata.get('totalchunks', 0)),
+            'metadata': self.metadata,
+        }
+
