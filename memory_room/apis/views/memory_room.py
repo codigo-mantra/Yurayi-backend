@@ -1119,7 +1119,10 @@ class ChunkedMediaUploadView(APIView):
             from memory_room.crypto_utils import get_media_file_bytes_with_content_type
             media = MemoryRoomMediaFile.objects.get(id=media_id)
 
-            file_bytes, _ = get_media_file_bytes_with_content_type(media, media.user)
+            # file_bytes, _ = get_media_file_bytes_with_content_type(media, media.user)
+
+            decryptor = S3MediaDecryptor(s3_key)
+            file_bytes = decryptor.get_full_decrypted_bytes()
             
             cache_key = media_cache_key('media_bytes_', s3_key)
             if file_bytes:

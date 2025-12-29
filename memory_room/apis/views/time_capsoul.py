@@ -1167,22 +1167,20 @@ class ChunkedMediaFileUploadView(APIView):
                 logger.info(f"Replica created: Old media count: {old_media_count}, New media count: {new_media_count}")
                 
             except Exception as e:
-                logger.error(f'Exception while creating time-capsoul replica user {user.email} capsoul-id: {time_capsoul_id} errors: {e}')
+                logger.error(f'Exception while creating time-capsoul replica user {user.email} capsoul-id: {replica_instance.id} errors: {e}')
         
         return replica_instance
 
     def _extract_thumbnail_async(self, media_id, s3_key, file_type, file_ext, user_id):
         """Async thumbnail extraction to reduce response time"""
         try:
-            from memory_room.crypto_utils import get_media_file_bytes_with_content_type
             from memory_room.upload_helper import extract_thumbnail_from_segment
             from memory_room.upload_helper import extract_audio_thumbnail_from_bytes
 
-
             media = TimeCapSoulMediaFile.objects.get(id=media_id)
 
-            file_bytes, _ = get_media_file_bytes_with_content_type(media, media.user)
-            
+            decryptor = S3MediaDecryptor(s3_key)
+            file_bytes = decryptor.get_full_decrypted_bytes()
             cache_key = media_cache_key('media_bytes_', s3_key)
             if file_bytes:
                 cache.set(cache_key, file_bytes, timeout=60*60*24)
