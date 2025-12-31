@@ -623,6 +623,16 @@ class ChunkedMediaUploadView(SecuredView):
     def delete_session(self, upload_id):
         cache.delete(self._key(upload_id))
 
+    def _percent(self, value):
+        """
+        Always return percentage as integer (digits only)
+        """
+        try:
+            return int(min(max(round(float(value)), 0), 100))
+        except Exception as e:
+            return 0
+
+
     def post(self, request, memory_room_id, action):
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id)
         user = self.get_current_user(request)
@@ -772,7 +782,7 @@ class ChunkedMediaUploadView(SecuredView):
                             'uploadId': upload_id,
                             'status': 'duplicate',
                             'uploadedChunks': uploaded,
-                            'percentage': round(percent, 2)
+                            'percentage': self._percent(percent)
                         })}\n\n"
                         return
 
@@ -798,7 +808,7 @@ class ChunkedMediaUploadView(SecuredView):
                         'uploadId': upload_id,
                         'status': 'uploaded',
                         'stage': 'receiving',
-                        'percentage': round(percent, 2)
+                        'percentage': self._percent(percent)
                     })}\n\n"
                     return
 
@@ -828,7 +838,7 @@ class ChunkedMediaUploadView(SecuredView):
                     'uploadId': upload_id,
                     'status': 'uploaded',
                     'uploadedChunks': uploaded,
-                    'percentage': round(percent, 2)
+                    'percentage': self._percent(percent)
                 })}\n\n"
 
             except Exception as e:

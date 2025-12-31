@@ -1827,6 +1827,16 @@ class ChunkedMediaFileUploadView(SecuredView):
     def _key(self, upload_id):
         return f"{self.CACHE_PREFIX}:{upload_id}"
 
+    def _percent(self, value):
+        """
+        Always return percentage as int between 0–100
+        """
+        try:
+            return int(min(max(round(float(value)), 0), 100))
+        except Exception as e:
+            return 0
+
+
     def get_session(self, upload_id):
         data = cache.get(self._key(upload_id))
         return ChunkedUploadSession.from_dict(json.loads(data)) if data else None
@@ -2045,7 +2055,7 @@ class ChunkedMediaFileUploadView(SecuredView):
                             'uploadId': upload_id,
                             'status': 'duplicate',
                             'uploadedChunks': uploaded,
-                            'percentage': round(percent, 2)
+                            'percentage': self._percent(percent)
                         })}\n\n"
                         return
 
@@ -2071,7 +2081,7 @@ class ChunkedMediaFileUploadView(SecuredView):
                         'uploadId': upload_id,
                         'status': 'uploaded',
                         'stage': 'receiving',
-                        'percentage': round(percent, 2)
+                        'percentage': self._percent(percent)
                     })}\n\n"
                     return
 
@@ -2101,7 +2111,7 @@ class ChunkedMediaFileUploadView(SecuredView):
                     'uploadId': upload_id,
                     'status': 'uploaded',
                     'uploadedChunks': uploaded,
-                    'percentage': round(percent, 2)
+                    'percentage': self._percent(percent)
                 })}\n\n"
 
             except Exception as e:
