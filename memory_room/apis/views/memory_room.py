@@ -599,7 +599,7 @@ from pathlib import Path
 import math
 
 
-class ChunkedMediaUploadView(APIView):
+class ChunkedMediaUploadView(SecuredView):
     CACHE_PREFIX = "chunked_upload"
     SESSION_TIMEOUT = 3600
     MAX_CHUNK_SIZE = 50 * 1024 * 1024
@@ -625,7 +625,7 @@ class ChunkedMediaUploadView(APIView):
 
     def post(self, request, memory_room_id, action):
         memory_room = get_object_or_404(MemoryRoom, id=memory_room_id)
-        user = memory_room.user
+        user = self.get_current_user(request)
 
         if action == "init":
             return self.initialize_uploads(request, user, memory_room)

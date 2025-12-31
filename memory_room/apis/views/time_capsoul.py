@@ -1816,7 +1816,8 @@ from cryptography.hazmat.backends import default_backend
 from memory_room.upload_helper import extract_thumbnail_from_segment
 
 
-class ChunkedMediaFileUploadView(APIView):
+class ChunkedMediaFileUploadView(SecuredView):
+    
     CACHE_PREFIX = "chunked_upload"
     SESSION_TIMEOUT = 3600
     MAX_CHUNK_SIZE = 50 * 1024 * 1024
@@ -1841,10 +1842,11 @@ class ChunkedMediaFileUploadView(APIView):
     def delete_session(self, upload_id):
         cache.delete(self._key(upload_id))
     
-    def create_time_capsoul_replica(self, time_capsoul):
+    def create_time_capsoul_replica(self, request, time_capsoul):
         """Create a replica of the time capsoul if it's unlocked"""
         replica_instance = time_capsoul
-        user = time_capsoul.user
+        # user = time_capsoul.user
+        user = self.get_current_user(request)
         if time_capsoul.status == 'unlocked':
             try:
                 replica_instance = create_time_capsoul(
@@ -1895,9 +1897,8 @@ class ChunkedMediaFileUploadView(APIView):
     
     def post(self, request, time_capsoul_id, action):
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
-        replica_instance = self.create_time_capsoul_replica(time_capsoul)
-
-        user = time_capsoul.user
+        replica_instance = self.create_time_capsoul_replica(request, time_capsoul)
+        user = self.get_current_user(request)
         if action == "init":
             return self.initialize_uploads(request, user, time_capsoul)
         if action == "upload":
