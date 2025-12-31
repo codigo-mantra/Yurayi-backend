@@ -1897,9 +1897,10 @@ class ChunkedMediaFileUploadView(SecuredView):
     
     def post(self, request, time_capsoul_id, action):
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
-        replica_instance = self.create_time_capsoul_replica(request, time_capsoul)
         user = self.get_current_user(request)
         if action == "init":
+            replica_instance = self.create_time_capsoul_replica(request, time_capsoul)
+            time_capsoul = replica_instance
             return self.initialize_uploads(request, user, time_capsoul)
         if action == "upload":
             return self.upload_chunk(request, user)
