@@ -1840,9 +1840,63 @@ class ChunkedMediaFileUploadView(APIView):
 
     def delete_session(self, upload_id):
         cache.delete(self._key(upload_id))
-
+    
+    def create_time_capsoul_replica(self, time_capsoul):
+        """Create a replica of the time capsoul if it's unlocked"""
+        replica_instance = time_capsoul
+        user = time_capsoul.user
+        if time_capsoul.status == 'unlocked':
+            try:
+                replica_instance = create_time_capsoul(
+                    old_time_capsoul = time_capsoul, # create time-capsoul replica
+                    current_user = user,
+                    option_type = 'replica_creation',
+                )
+                cache.delete(f'{user.email}_capsouls')
+                print(f'\n ----- Cached cleared for Capsoul at replica creation ---- ')
+    
+                if user.id == time_capsoul.user.id: # if user is owner of the capsoul
+                    parent_media_files = TimeCapSoulMediaFile.objects.filter(time_capsoul = time_capsoul, is_deleted = False).order_by('-updated_at')
+                else:
+                    recipient = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul, email = user.email).first()
+                    if not recipient:
+                        logger.info(f"Recipient not found for tagged capsoul for {time_capsoul.id} and user {user.email}")
+                        return Response(status=status.HTTP_404_NOT_FOUND)
+                    else:
+                        # parent_files_id = (
+                        #     [int(i.strip()) for i in recipient.parent_media_refrences.split(',') if i.strip().isdigit()]
+                        #     if recipient.parent_media_refrences else []
+                        # )
+                        parent_files_id =  get_recipient_capsoul_ids(recipient)
+                        parent_media_files = TimeCapSoulMediaFile.objects.filter(
+                            time_capsoul=time_capsoul,
+                            id__in = parent_files_id,
+                        ).order_by('-updated_at')
+                new_media_count = 0
+                old_media_count = parent_media_files.count() 
+                for parent_file in parent_media_files:
+                    try:
+                        is_media_created = create_time_capsoul_media_file(
+                            old_media=parent_file,
+                            new_capsoul=replica_instance,
+                            current_user = user,
+                            option_type = 'replica_creation',
+                        )
+                    except Exception as e:
+                        logger.exception(F'Exception while creating time-capsoul media-file replica for media-file id {parent_file.id} and user {user.email}')
+                        pass
+                    else:
+                        if is_media_created:
+                            new_media_count += 1
+                print(f"Old media count: {old_media_count}, New media count: {new_media_count}")
+            except Exception as e:
+                logger.error(f'Exception while creating time-capsoul replica user {user.email} capsoul-id: {time_capsoul.id} errors: {e}')
+        return replica_instance
+    
     def post(self, request, time_capsoul_id, action):
         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+        replica_instance = self.create_time_capsoul_replica(time_capsoul)
+
         user = time_capsoul.user
         if action == "init":
             return self.initialize_uploads(request, user, time_capsoul)
@@ -2236,6 +2290,22 @@ class ChunkedMediaFileUploadView(APIView):
                 s3_key=session.s3_key,
                 file_type=session.file_type
             )
+            if media.time_capsoul.status == 'sealed':
+                capsoul_recipients = TimeCapSoulRecipient.objects.filter(
+                    time_capsoul=media.time_capsoul
+                )
+                
+                if capsoul_recipients.exists():
+                    try:
+                        recipient = capsoul_recipients.first()
+                        existing_media_ids = eval(recipient.parent_media_refrences) if recipient.parent_media_refrences else []
+                        
+                        if isinstance(existing_media_ids, list):
+                            existing_media_ids.append(media.id)
+                            capsoul_recipients.update(parent_media_refrences=str(existing_media_ids))
+                    except Exception as e:
+                        logger.error(f'Error updating parent media refs: {e} for user {user.email}, capsoul {time_capsoul.id}')
+
             # clear cache 
             cache.delete(f'{user.email}_capsoul_{media.time_capsoul.id}')
             cache.delete(f'{user.email}_capsouls')
