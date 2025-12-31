@@ -1467,10 +1467,14 @@ class ChunkedUploadSession:
         self.data_key_encrypted = None
         self.aesgcm = None
         
-        # JPG-specific fields
+        # JPG and small file specific fields
         self.is_jpg = False
+        self.is_small_file = False
         self.file_ext = None
-        self.jpg_chunks_key = None
+        self.temp_chunks_key = None  # Unified key for both JPG and small files
+        
+        # Completion result storage
+        self.completion_result = None
         
         # Thread safety
         self.lock = threading.Lock()
@@ -1497,10 +1501,12 @@ class ChunkedUploadSession:
                     base64.b64encode(self.data_key_encrypted).decode()
                     if self.data_key_encrypted else None
                 ),
-                # JPG-specific fields
+                # JPG and small file specific fields
                 "is_jpg": self.is_jpg,
+                "is_small_file": self.is_small_file,
                 "file_ext": self.file_ext,
-                "jpg_chunks_key": self.jpg_chunks_key,
+                "temp_chunks_key": self.temp_chunks_key,
+                "completion_result": self.completion_result,
             }
 
     @classmethod
@@ -1532,10 +1538,12 @@ class ChunkedUploadSession:
             session.data_key_encrypted = encrypted
             session.aesgcm = AESGCM(session.data_key_plain)
 
-        # Restore JPG-specific fields
+        # Restore JPG and small file specific fields
         session.is_jpg = data.get("is_jpg", False)
+        session.is_small_file = data.get("is_small_file", False)
         session.file_ext = data.get("file_ext")
-        session.jpg_chunks_key = data.get("jpg_chunks_key")
+        session.temp_chunks_key = data.get("temp_chunks_key")
+        session.completion_result = data.get("completion_result")
 
         return session
 
@@ -1547,7 +1555,13 @@ class ChunkedUploadSession:
         """Get upload progress as percentage"""
         if self.total_chunks == 0:
             return 0.0
-        return (len(self.uploaded_chunks) / self.total_chunks) * 100
+        
+        # For JPG files, chunk upload is only 50% of progress
+        if self.is_jpg:
+            return (len(self.uploaded_chunks) / self.total_chunks) * 50
+        else:
+            # For small and large files, normal progress
+            return (len(self.uploaded_chunks) / self.total_chunks) * 100
 
     def is_complete(self):
         """Check if all chunks have been uploaded"""
@@ -1565,7 +1579,7 @@ class ChunkedUploadSession:
             self.last_activity = time.time()
 
     def add_s3_part(self, part_number, etag):
-        """Add an S3 part (for non-JPG files)"""
+        """Add an S3 part (for non-JPG, non-small files)"""
         with self.lock:
             self.s3_parts[str(part_number)] = etag
             self.last_activity = time.time()
@@ -1578,10 +1592,15 @@ class ChunkedUploadSession:
         ]
         return sorted(parts, key=lambda x: x["PartNumber"])
 
+    def needs_processing(self):
+        """Check if file needs special processing (only JPG)"""
+        return self.is_jpg
+
     def __repr__(self):
         return (
             f"ChunkedUploadSession(upload_id={self.upload_id}, "
             f"file_name={self.file_name}, "
             f"progress={self.get_progress():.1f}%, "
-            f"is_jpg={self.is_jpg})"
+            f"is_jpg={self.is_jpg}, "
+            f"is_small_file={self.is_small_file})"
         )
