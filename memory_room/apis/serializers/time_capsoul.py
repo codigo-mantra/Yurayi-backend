@@ -911,6 +911,8 @@ class TimeCapsoulUnlockSerializer(serializers.ModelSerializer):
                         # create notification at invited for tagged user if exists
                         try:
                             user = User.objects.get(email = person_email)
+                            cache.delete(f'{user.email}_capsoul_{recipient.time_capsoul.id}')
+
                         except User.DoesNotExist as e:
                             # skip if user not exists
                             pass
