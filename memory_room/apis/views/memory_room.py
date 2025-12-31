@@ -997,7 +997,6 @@ class ChunkedMediaUploadView(APIView):
                     "percentage": 90 if session.file_type in ["video", "audio"] else 98
                 }
 
-            # ---------- CREATE DB RECORD ----------
             yield {
                 "uploadId": upload_id,
                 "stage": "creating_record",
@@ -1017,7 +1016,7 @@ class ChunkedMediaUploadView(APIView):
                 title=session.file_name,
                 s3_key=session.s3_key,
             )
-
+            cache.delete(f'{user.email}__rooms_list')
             cache.delete(f'{user.email}_room_{memory_room.id}_media_list')
 
             if session.is_jpg and session.temp_chunks_key:

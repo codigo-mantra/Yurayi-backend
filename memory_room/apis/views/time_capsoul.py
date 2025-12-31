@@ -2234,6 +2234,10 @@ class ChunkedMediaFileUploadView(APIView):
                 s3_key=session.s3_key,
                 file_type=session.file_type
             )
+            # clear cache 
+            cache.delete(f'{user.email}_capsoul_{media.time_capsoul.id}')
+            cache.delete(f'{user.email}_capsouls')
+
 
 
             if session.is_jpg and session.temp_chunks_key:
