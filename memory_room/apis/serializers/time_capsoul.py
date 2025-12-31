@@ -455,7 +455,7 @@ class TimeCapSoulUpdationSerializer(serializers.ModelSerializer):
                         (name.lower() for name in list(existing_capsouls) + list(recipient_capsouls) if name)
                     )
 
-                    if new_capsoul_name in  existing_names:
+                    if new_capsoul_name.lower() in  existing_names:
                         raise serializers.ValidationError({'name': 'You already have a time-capsoul with this name. Please choose a different name.'})
                             
                     template.name = name
