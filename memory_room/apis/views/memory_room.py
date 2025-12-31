@@ -292,6 +292,7 @@ class SetMemoryRoomCoverImageAPIView(SecuredView):
                 other_media.update(is_cover_image = False)
                 logger.info(f'Memory Room cover set successfully by {user.email} room: {memory_room_id} media id: {media_file_id} ')
                 cache.delete(f'{user.email}__rooms_list')
+                cache.delete(f'{user.email}_room_{memory_room.id}_media_list')
                 display_cache_message('Room cache deleted setting new cover image')
             else:
                 logger.info(f'Memory Room cover already set by {user.email} room: {memory_room_id} media id: {media_file_id} ')

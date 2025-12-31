@@ -1034,6 +1034,8 @@ class TimeCapSoulMediaFileUpdationView(SecuredView):
         serializer = TimeCapsoulMediaFileUpdationSerializer(instance = media_file, data=request.data, partial = True, context={'is_owner': True if media_file.user == user else False, 'current_user': user})
         serializer.is_valid(raise_exception=True)
         update_media_file = serializer.save()
+        cache.delete(f'{user.email}_capsoul_{media_file.time_capsoul.id}')
+        cache.delete(f'{user.email}_capsouls')
         return Response(TimeCapSoulMediaFileReadOnlySerializer(update_media_file).data)
 
 
