@@ -147,11 +147,11 @@ class CreateTimeCapSoulView(SecuredView):
         logger.info("CreateTimeCapSoulView.get list called")
         """Time CapSoul list"""
         user = self.get_current_user(request)
-        cache_key = f'{user.email}_capsouls'
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            print(f'Cached reponse ---- capsoul list ---- ')
-            return Response(cached_data)
+        # cache_key = f'{user.email}_capsouls'
+        # cached_data = cache.get(cache_key)
+        # if cached_data:
+        #     print(f'Cached reponse ---- capsoul list ---- ')
+        #     return Response(cached_data)
         
         time_capsouls = TimeCapSoul.objects.filter(user=user, is_deleted = False).order_by('-updated_at') # owner capsoul
         try: 
@@ -192,7 +192,7 @@ class CreateTimeCapSoulView(SecuredView):
             'time_capsoul': serializer_data,
             'replica_capsoul': replica_serializer
         }
-        cache.set(cache_key, response, 60*60*24)
+        # cache.set(cache_key, response, 60*60*24)
         return Response(response)
         
 class TimeCapSoulUpdationView(SecuredView):
@@ -276,11 +276,11 @@ class TimeCapSoulMediaFilesView(SecuredView):
         """
         from django.utils import timezone
         user = self.get_current_user(request)
-        cache_key = f'{user.email}_capsoul_{time_capsoul_id}'
-        cached_data = cache.get(cache_key)
-        if cached_data:
-            print(f'\n media list served from cache for capsuul: {time_capsoul_id}')
-            return Response(cached_data)
+        # cache_key = f'{user.email}_capsoul_{time_capsoul_id}'
+        # cached_data = cache.get(cache_key)
+        # if cached_data:
+        #     print(f'\n media list served from cache for capsuul: {time_capsoul_id}')
+        #     return Response(cached_data)
         
         # if user is Owner of the time-capsoul 
         try:
@@ -325,7 +325,7 @@ class TimeCapSoulMediaFilesView(SecuredView):
             'time_capsoul': capsoul_data,
             'media_files': serializer.data
         }
-        cache.set(cache_key, response, 60*60*24)
+        # cache.set(cache_key, response, 60*60*24)
         return Response(response)
 
     
