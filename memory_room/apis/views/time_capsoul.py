@@ -1836,7 +1836,6 @@ class ChunkedMediaFileUploadView(SecuredView):
         except Exception as e:
             return 0
 
-
     def get_session(self, upload_id):
         data = cache.get(self._key(upload_id))
         return ChunkedUploadSession.from_dict(json.loads(data)) if data else None
@@ -1906,8 +1905,8 @@ class ChunkedMediaFileUploadView(SecuredView):
         return replica_instance
     
     def post(self, request, time_capsoul_id, action):
-        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         user = self.get_current_user(request)
+        time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
         if action == "init":
             replica_instance = self.create_time_capsoul_replica(request, time_capsoul)
             time_capsoul = replica_instance
@@ -2049,7 +2048,7 @@ class ChunkedMediaFileUploadView(SecuredView):
                             else 90 if session.file_type in ["video", "audio"]
                             else 100
                         )
-                        percent = (uploaded / session.total_chunks) * max_percent
+                        percent = int((uploaded / session.total_chunks) * max_percent)
 
                         yield f"data: {json.dumps({
                             'uploadId': upload_id,
@@ -2104,8 +2103,8 @@ class ChunkedMediaFileUploadView(SecuredView):
                 self.save_session(session)
 
                 uploaded = len(session.uploaded_chunks)
-                max_percent = 90 if session.file_type in ["video", "audio"] else 100
-                percent = (uploaded / session.total_chunks) * max_percent
+                max_percent = 90 if session.file_type in ["video", "audio"] else 99
+                percent = int((uploaded / session.total_chunks) * max_percent)
 
                 yield f"data: {json.dumps({
                     'uploadId': upload_id,
@@ -2134,7 +2133,6 @@ class ChunkedMediaFileUploadView(SecuredView):
             }
         )
 
-
     def complete_upload_streaming(self, request, user):
         upload_ids = request.POST.getlist("uploadIds[]")
         if not upload_ids:
@@ -2144,7 +2142,7 @@ class ChunkedMediaFileUploadView(SecuredView):
             completed, failed = [], []
 
             for upload_id in upload_ids:
-                yield f"data: {json.dumps({'uploadId': upload_id, 'stage': 'starting', 'percentage': 90})}\n\n"
+                yield f"data: {json.dumps({'uploadId': upload_id, 'stage': 'starting', 'percentage': 91})}\n\n"
 
                 try:
                     for event in self._complete_single_upload_streaming(upload_id, user):
@@ -2242,7 +2240,7 @@ class ChunkedMediaFileUploadView(SecuredView):
                 yield {
                     "uploadId": upload_id,
                     "stage": "s3_complete",
-                    "percentage": 90 if session.file_type in ["video", "audio"] else 100
+                    "percentage": 90 if session.file_type in ["video", "audio"] else 99
                 }
 
             # ---------- LARGE FILE FLOW ----------
@@ -2495,60 +2493,6 @@ class ChunkedMediaFileUploadView(SecuredView):
             logger.error(f"[JPG] Re-encoding failed: {e}")
             yield {"uploadId": upload_id, "error": f"Image unrecoverable: {str(e)}", "percentage": 60}
 
-    # def _upload_processed_file_streaming(self, file_bytes, session, upload_id):
-    #     """Upload processed file to S3 with streaming progress"""
-    #     logger.info(f"[UPLOAD] Uploading {len(file_bytes)} bytes to S3...")
-        
-    #     yield {"uploadId": upload_id, "stage": "encrypting_chunks", "percentage": 74}
-        
-    #     # Split into chunks and upload
-    #     chunk_size = session.chunk_size
-    #     total_bytes = len(file_bytes)
-    #     total_parts = (total_bytes + chunk_size - 1) // chunk_size
-    #     part_number = 1
-        
-    #     for i in range(0, total_bytes, chunk_size):
-    #         chunk_data = file_bytes[i:i + chunk_size]
-            
-    #         # Encrypt chunk for S3
-    #         encrypted = self._encrypt_for_s3(chunk_data, session.aesgcm)
-            
-    #         # Upload part
-    #         resp = s3.upload_part(
-    #             Bucket=MEDIA_FILES_BUCKET,
-    #             Key=session.s3_key,
-    #             UploadId=session.s3_upload_id,
-    #             PartNumber=part_number,
-    #             Body=encrypted,
-    #         )
-            
-    #         session.s3_parts[str(part_number)] = resp["ETag"]
-            
-    #         # Stream progress: 75% → 88% during upload
-    #         upload_progress = 75 + (part_number / total_parts) * 13
-    #         yield {"uploadId": upload_id, "stage": "uploading_s3", "percentage": round(upload_progress, 2)}
-            
-    #         part_number += 1
-        
-    #     yield {"uploadId": upload_id, "stage": "completing_s3", "percentage": 90}
-        
-    #     # Complete multipart upload
-    #     parts = [
-    #         {"PartNumber": int(p), "ETag": et}
-    #         for p, et in session.s3_parts.items()
-    #     ]
-    #     parts.sort(key=lambda x: x["PartNumber"])
-        
-    #     s3.complete_multipart_upload(
-    #         Bucket=MEDIA_FILES_BUCKET,
-    #         Key=session.s3_key,
-    #         UploadId=session.s3_upload_id,
-    #         MultipartUpload={"Parts": parts},
-    #     )
-        
-    #     logger.info(f"[UPLOAD] Upload completed with {len(parts)} parts")
-    #     yield {"uploadId": upload_id, "stage": "upload_complete", "percentage": 93}
-    
     def _upload_processed_file_streaming(self, file_bytes, session, upload_id):
         """
         Upload processed JPG safely.
@@ -2605,7 +2549,10 @@ class ChunkedMediaFileUploadView(SecuredView):
             yield {
                 "uploadId": upload_id,
                 "stage": "uploading_s3",
-                "percentage": round(progress, 2),
+                # "percentage": round(progress, 2),
+                "percentage": self._percent(progress),
+
+
             }
 
             part_number += 1
