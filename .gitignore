@@ -35,8 +35,8 @@ ENV/
 *.txt
 *.sqlite3
 # IDE
+temp_auto_push.bat
 .idea/
-.vscode/
 *.swp
 *.swo
 .DS_Store
@@ -73,4 +73,5 @@ logs/
 .coverage.*
 coverage.xml
 *.cover
-assets/
+assets/.gitignore
+temp_interactive_push.bat

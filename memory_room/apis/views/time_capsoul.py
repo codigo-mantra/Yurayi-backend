@@ -2615,10 +2615,13 @@ class ChunkedMediaFileUploadView(SecuredView):
             if thumbnail_data:
                 from django.core.files.base import ContentFile
                 from userauth.models import Assets
+
+                title = media.title if media.title else 'audio_thumbnail'
+                title = clean_filename(title)
                 
                 image_file = ContentFile(
                     thumbnail_data, 
-                    name=f"thumbnail_{media.title.split('.')[0]}.jpg"
+                    name=f"thumbnail_{title.split('.')[0]}.jpg"
                 )
                 asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
                 media.thumbnail = asset
