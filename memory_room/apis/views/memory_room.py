@@ -1035,7 +1035,7 @@ class ChunkedMediaUploadView(SecuredView):
 
             # ---------- THUMBNAIL ----------
             if session.file_type in ["video", "audio"]:
-                yield {"uploadId": upload_id, "stage": "thumbnail_start", "percentage": 95}
+                # yield {"uploadId": upload_id, "stage": "thumbnail_start", "percentage": 95}
 
                 for thumb_event in self._extract_thumbnail_with_progress(
                     media.id,
@@ -1282,9 +1282,8 @@ class ChunkedMediaUploadView(SecuredView):
     def _extract_thumbnail_with_progress(self, media_id, s3_key, file_type, file_ext, user_id, upload_id):
         """Extract thumbnail with streaming progress (95% → 100%)"""
         try:
-            from memory_room.crypto_utils import get_media_file_bytes_with_content_type
             
-            yield {"uploadId": upload_id, "stage": "downloading_for_thumbnail", "percentage": 95}
+            # yield {"uploadId": upload_id, "stage": "downloading_for_thumbnail", "percentage": 95}
             
             media = MemoryRoomMediaFile.objects.get(id=media_id)
 
@@ -1322,10 +1321,13 @@ class ChunkedMediaUploadView(SecuredView):
             if thumbnail_data:
                 from django.core.files.base import ContentFile
                 from userauth.models import Assets
+
+                title = media.title if media.title else 'audio_thumbnail'
+                title = clean_filename(title)
                 
                 image_file = ContentFile(
                     thumbnail_data, 
-                    name=f"thumbnail_{media.title.split('.')[0]}.jpg"
+                    name=f"thumbnail_{title.split('.')[0]}.jpg"
                 )
                 asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
                 media.thumbnail_url = asset.s3_url
@@ -3106,14 +3108,14 @@ class ServeMedia(SecuredView):
             cached_data = cache.get(bytes_cache_key)
             
             if cached_data:
-                file_bytes, _ = cached_data
+                file_bytes= cached_data
             else:
                 file_bytes, _ = decrypt_s3_file_chunked(s3_key)
                 if not file_bytes:
                     file_bytes, _ = get_media_file_bytes_with_content_type(media_file, user)
                     if not file_bytes:
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+                cache.set(bytes_cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
             
             # Check if PDF, CSV, or JSON after decryption
             if is_pdf:

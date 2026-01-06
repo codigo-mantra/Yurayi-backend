@@ -33,7 +33,7 @@ class Assets(BaseModel):
         default="Others",
         verbose_name="Asset Type"
     )
-    s3_url = models.URLField(blank=True, null=True)
+    s3_url = models.URLField(blank=True, null=True,max_length=2048)
     s3_key = models.CharField(blank=True, null=True,max_length=255)
 
 
