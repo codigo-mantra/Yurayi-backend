@@ -24,6 +24,8 @@ from django.conf.urls.static import static
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v0/', include('userauth.urls')),
+    path('api/v0/family-tree/', include('family_tree.urls')),
+
 
     # api-docs urls
     path('api/v0/schema/', SpectacularAPIView.as_view(), name='schema'),

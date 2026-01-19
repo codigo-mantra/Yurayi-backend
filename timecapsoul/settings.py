@@ -71,6 +71,7 @@ INSTALLED_APPS = [
     'allauth.socialaccount.providers.google',
     'userauth',
     'memory_room',
+    'family_tree',
 ]
 
 SITE_ID = 1

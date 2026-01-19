@@ -86,6 +86,7 @@ typing_extensions==4.14.1
 tzdata==2025.2
 uritemplate==4.2.0
 urllib3==2.5.0
+uuid6==2025.0.1
 vine==5.1.0
 watchtower==1.0.6
 wcwidth==0.2.13
