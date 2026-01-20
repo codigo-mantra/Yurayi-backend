@@ -2,6 +2,7 @@ import uuid
 from django.db import models
 from userauth.models import User 
 from uuid6 import uuid7
+from ckeditor_uploader.fields import RichTextUploadingField
 
 
 
@@ -41,7 +42,6 @@ class FamilyTree(TimeStampedModel):
         if self.root_member:
             node_id = self.root_member.id 
         return node_id
-
 
 
 class FamilyMember(TimeStampedModel):
@@ -182,3 +182,64 @@ class ParentalRelationship(models.Model):
 
     def __str__(self):
         return f"Parents of {self.child}"
+
+
+class FamilyTreeDiaryCategory(TimeStampedModel):
+    name = models.CharField(max_length=100)
+    color_code = models.CharField(max_length=20)
+    slug = models.SlugField(unique=True)
+    is_deleted = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "family_tree_diary_category"
+
+    def __str__(self):
+        return self.name
+    
+
+class FamilyTreeDiary(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    family_tree = models.ForeignKey(
+        FamilyTree,
+        on_delete=models.CASCADE,
+        related_name="diaries"
+    )
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="family_tree_diaries"
+    )
+    category = models.ForeignKey(
+        FamilyTreeDiaryCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="diaries"
+    )
+    title = models.CharField(max_length=255)
+    description = RichTextUploadingField()
+    is_deleted = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "family_tree_diary"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
+
+
+class FamilyTreeRecipient(TimeStampedModel):
+    PERMISSION_CHOICES = (
+        ('view', 'View'),
+        ('edit', 'Edit')
+    )
+    recipient_email = models.EmailField()
+    family_tree = models.ForeignKey(
+        FamilyTree,
+        on_delete=models.CASCADE,
+        related_name="family_tree_recipients"
+    )
+
+    
+    permissions = models.CharField(choices=PERMISSION_CHOICES, max_length=100, default='view')
+    is_deleted = models.BooleanField(default=False)
+

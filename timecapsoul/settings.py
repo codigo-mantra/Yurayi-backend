@@ -60,6 +60,7 @@ INSTALLED_APPS = [
     'django_celery_beat',
     'storages',    
     'ckeditor',
+    'ckeditor_uploader',
     'channels',   
     'corsheaders',
     'drf_spectacular',
@@ -186,6 +187,8 @@ AWS_S3_REGION_NAME = env('AWS_S3_REGION_NAME')
 AWS_ACCESS_KEY_ID = env('AWS_ACCESS_KEY_ID')
 AWS_SECRET_ACCESS_KEY = env('AWS_SECRET_ACCESS_KEY')
 MEDIA_FILES_BUCKET = "yurayi-media"
+CKEDITOR_UPLOAD_PATH = "uploads/ckeditor/"
+
 DECRYPT_LINK_TTL_SECONDS = 60*60*24  # 1 day 
 DECRYPT_LINK_SECRET = "12345678901234567890123456789012"  # for JWT signing
 if ENVIRONMENT_TYPE == 'PROD':
@@ -238,6 +241,21 @@ else:
     MEDIA_URL = '/media/'
     STATICFILES_DIRS = [BASE_DIR / "static"]
     AWS_STORAGE_BUCKET_NAME = "time-capsoul-files"
+
+
+CKEDITOR_CONFIGS = {
+    "default": {
+        "toolbar": "full",
+        "height": 300,
+        "width": "100%",
+        "extraPlugins": ",".join([
+            "uploadimage",
+            "embed",
+            "autoembed",
+            "codesnippet",
+        ]),
+    },
+}
     
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'

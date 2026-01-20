@@ -33,6 +33,8 @@ urlpatterns = [
     path('api/v0/doc/', SpectacularSwaggerView.as_view(url_name='schema'), name='swagger-ui'),
     # Redoc UI
     path('api/v0/schema/redoc/', SpectacularRedocView.as_view(url_name='schema'), name='redoc'),
+    path("ckeditor/", include("ckeditor_uploader.urls")),  
+
 
 
 ]    

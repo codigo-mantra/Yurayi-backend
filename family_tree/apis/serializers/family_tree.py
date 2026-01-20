@@ -180,14 +180,18 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
         family_tree = self.context.get("family_tree")
         email = validated_data.get("email_address")
         relation_type = validated_data.get("relation_type").lower()
-        parent_node_id = int(validated_data.get("parent_node_id"))
+        parent_node_id = (validated_data.get("parent_node_id"))
         is_married = validated_data.get("is_married", False)
         married_date = validated_data.get("married_date", None)
         validated_data.pop("parent_node_id", None)
         gender = validated_data.get("gender").lower()
 
-        if relation_type in ['father', 'mother', 'spouse']:
+        if not parent_node_id :
+            raise serializers.ValidationError({'parent_node_id': 'Parent member id is required'})
+        
+        parent_member_node = int(parent_member_node)
 
+        if relation_type in ['father', 'mother', 'spouse']:
             if not is_married:
                 raise serializers.ValidationError(
                     {"is_married": "Parent must be married to add father or mother."}
