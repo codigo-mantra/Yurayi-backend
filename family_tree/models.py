@@ -141,7 +141,6 @@ class Partnership(TimeStampedModel):
         return f'{self.id}'
     
 
-
 class ParentalRelationship(models.Model):
     PARENT_TYPE_CHOICES = (
         ("biological", "Biological"),
