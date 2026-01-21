@@ -3,7 +3,7 @@ from datetime import date
 from django.db.models import Q
 from django.db import models
 
-from family_tree.models import FamilyMember, Partnership, ParentalRelationship, FamilyTree
+from family_tree.models import FamilyMember, Partnership, ParentalRelationship, FamilyTree, FamilyTreeRecipient
 
 def calculate_age(birth_date):
     if not birth_date:
@@ -665,3 +665,140 @@ class FamilyTreeUpdateSerializer(serializers.ModelSerializer):
         instance.description = validated_data.get("description", instance.description)
         instance.save(update_fields=["name", "description", "updated_at"])
         return instance
+
+
+# class FamilyTreeRecipientBulkSerializer(serializers.Serializer):
+#     recipient_emails = serializers.ListField(
+#         child=serializers.EmailField(),
+#         allow_empty=False
+#     )
+#     permissions = serializers.CharField()
+
+#     def validate_permissions(self, value):
+#         allowed_permissions = dict(FamilyTreeRecipient.PERMISSION_CHOICES)
+
+#         if value not in allowed_permissions:
+#             raise serializers.ValidationError(
+#                 f"Invalid permission '{value}'. "
+#                 f"Allowed values are: {list(allowed_permissions.keys())}"
+#             )
+
+#         return value
+
+#     def create(self, validated_data):
+#         family_tree = self.context.get("family_tree")
+#         if not family_tree:
+#             raise serializers.ValidationError("Family tree context is required.")
+
+#         emails = validated_data["recipient_emails"]
+#         permissions = validated_data["permissions"]
+
+#         recipients = []
+
+#         for email in emails:
+#             recipient, created = FamilyTreeRecipient.objects.get_or_create(
+#                 family_tree=family_tree,
+#                 recipient_email=email,
+#                 defaults={"permissions": permissions}
+#             )
+
+#             if not created and recipient.is_deleted:
+#                 recipient.is_deleted = False
+#                 recipient.permissions = permissions
+#                 recipient.save()
+
+#             recipients.append(recipient)
+
+#         return recipients
+
+
+class RecipientItemSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    permissions = serializers.CharField(required = True)
+
+    def validate_permissions(self, value):
+        allowed_permissions = dict(FamilyTreeRecipient.PERMISSION_CHOICES)
+        if value not in allowed_permissions:
+            raise serializers.ValidationError(
+                f"Invalid permission '{value}'. "
+                f"Allowed values are: {list(allowed_permissions.keys())}"
+            )
+        return value
+
+
+class FamilyTreeRecipientBulkSerializer(serializers.Serializer):
+    recipients = serializers.ListField(
+        child=RecipientItemSerializer(),
+        allow_empty=False
+    )
+
+    def create(self, validated_data):
+        family_tree = self.context.get("family_tree")
+        if not family_tree:
+            raise serializers.ValidationError("Family tree context is required.")
+
+        recipients_data = validated_data["recipients"]
+        created_recipients = []
+
+        for item in recipients_data:
+            email = item["email"]
+            permissions = item.get("permissions", "view")
+
+            recipient, created = FamilyTreeRecipient.objects.get_or_create(
+                family_tree=family_tree,
+                recipient_email=email,
+                defaults={"permissions": permissions}
+            )
+            if created:
+                # bind here celery task to send email to recipients
+
+                pass
+
+           
+            created_recipients.append(recipient)
+
+        return created_recipients
+    
+
+class FamilyTreeRecipientListSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    recipient_email = serializers.EmailField()
+    permissions = serializers.CharField()
+    is_deleted = serializers.BooleanField()
+    created_at = serializers.DateTimeField()
+
+class FamilyTreeRecipientManageSerializer(serializers.Serializer):
+    recipients = serializers.ListField(allow_empty=False)
+
+    def validate(self, data):
+        recipients = data["recipients"]
+        allowed_permissions = dict(FamilyTreeRecipient.PERMISSION_CHOICES)
+
+        for index, item in enumerate(recipients):
+            if "recipient_id" not in item:
+                raise serializers.ValidationError(
+                    {f"recipients[{index}]": "recipient_id is required."}
+                )
+
+            operation = item.get("operation")
+            if operation not in ("update", "remove"):
+                raise serializers.ValidationError(
+                    {f"recipients[{index}]": "operation must be 'update' or 'remove'."}
+                )
+
+            if operation == "update":
+                if "permissions" not in item:
+                    raise serializers.ValidationError(
+                        {f"recipients[{index}]": "permissions is required for update."}
+                    )
+
+                if item["permissions"] not in allowed_permissions:
+                    raise serializers.ValidationError(
+                        {
+                            f"recipients[{index}]":
+                            f"Invalid permission '{item['permissions']}'. "
+                            f"Allowed values are {list(allowed_permissions.keys())}"
+                        }
+                    )
+
+        return data

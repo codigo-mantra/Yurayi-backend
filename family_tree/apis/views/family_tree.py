@@ -20,10 +20,11 @@ from rest_framework.views import APIView
 from family_tree.utils.tree_filter import get_filtered_tree
 from family_tree.utils.tree_hierarchy import get_full_hierarchy_from_member
 
-from family_tree.models import FamilyTree, FamilyMember, ParentalRelationship,Partnership
+from family_tree.models import FamilyTree, FamilyMember, ParentalRelationship,Partnership,FamilyTreeRecipient
 
 from family_tree.apis.serializers.family_tree import (
-    FamilyTreeNodeSerializer,FamilyTreeCreateSerializer, AddNewFamilyMemberSerializer, FamilyTreeSerializer
+    FamilyTreeNodeSerializer,FamilyTreeCreateSerializer, AddNewFamilyMemberSerializer, FamilyTreeSerializer,
+    FamilyTreeRecipientBulkSerializer,FamilyTreeRecipientListSerializer, FamilyTreeRecipientManageSerializer
 )
 
 from userauth.models import User
@@ -35,7 +36,7 @@ class FamilyTreeListAPIView(SecuredView):
 
     def get(self, request):
         user = self.get_current_user(request)  
-        family_tree = FamilyTree.objects.filter(owner=user, is_deleted=False)
+        family_tree = FamilyTree.objects.filter(owner=user, is_deleted=False).order_by('-created_at')
         if not family_tree:
             return Response([])
 
@@ -334,3 +335,102 @@ class FamilyTreeUpdateAPIView(SecuredView):
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class FamilyTreeRecipientInviteAPIView(APIView):
+    """
+    Invite multiple recipients to a family tree
+    """
+
+    def get(self, request, family_tree_id):
+        """Get all recipient of specific family-tree """
+        family_tree = get_object_or_404(
+            FamilyTree,
+            id=family_tree_id,
+            is_deleted=False
+        )
+        tree_recipients = family_tree.family_tree_recipients.filter(is_deleted = False).order_by('-created_at')
+        serializer =  FamilyTreeRecipientListSerializer(tree_recipients, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+        
+
+    def post(self, request, family_tree_id):
+        """Add recipeints to family-tree"""
+        family_tree = get_object_or_404(
+            FamilyTree,
+            id=family_tree_id,
+            is_deleted=False
+        )
+
+        serializer = FamilyTreeRecipientBulkSerializer(
+            data=request.data,
+            context={
+                "family_tree": family_tree,
+                "request": request
+            }
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {
+                "message": "Invitations sent successfully"
+            },
+            status=status.HTTP_201_CREATED
+        )
+    
+    def patch(self, request, family_tree_id):
+        family_tree = get_object_or_404(
+            FamilyTree,
+            id=family_tree_id,
+            is_deleted=False
+        )
+
+        serializer = FamilyTreeRecipientManageSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        recipient_payloads = serializer.validated_data["recipients"]
+
+        recipient_ids = [item["recipient_id"] for item in recipient_payloads]
+        recipients_qs = family_tree.family_tree_recipients.filter(is_deleted =False)
+
+
+        recipients_map = {r.id: r for r in recipients_qs}
+
+        updated_ids = []
+        removed_ids = []
+        recipients_to_update = []
+
+        for item in recipient_payloads:
+            recipient = recipients_map.get(item["recipient_id"])
+            if not recipient:
+                continue  # or raise error if you want strict validation
+
+            if item["operation"] == "update":
+                recipient.permissions = item["permissions"]
+                # recipient.is_deleted = False
+                updated_ids.append(recipient.id)
+                recipient.save()
+
+            elif item["operation"] == "remove":
+                recipient.is_deleted = True
+
+                removed_ids.append(recipient.id)
+
+            recipients_to_update.append(recipient)
+
+        if recipients_to_update:
+            FamilyTreeRecipient.objects.bulk_update(
+                recipients_to_update,
+                fields=["permissions", "is_deleted"]
+            )
+
+        return Response(
+            {
+                "message": "Recipients processed successfully",
+                "updated_ids": updated_ids,
+                "removed_ids": removed_ids
+            },
+            status=status.HTTP_200_OK
+        )
+   

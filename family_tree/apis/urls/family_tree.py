@@ -1,7 +1,7 @@
 from django.urls import path
 
 from family_tree.apis.views.family_tree  import (
-    FamilyTreeUpdateAPIView,FamilyTreeCreateAPIView, AddFamilyMemberAPIView, FamilyTreeFilteredView, FamilyTreeListAPIView
+    FamilyTreeUpdateAPIView,FamilyTreeCreateAPIView, AddFamilyMemberAPIView, FamilyTreeFilteredView, FamilyTreeListAPIView,FamilyTreeRecipientInviteAPIView
 
 )
 
@@ -12,4 +12,5 @@ urlpatterns = [
     path("filter/<str:tree_id>/", FamilyTreeFilteredView.as_view(), name='user_family'),
     path("tree-list/", FamilyTreeListAPIView.as_view(), name='owner_family_tree'),
     path("<uuid:tree_id>/update/",FamilyTreeUpdateAPIView.as_view(),name="family-tree-update"),
+    path("<uuid:family_tree_id>/recipients/",FamilyTreeRecipientInviteAPIView.as_view(),name="family-tree-invite-recipients"),
 ]

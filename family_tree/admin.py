@@ -5,7 +5,8 @@ from .models import (
     Partnership,
     ParentalRelationship,
     FamilyTreeDiaryCategory,
-    FamilyTreeDiary
+    FamilyTreeDiary,
+    FamilyTreeRecipient
 )
 
 
@@ -167,3 +168,45 @@ class FamilyTreeDiaryAdmin(admin.ModelAdmin):
         if not obj.author_id:
             obj.author = request.user
         super().save_model(request, obj, form, change)
+
+
+
+@admin.register(FamilyTreeRecipient)
+class FamilyTreeRecipientAdmin(admin.ModelAdmin):
+    list_display = (
+        "recipient_email",
+        "family_tree",
+        "permissions",
+        "is_deleted",
+        "created_at",
+    )
+
+    list_filter = (
+        "permissions",
+        "is_deleted",
+        "family_tree",
+    )
+
+    search_fields = (
+        "recipient_email",
+        "family_tree__name",  # change if your field name differs
+    )
+
+    readonly_fields = (
+        "created_at",
+        "updated_at",
+    )
+
+    ordering = ("-created_at",)
+
+    actions = ["restore_recipients", "soft_delete_recipients"]
+
+    def restore_recipients(self, request, queryset):
+        queryset.update(is_deleted=False)
+        self.message_user(request, "Selected recipients restored successfully.")
+    restore_recipients.short_description = "Restore selected recipients"
+
+    def soft_delete_recipients(self, request, queryset):
+        queryset.update(is_deleted=True)
+        self.message_user(request, "Selected recipients soft-deleted successfully.")
+    soft_delete_recipients.short_description = "Soft delete selected recipients"
