@@ -415,6 +415,10 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                 husband = None
                 spouse = None
 
+                if not parent_member_node.is_married:
+                    parent_member_node.is_married = True
+                    parent_member_node.save()
+
                 if parent_member_node.gender == "male":
                     husband = parent_member_node
 
@@ -497,6 +501,187 @@ class FamilyMemberUpdateSerializer(serializers.ModelSerializer):
         )
             
 
+# class FamilyTreeNodeSerializer(serializers.ModelSerializer):
+#     id = serializers.CharField(source="pk", read_only=True)
+#     name = serializers.SerializerMethodField()
+#     age = serializers.SerializerMethodField()
+#     dateofbirth = serializers.SerializerMethodField()
+#     role = serializers.SerializerMethodField()
+#     partner = serializers.SerializerMethodField()
+#     parents = serializers.SerializerMethodField()
+#     children = serializers.SerializerMethodField()
+#     is_onwer = serializers.SerializerMethodField()
+#     is_root_node = serializers.SerializerMethodField()
+
+#     class Meta:
+#         model = FamilyMember
+#         fields = (
+#             "family_tree",
+#             "id",
+#             "is_onwer",
+#             "is_root_node",
+#             "name",
+#             "gender",
+#             "role",
+#             "age",
+#             "dateofbirth",
+#             "partner",
+#             "parents",
+#             "children",
+#         )
+#     def get_is_root_node(self, obj):
+#         root_node_id = self.context.get("root_node_id")
+#         return root_node_id == obj.id
+
+#     def get_name(self, obj):
+#         return f"{obj.first_name} {obj.last_name}".strip()
+
+#     def get_age(self, obj):
+#         return calculate_age(obj.birth_date) if obj.birth_date else None
+
+#     def get_dateofbirth(self, obj):
+#         return obj.birth_date.strftime("%d %b %Y") if obj.birth_date else None
+
+#     def get_is_onwer(self, obj):
+#         root_node_id = self.context.get("root_node_id")
+#         return root_node_id == obj.id
+
+
+#     def get_role(self, obj):
+#         return obj.relation_type
+
+   
+
+#     def get_partner(self, obj):
+#         """
+#         Returns partner member ID or None
+#         """
+#         partnership = (
+#             Partnership.objects.filter(
+#                 family_tree=obj.family_tree,
+#                 is_deleted=False
+#             )
+#             .filter(models.Q(husband=obj) | models.Q(wife=obj))
+#             .select_related("husband", "wife")
+#             .first()
+#         )
+
+#         if not partnership:
+#             return None
+
+#         if partnership.husband_id == obj.id:
+#             return str(partnership.wife_id) if partnership.wife_id else None
+#         return str(partnership.husband_id) if partnership.husband_id else None
+
+#     # ----------------------------
+#     # PARENTS
+#     # ----------------------------
+
+#     def get_parents(self, obj):
+#         """
+#         Returns list of parent IDs or None
+#         """
+#         parents = []
+
+#         view_type = self.context['view_type']
+#         root_node_id = self.context.get("root_node_id")
+
+#         father = obj.primary_father
+#         mother = obj.primary_mother
+
+#         if father or mother:
+
+#             if mother:
+#                 partnership =Partnership.objects.filter(
+#                     family_tree=obj.family_tree,
+#                     is_deleted=False,
+#                     wife = mother
+#                 ).first()
+                
+#                 if partnership and  partnership.husband:
+#                     parents.append(str(partnership.husband.id))
+
+#                     if partnership.wife:
+#                         parents.append(str(partnership.wife.id))
+
+                
+#                 elif  partnership and  partnership.wife:
+#                     parents.append(str(partnership.wife.id))
+
+#                     if partnership.husband:
+#                         parents.append(str(partnership.husband.id))
+#             else:
+#                 partnership =Partnership.objects.filter(
+#                     family_tree=obj.family_tree,
+#                     is_deleted=False,
+#                     husband = father
+#                 ).first()
+                
+#                 if partnership and  partnership.husband:
+#                     parents.append(str(partnership.husband.id))
+
+#                     if partnership.wife:
+#                         parents.append(str(partnership.wife.id))
+
+                
+#                 elif  partnership and  partnership.wife:
+#                     parents.append(str(partnership.wife.id))
+
+#                     if partnership.husband:
+#                         parents.append(str(partnership.husband.id))
+#             return parents or None
+
+#     # ----------------------------
+#     # CHILDREN
+#     # ----------------------------
+
+#     def get_children(self, obj):
+#         """
+#         Returns list of child IDs or None
+#         """
+#         view_type = self.context.get('view_type')
+#         root_node_id = self.context.get("root_node_id")
+        
+
+#         child_ids = []
+#         partnership = (
+#             Partnership.objects.filter(
+#                 family_tree=obj.family_tree,
+#                 is_deleted=False
+#             )
+#             .filter(models.Q(husband=obj) | models.Q(wife=obj))
+#             .select_related("husband", "wife")
+#             .first()
+#         )
+#         if partnership:
+#             wife = partnership.wife
+#             husband = partnership.husband
+
+#             if wife:
+#                 maternal_childs = FamilyMember.objects.filter(
+#                     primary_mother = wife,
+#                     is_deleted = False,
+#                     family_tree = obj.family_tree
+#                 )
+#                 combin_childs = maternal_childs
+#             if husband:
+#                 paternal_childs = FamilyMember.objects.filter(
+#                     primary_father = husband,
+#                     is_deleted = False,
+#                     family_tree = obj.family_tree
+
+#                 )
+#                 combin_childs = paternal_childs
+            
+
+#             if  husband and wife:
+#                 combin_childs = maternal_childs | paternal_childs
+
+#             child_ids = [str(child.id) for child in combin_childs]
+
+
+#         return child_ids or None
+
 class FamilyTreeNodeSerializer(serializers.ModelSerializer):
     id = serializers.CharField(source="pk", read_only=True)
     name = serializers.SerializerMethodField()
@@ -514,6 +699,8 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
         fields = (
             "family_tree",
             "id",
+            "is_married",
+            "married_date",
             "is_onwer",
             "is_root_node",
             "name",
@@ -525,9 +712,66 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
             "parents",
             "children",
         )
+
+    # ==================================================
+    # INIT → CACHE EVERYTHING
+    # ==================================================
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.view_type = self.context.get("view_type")
+        self.root_node_id = self.context.get("root_node_id")
+        family_tree = self.context.get("family_tree")
+
+        self.partnership_map = {}   # member_id → Partnership
+        self.children_map = {}      # parent_id → [children]
+
+        if not family_tree:
+            return
+
+        # ----------------------------
+        # Cache Partnerships
+        # ----------------------------
+        partnerships = Partnership.objects.filter(
+            family_tree=family_tree,
+            is_deleted=False
+        ).select_related("husband", "wife")
+
+        for p in partnerships:
+            if p.husband_id:
+                self.partnership_map[p.husband_id] = p
+            if p.wife_id:
+                self.partnership_map[p.wife_id] = p
+
+        # ----------------------------
+        # Cache Children by Father/Mother
+        # ----------------------------
+        members = FamilyMember.objects.filter(
+            family_tree=family_tree,
+            is_deleted=False
+        ).only("id", "primary_father_id", "primary_mother_id")
+
+        for child in members:
+            if child.primary_father_id:
+                self.children_map.setdefault(
+                    child.primary_father_id, []
+                ).append(child)
+
+            if child.primary_mother_id:
+                self.children_map.setdefault(
+                    child.primary_mother_id, []
+                ).append(child)
+
+    # ==================================================
+    # BASIC FIELDS
+    # ==================================================
+
     def get_is_root_node(self, obj):
-        root_node_id = self.context.get("root_node_id")
-        return root_node_id == obj.id
+        return self.root_node_id == obj.id
+
+    def get_is_onwer(self, obj):
+        return self.root_node_id == obj.id
 
     def get_name(self, obj):
         return f"{obj.first_name} {obj.last_name}".strip()
@@ -538,30 +782,15 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
     def get_dateofbirth(self, obj):
         return obj.birth_date.strftime("%d %b %Y") if obj.birth_date else None
 
-    def get_is_onwer(self, obj):
-        root_node_id = self.context.get("root_node_id")
-        return root_node_id == obj.id
-
-
     def get_role(self, obj):
         return obj.relation_type
 
-   
+    # ==================================================
+    # PARTNER (NO DB)
+    # ==================================================
 
     def get_partner(self, obj):
-        """
-        Returns partner member ID or None
-        """
-        partnership = (
-            Partnership.objects.filter(
-                family_tree=obj.family_tree,
-                is_deleted=False
-            )
-            .filter(models.Q(husband=obj) | models.Q(wife=obj))
-            .select_related("husband", "wife")
-            .first()
-        )
-
+        partnership = self.partnership_map.get(obj.id)
         if not partnership:
             return None
 
@@ -569,94 +798,50 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
             return str(partnership.wife_id) if partnership.wife_id else None
         return str(partnership.husband_id) if partnership.husband_id else None
 
-    # ----------------------------
-    # PARENTS
-    # ----------------------------
+    # ==================================================
+    # PARENTS (NO DB)
+    # ==================================================
 
     def get_parents(self, obj):
-        """
-        Returns list of parent IDs or None
-        """
         parents = []
+
         father = obj.primary_father
         mother = obj.primary_mother
 
+        if not (father or mother):
+            return None
+
         if father:
-            parents.append(str(father.id))
-            
-            partnership =Partnership.objects.filter(
-                family_tree=obj.family_tree,
-                is_deleted=False,
-                husband = father
-            ).first()
+            partnership = self.partnership_map.get(father.id)
+        else:
+            partnership = self.partnership_map.get(mother.id)
 
-            if partnership and partnership.wife:
-                parents.append(str(partnership.wife.id))
+        if partnership:
+            if partnership.husband_id:
+                parents.append(str(partnership.husband_id))
+            if partnership.wife_id:
+                parents.append(str(partnership.wife_id))
 
-        if mother:
-            parents.append(str(mother.id))
+        return parents or None
 
-            partnership =Partnership.objects.filter(
-                family_tree=obj.family_tree,
-                is_deleted=False,
-                wife = mother
-            ).first()
-
-            if partnership and partnership.husband:
-                parents.append(str(partnership.husband.id))
-
-            return parents or None
-
-    # ----------------------------
-    # CHILDREN
-    # ----------------------------
+    # ==================================================
+    # CHILDREN (NO DB)
+    # ==================================================
 
     def get_children(self, obj):
-        """
-        Returns list of child IDs or None
-        """
-        view_type = self.context.get('view_type')
-        root_node_id = self.context.get("root_node_id")
-        
+        children = self.children_map.get(obj.id, [])
 
-        child_ids = []
-        partnership = (
-            Partnership.objects.filter(
-                family_tree=obj.family_tree,
-                is_deleted=False
-            )
-            .filter(models.Q(husband=obj) | models.Q(wife=obj))
-            .select_related("husband", "wife")
-            .first()
-        )
-        if partnership:
-            wife = partnership.wife
-            husband = partnership.husband
+        if self.view_type == "paternal":
+            children = [
+                c for c in children if c.primary_father_id == obj.id
+            ]
 
-            if wife:
-                maternal_childs = FamilyMember.objects.filter(
-                    primary_mother = wife,
-                    is_deleted = False,
-                    family_tree = obj.family_tree
-                )
-                combin_childs = maternal_childs
-            if husband:
-                paternal_childs = FamilyMember.objects.filter(
-                    primary_father = husband,
-                    is_deleted = False,
-                    family_tree = obj.family_tree
+        elif self.view_type == "maternal":
+            children = [
+                c for c in children if c.primary_mother_id == obj.id
+            ]
 
-                )
-                combin_childs = paternal_childs
-            
-
-            if  husband and wife:
-                combin_childs = maternal_childs | paternal_childs
-
-            child_ids = [str(child.id) for child in combin_childs]
-
-
-        return child_ids or None
+        return [str(c.id) for c in children] or None
 
 
 class FamilyTreeUpdateSerializer(serializers.ModelSerializer):
@@ -687,51 +872,6 @@ class FamilyTreeUpdateSerializer(serializers.ModelSerializer):
         instance.description = validated_data.get("description", instance.description)
         instance.save(update_fields=["name", "description", "updated_at"])
         return instance
-
-
-# class FamilyTreeRecipientBulkSerializer(serializers.Serializer):
-#     recipient_emails = serializers.ListField(
-#         child=serializers.EmailField(),
-#         allow_empty=False
-#     )
-#     permissions = serializers.CharField()
-
-#     def validate_permissions(self, value):
-#         allowed_permissions = dict(FamilyTreeRecipient.PERMISSION_CHOICES)
-
-#         if value not in allowed_permissions:
-#             raise serializers.ValidationError(
-#                 f"Invalid permission '{value}'. "
-#                 f"Allowed values are: {list(allowed_permissions.keys())}"
-#             )
-
-#         return value
-
-#     def create(self, validated_data):
-#         family_tree = self.context.get("family_tree")
-#         if not family_tree:
-#             raise serializers.ValidationError("Family tree context is required.")
-
-#         emails = validated_data["recipient_emails"]
-#         permissions = validated_data["permissions"]
-
-#         recipients = []
-
-#         for email in emails:
-#             recipient, created = FamilyTreeRecipient.objects.get_or_create(
-#                 family_tree=family_tree,
-#                 recipient_email=email,
-#                 defaults={"permissions": permissions}
-#             )
-
-#             if not created and recipient.is_deleted:
-#                 recipient.is_deleted = False
-#                 recipient.permissions = permissions
-#                 recipient.save()
-
-#             recipients.append(recipient)
-
-#         return recipients
 
 
 class RecipientItemSerializer(serializers.Serializer):

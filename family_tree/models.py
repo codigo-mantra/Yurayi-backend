@@ -94,7 +94,7 @@ class FamilyMember(TimeStampedModel):
     is_married = models.BooleanField(default=False)
     married_date = models.DateField(null=True, blank=True)
     is_person_alive = models.BooleanField(default=True)
-    email_address = models.EmailField(unique=True)
+    email_address = models.EmailField(unique=False)
     profession = models.CharField(max_length=255, blank=True, null=True)
     relation_type = models.CharField(choices=RELATION_TYPE_CHOICES, max_length=51, blank=True)
     death_date = models.DateField(null=True, blank=True)
