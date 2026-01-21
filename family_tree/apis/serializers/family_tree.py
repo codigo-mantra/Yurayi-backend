@@ -63,10 +63,25 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
         birth_date = attrs.get("birth_date")
         email = attrs.get("email_address")
 
-        if not email:
-            raise serializers.ValidationError({'email_address': "Email address is required"})
+        errors = {}
 
-        
+        required_fields = [
+            "first_name",
+            "last_name",
+            "gender",
+            "is_person_alive",
+            "email_address",
+            "birth_date",
+        ]
+
+        for field in required_fields:
+            value = attrs.get(field)
+
+            if value in [None, "", []]:
+                errors[field] = f"{field.replace('_', ' ').capitalize()} is required."
+
+        if errors:
+            raise serializers.ValidationError(errors)
 
         if is_married:
             if not married_date:
