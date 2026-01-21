@@ -337,17 +337,19 @@ class FamilyTreeUpdateAPIView(SecuredView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class FamilyTreeRecipientInviteAPIView(APIView):
+class FamilyTreeRecipientInviteAPIView(SecuredView):
     """
     Invite multiple recipients to a family tree
     """
 
     def get(self, request, family_tree_id):
         """Get all recipient of specific family-tree """
+        user = self.get_current_user(request)
         family_tree = get_object_or_404(
             FamilyTree,
             id=family_tree_id,
-            is_deleted=False
+            is_deleted=False,
+            owner = user
         )
         tree_recipients = family_tree.family_tree_recipients.filter(is_deleted = False).order_by('-created_at')
         serializer =  FamilyTreeRecipientListSerializer(tree_recipients, many=True)
@@ -356,10 +358,12 @@ class FamilyTreeRecipientInviteAPIView(APIView):
 
     def post(self, request, family_tree_id):
         """Add recipeints to family-tree"""
+        user = self.get_current_user(request)
         family_tree = get_object_or_404(
             FamilyTree,
             id=family_tree_id,
-            is_deleted=False
+            is_deleted=False,
+            owner = user
         )
 
         serializer = FamilyTreeRecipientBulkSerializer(
@@ -380,10 +384,12 @@ class FamilyTreeRecipientInviteAPIView(APIView):
         )
     
     def patch(self, request, family_tree_id):
+        user = self.get_current_user(request)
         family_tree = get_object_or_404(
             FamilyTree,
             id=family_tree_id,
-            is_deleted=False
+            is_deleted=False,
+            owner = user
         )
 
         serializer = FamilyTreeRecipientManageSerializer(data=request.data)
