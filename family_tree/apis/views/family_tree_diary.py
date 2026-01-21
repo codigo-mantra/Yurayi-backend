@@ -9,7 +9,7 @@ from family_tree.models import FamilyTreeDiaryCategory, FamilyTreeDiary, FamilyM
 from family_tree.apis.serializers.family_tree_diary import FamilyTreeDiaryCategorySerializer, FamilyTreeDiarySerializer,FamilyTreeDiaryCreateSerializer,FamilyTreeDiaryUpdationSerializer
 
 
-class FamilyTreeDiaryCategoryAPIView(APIView):
+class FamilyTreeDiaryCategoryAPIView(SecuredView):
 
     def get(self, request):
         queryset = FamilyTreeDiaryCategory.objects.filter(is_deleted=False)
@@ -17,7 +17,7 @@ class FamilyTreeDiaryCategoryAPIView(APIView):
         return Response(serializer.data)
 
 
-class FamilyTreeDiaryAPIView(APIView):
+class FamilyTreeDiaryAPIView(SecuredView):
 
 
     def get(self, request, family_tree_id):
@@ -29,7 +29,7 @@ class FamilyTreeDiaryAPIView(APIView):
         return Response(serializer.data)
 
     def post(self, request, family_tree_id):
-        user = None
+        user = self.get_current_user(request)
         family_tree = get_object_or_404(FamilyTree, id=family_tree_id, is_deleted=False)
         serializer = FamilyTreeDiaryCreateSerializer(data=request.data, context = {'user': user, 'family_tree': family_tree})
         if serializer.is_valid():
@@ -38,7 +38,7 @@ class FamilyTreeDiaryAPIView(APIView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-class FamilyTreeDiaryUpdationView(APIView):
+class FamilyTreeDiaryUpdationView(SecuredView):
    
     def patch(self, request, tree_diary_id):
         tree_diary = get_object_or_404(

@@ -525,8 +525,6 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
             "parents",
             "children",
         )
-
-
     def get_is_root_node(self, obj):
         root_node_id = self.context.get("root_node_id")
         return root_node_id == obj.id
@@ -541,11 +539,9 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
         return obj.birth_date.strftime("%d %b %Y") if obj.birth_date else None
 
     def get_is_onwer(self, obj):
-        return (
-            obj.family_tree.owner_id == obj.author_id
-            if obj.family_tree and obj.author
-            else False
-        )
+        root_node_id = self.context.get("root_node_id")
+        return root_node_id == obj.id
+
 
     def get_role(self, obj):
         return obj.relation_type
