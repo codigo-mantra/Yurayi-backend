@@ -14,6 +14,7 @@ from userauth.apis.views.views import SecuredView
 from django.db.models import Q
 from collections import defaultdict, deque
 from rest_framework.views import APIView
+from django.db.models import Q
 
 
 
@@ -36,11 +37,17 @@ class FamilyTreeListAPIView(SecuredView):
 
     def get(self, request):
         user = self.get_current_user(request)  
-        family_tree = FamilyTree.objects.filter(owner=user, is_deleted=False).order_by('-created_at')
-        if not family_tree:
+        owner_family_tree = FamilyTree.objects.filter(owner=user, is_deleted=False).order_by('-created_at')
+        shared_trees = FamilyTree.objects.filter(
+            family_tree_recipients__recipient_email=user.email,
+            family_tree_recipients__is_deleted=False,
+            is_deleted=False
+        )
+        combined_tree = owner_family_tree | shared_trees
+        if not combined_tree:
             return Response([])
 
-        serializer = FamilyTreeSerializer(family_tree, many=True, context ={'user': user})
+        serializer = FamilyTreeSerializer(combined_tree, many=True, context ={'user': user})
         return Response(serializer.data, status=status.HTTP_200_OK)
 
 
@@ -104,11 +111,22 @@ class AddFamilyMemberAPIView(SecuredView):
         user = self.get_current_user(request)
 
         try:
-            family_tree = FamilyTree.objects.get(
-                id=family_tree_id,
-                owner=user,
-                is_deleted=False
-            )
+            family_tree = FamilyTree.objects.filter(
+                    Q(id=family_tree_id, owner=user, is_deleted=False)
+                    |
+                    Q(
+                        id=family_tree_id,
+                        family_tree_recipients__recipient_email=user.email,
+                        family_tree_recipients__is_deleted=False,
+                        is_deleted=False
+                    )
+            ).distinct().first()
+
+            if not family_tree:
+                return Response(
+                    {"detail": "You do not have access to this family tree."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         except FamilyTree.DoesNotExist:
             return Response(
                 {"detail": "Family tree not found"},
@@ -237,12 +255,12 @@ class FamilyTreeFilteredView(SecuredView):
         return result
 
     def get(self, request, tree_id):
-
         try:
             UUID(str(tree_id))
         except (ValueError, TypeError):
             return Response("Invalid family tree id", status=status.HTTP_404_NOT_FOUND)
 
+        user = self.get_current_user(request)
         view_type = request.GET.get("view_type", "all")
 
         if view_type not in ("all", "paternal", "maternal"):
@@ -252,15 +270,24 @@ class FamilyTreeFilteredView(SecuredView):
             )
 
         try:
-            family_tree = FamilyTree.objects.select_related("root_member").get(
-                id=tree_id,
-                is_deleted=False
-            )
+            family_tree = FamilyTree.objects.filter(
+                    Q(id=tree_id, owner=user, is_deleted=False)
+                    |
+                    Q(
+                        id=tree_id,
+                        family_tree_recipients__recipient_email=user.email,
+                        family_tree_recipients__is_deleted=False,
+                        is_deleted=False
+                    )
+            ).distinct().first()
+
+            if not family_tree:
+                return Response(
+                    {"detail": "You do not have access to this family tree."},
+                    status=status.HTTP_403_FORBIDDEN
+                )
         except FamilyTree.DoesNotExist:
-            return Response(
-                {"detail": "Family tree not found"},
-                status=status.HTTP_404_NOT_FOUND
-            )
+            pass
 
         if not family_tree.root_member:
             return Response(

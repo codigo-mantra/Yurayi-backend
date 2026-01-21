@@ -2,6 +2,8 @@ from rest_framework import serializers
 from datetime import date
 from django.db.models import Q
 from django.db import models
+from userauth.tasks import send_html_email_task
+
 
 from family_tree.models import FamilyMember, Partnership, ParentalRelationship, FamilyTree, FamilyTreeRecipient
 
@@ -821,6 +823,12 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
                 parents.append(str(partnership.husband_id))
             if partnership.wife_id:
                 parents.append(str(partnership.wife_id))
+        else:
+            if obj.primary_mother:
+                parents.append(str(obj.primary_mother.id))
+            
+            if obj.primary_father:
+                parents.append(str(obj.primary_father.id))
 
         return parents or None
 
@@ -913,8 +921,18 @@ class FamilyTreeRecipientBulkSerializer(serializers.Serializer):
             )
             if created:
                 # bind here celery task to send email to recipients
-
-                pass
+                send_html_email_task.apply_async(
+                    kwargs={
+                        "subject": "You’ve received a Time Capsoul sealed with love.",
+                        "to_email": email,
+                        "template_name": "userauth/time_capsoul_tagged.html",
+                        "context": {
+                            "user": email,
+                            "sender_name": email,
+                            "unlock_date": None
+                        }
+                    }
+                )
 
            
             created_recipients.append(recipient)

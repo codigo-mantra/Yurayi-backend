@@ -454,20 +454,24 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 import urllib.parse
 from kombu import Queue
 # SQS Confuguration 
-if ENVIRONMENT_TYPE == "DEV":
-    aws_secret_escaped = urllib.parse.quote(AWS_SECRET_ACCESS_KEY, safe='')  # encode all special chars
-    CELERY_BROKER_URL = f"sqs://{AWS_ACCESS_KEY_ID}:{aws_secret_escaped}@"
-    CELERY_BROKER_TRANSPORT_OPTIONS = {
-        "region": AWS_S3_REGION_NAME,   
-        "visibility_timeout": 3600,     # 1 hour
-        "polling_interval": 1,
-        "queue_name_prefix": "timecapsoul-",  # optional
-    }
+CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
 
-    CELERY_TASK_DEFAULT_QUEUE = "yurayi-prod-queue"
-    CELERY_TASK_QUEUES = (
-        Queue("yurayi-prod-queue"),
-    )
+if ENVIRONMENT_TYPE == "DEV":
+    # aws_secret_escaped = urllib.parse.quote(AWS_SECRET_ACCESS_KEY, safe='')  # encode all special chars
+    # CELERY_BROKER_URL = f"sqs://{AWS_ACCESS_KEY_ID}:{aws_secret_escaped}@"
+    # CELERY_BROKER_TRANSPORT_OPTIONS = {
+    #     "region": AWS_S3_REGION_NAME,   
+    #     "visibility_timeout": 3600,     # 1 hour
+    #     "polling_interval": 1,
+    #     "queue_name_prefix": "timecapsoul-",  # optional
+    # }
+
+    # CELERY_TASK_DEFAULT_QUEUE = "yurayi-prod-queue"
+    # CELERY_TASK_QUEUES = (
+    #     Queue("yurayi-prod-queue"),
+    # )
+    CELERY_BROKER_URL = "redis://127.0.0.1:6379/0"
+
 
 else: 
     # ENVIRONMENT_TYPE == 'DEV':

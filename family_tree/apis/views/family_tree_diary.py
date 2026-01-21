@@ -4,6 +4,8 @@ from rest_framework.response import Response
 from rest_framework import status
 from django.shortcuts import get_object_or_404
 from userauth.apis.views.views import SecuredView
+from django.db.models import Q
+
 
 from family_tree.models import FamilyTreeDiaryCategory, FamilyTreeDiary, FamilyMember, FamilyTree
 from family_tree.apis.serializers.family_tree_diary import FamilyTreeDiaryCategorySerializer, FamilyTreeDiarySerializer,FamilyTreeDiaryCreateSerializer,FamilyTreeDiaryUpdationSerializer
@@ -21,16 +23,46 @@ class FamilyTreeDiaryAPIView(SecuredView):
 
 
     def get(self, request, family_tree_id):
-        family_tree_diary = FamilyTreeDiary.objects.filter(
-            is_deleted = False,
-            family_tree__id = family_tree_id
-        )
+        user = self.get_current_user(request)
+        family_tree = FamilyTree.objects.filter(
+                    Q(id=family_tree_id, owner=user, is_deleted=False)
+                    |
+                    Q(
+                        id=family_tree_id,
+                        family_tree_recipients__recipient_email=user.email,
+                        family_tree_recipients__is_deleted=False,
+                        is_deleted=False
+                    )
+            ).distinct().first()
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have access to this family tree."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        
+        family_tree_diary = family_tree.diaries.filter(is_deleted = False)
         serializer = FamilyTreeDiarySerializer(family_tree_diary, many=True)
         return Response(serializer.data)
 
     def post(self, request, family_tree_id):
         user = self.get_current_user(request)
-        family_tree = get_object_or_404(FamilyTree, id=family_tree_id, is_deleted=False)
+        family_tree = FamilyTree.objects.filter(
+                    Q(id=family_tree_id, owner=user, is_deleted=False)
+                    |
+                    Q(
+                        id=family_tree_id,
+                        family_tree_recipients__recipient_email=user.email,
+                        family_tree_recipients__is_deleted=False,
+                        is_deleted=False
+                    )
+            ).distinct().first()
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have access to this family tree."},
+                status=status.HTTP_403_FORBIDDEN
+            )
         serializer = FamilyTreeDiaryCreateSerializer(data=request.data, context = {'user': user, 'family_tree': family_tree})
         if serializer.is_valid():
             serializer.save()
