@@ -230,7 +230,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
         if not parent_node_id :
             raise serializers.ValidationError({'parent_node_id': 'Parent member id is required'})
         
-        parent_member_node = int(parent_member_node)
+        parent_member_node = int(parent_node_id)
 
         if relation_type in ['father', 'mother', 'spouse']:
             if not is_married:
