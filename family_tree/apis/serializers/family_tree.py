@@ -578,47 +578,32 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
         Returns list of parent IDs or None
         """
         parents = []
-
-        view_type = self.context['view_type']
-        root_node_id = self.context.get("root_node_id")
-
         father = obj.primary_father
         mother = obj.primary_mother
 
-        if father or mother:
+        if father:
+            parents.append(str(father.id))
+            
+            partnership =Partnership.objects.filter(
+                family_tree=obj.family_tree,
+                is_deleted=False,
+                husband = father
+            ).first()
 
-            if view_type =='maternal' and root_node_id:
-                # parents.append(str(mother.id))
-                if father and mother:
-                    parents.append(str(mother.id))
-                    parents.append(str(father.id))
-                else:
-                    if mother:
-                        parents.append(str(mother.id))
-                    
-                    if father:
-                        parents.append(str(father.id))
+            if partnership and partnership.wife:
+                parents.append(str(partnership.wife.id))
 
-            else:
-                if view_type in ['all', 'paternal'] and not father:
-                    partnership =Partnership.objects.filter(
-                        family_tree=obj.family_tree,
-                        is_deleted=False,
-                        wife = mother
-                    ).first()
-                    
-                    if partnership and  partnership.husband:
-                        parents.append(str(partnership.husband.id))
-                    
-                    elif  partnership and  partnership.wife:
-                        parents.append(str(partnership.wife.id))
-                else:
-                    if father:
-                        parents.append(str(father.id))
-                    
-                    if mother:
-                        parents.append(str(mother.id))
+        if mother:
+            parents.append(str(mother.id))
 
+            partnership =Partnership.objects.filter(
+                family_tree=obj.family_tree,
+                is_deleted=False,
+                wife = mother
+            ).first()
+
+            if partnership and partnership.husband:
+                parents.append(str(partnership.husband.id))
 
             return parents or None
 
