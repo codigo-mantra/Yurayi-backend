@@ -127,6 +127,32 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
             "death_date",
             "profile_image_s3_key",
         )
+
+    
+    def validate(self, attrs):
+        errors = {}
+
+        required_fields = [
+            "parent_node_id",
+            "first_name",
+            "last_name",
+            "gender",
+            "is_person_alive",
+            "email_address",
+            "birth_date",
+        ]
+
+        for field in required_fields:
+            value = attrs.get(field)
+
+            if value in [None, "", []]:
+                errors[field] = f"{field.replace('_', ' ').capitalize()} is required."
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return attrs
+
     
     def has_father(self, child):
         return bool(child.primary_father)
