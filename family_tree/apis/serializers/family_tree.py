@@ -271,7 +271,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
 
         if member:
             raise serializers.ValidationError(
-                {"email_address": "Family member with this email already exists in the family tree."}
+                {"user_already_exists": "Family member with this email already exists in the family tree."}
             )
         # here we create and add relation here 
         try:
