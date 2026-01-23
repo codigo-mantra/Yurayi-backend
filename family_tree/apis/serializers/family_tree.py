@@ -249,6 +249,17 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError({
                     'gender': 'Member gender is invalid'
                 })
+            
+            if relation_type == 'mother' and gender != 'female':
+                raise serializers.ValidationError({
+                    'gender': 'Member gender is invalid must be female'
+                })
+            
+            if relation_type == 'father' and gender != 'male':
+                raise serializers.ValidationError({
+                    'gender': 'Member gender is invalid must be male'
+                })
+
 
         member = FamilyMember.objects.filter(
             family_tree=family_tree,
@@ -416,6 +427,13 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                 wife = None 
                 husband = None
                 spouse = None
+
+                if parent_member_node.gender == 'male' and gender != 'female':
+                    raise serializers.ValidationError({'gender': "Spouse gender is invalid"})
+                
+                elif parent_member_node.gender == 'female' and gender != 'male':
+                    raise serializers.ValidationError({'gender': "Spouse gender is invalid"})
+
 
                 if not parent_member_node.is_married:
                     parent_member_node.is_married = True
