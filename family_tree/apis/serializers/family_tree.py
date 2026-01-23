@@ -891,15 +891,6 @@ class FamilyTreeUpdateSerializer(serializers.ModelSerializer):
         fields = ("name", "description")
 
     def validate(self, attrs):
-        user = self.context.get("user")
-        tree = self.instance
-
-        # ownership check
-        if not user or tree.owner != user:
-            raise serializers.ValidationError(
-                "You do not have permission to update this family tree."
-            )
-
         # optional: prevent empty updates
         if not attrs.get("name") and not attrs.get("description"):
             raise serializers.ValidationError(

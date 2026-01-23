@@ -118,6 +118,7 @@ class AddFamilyMemberAPIView(SecuredView):
                         id=family_tree_id,
                         family_tree_recipients__recipient_email=user.email,
                         family_tree_recipients__is_deleted=False,
+                        family_tree_recipients__permissions='edit',
                         is_deleted=False
                     )
             ).distinct().first()
@@ -153,106 +154,106 @@ class FamilyTreeFilteredView(SecuredView):
     """
 
 
-    def get_full_hierarchy_from_member(self, start_member, family_tree, view_type="all"):
-        """
-        Returns hierarchy starting from a member.
+    # def get_full_hierarchy_from_member(self, start_member, family_tree, view_type="all"):
+    #     """
+    #     Returns hierarchy starting from a member.
         
-        view_type:
-            - all
-            - maternal
-            - paternal
-        """
+    #     view_type:
+    #         - all
+    #         - maternal
+    #         - paternal
+    #     """
 
-        visited = set()
-        queue = deque([start_member])
-        result = []
+    #     visited = set()
+    #     queue = deque([start_member])
+    #     result = []
 
-        while queue:
-            member = queue.popleft()
+    #     while queue:
+    #         member = queue.popleft()
 
-            if not member or member.id in visited:
-                continue
+    #         if not member or member.id in visited:
+    #             continue
 
-            visited.add(member.id)
-            result.append(member)
+    #         visited.add(member.id)
+    #         result.append(member)
 
             
-            parent_rel = (
-                ParentalRelationship.objects
-                .filter(child=member, is_deleted=False, family_tree = family_tree)
-                .select_related("father")
-                .first()
-            )
+    #         parent_rel = (
+    #             ParentalRelationship.objects
+    #             .filter(child=member, is_deleted=False, family_tree = family_tree)
+    #             .select_related("father")
+    #             .first()
+    #         )
 
-            if parent_rel:
-                if view_type in ("all", "paternal") and parent_rel.father:
-                    queue.append(parent_rel.father)
+    #         if parent_rel:
+    #             if view_type in ("all", "paternal") and parent_rel.father:
+    #                 queue.append(parent_rel.father)
 
-                if view_type in ("all", "maternal") and parent_rel.mother:
-                    queue.append(parent_rel.mother)
+    #             if view_type in ("all", "maternal") and parent_rel.mother:
+    #                 queue.append(parent_rel.mother)
 
-            # =====================
-            # Children
-            # =====================
-            if view_type == "maternal":
-                children_rels = ParentalRelationship.objects.filter(
-                    mother=member,
-                    is_deleted=False
-                    , family_tree = family_tree
-                ).select_related("child")
+    #         # =====================
+    #         # Children
+    #         # =====================
+    #         if view_type == "maternal":
+    #             children_rels = ParentalRelationship.objects.filter(
+    #                 mother=member,
+    #                 is_deleted=False
+    #                 , family_tree = family_tree
+    #             ).select_related("child")
 
-            elif view_type == "paternal":
-                children_rels = ParentalRelationship.objects.filter(
-                    father=member,
-                    is_deleted=False
-                    , family_tree = family_tree
-                ).select_related("child")
+    #         elif view_type == "paternal":
+    #             children_rels = ParentalRelationship.objects.filter(
+    #                 father=member,
+    #                 is_deleted=False
+    #                 , family_tree = family_tree
+    #             ).select_related("child")
 
-            else:  # all
-                children_rels = ParentalRelationship.objects.filter(
-                    Q(father=member) | Q(mother=member),
-                    is_deleted=False
-                    , family_tree = family_tree
-                ).select_related("child")
+    #         else:  # all
+    #             children_rels = ParentalRelationship.objects.filter(
+    #                 Q(father=member) | Q(mother=member),
+    #                 is_deleted=False
+    #                 , family_tree = family_tree
+    #             ).select_related("child")
 
-            for rel in children_rels:
-                queue.append(rel.child)
+    #         for rel in children_rels:
+    #             queue.append(rel.child)
 
-            # =====================
-            # Spouse (always included)
-            # =====================
-            partnership = Partnership.objects.filter(
-                Q(husband=member) | Q(wife=member),
-                is_deleted=False
-                , family_tree = family_tree
-            ).select_related("husband", "wife").first()
+    #         # =====================
+    #         # Spouse (always included)
+    #         # =====================
+    #         partnership = Partnership.objects.filter(
+    #             Q(husband=member) | Q(wife=member),
+    #             is_deleted=False
+    #             , family_tree = family_tree
+    #         ).select_related("husband", "wife").first()
 
-            if partnership:
-                spouse = partnership.wife if partnership.husband == member else partnership.husband
-                queue.append(spouse)
+    #         if partnership:
+    #             spouse = partnership.wife if partnership.husband == member else partnership.husband
+    #             queue.append(spouse)
 
-            # =====================
-            # Siblings (respect lineage)
-            # =====================
-            if parent_rel:
-                sibling_filter = Q()
+    #         # =====================
+    #         # Siblings (respect lineage)
+    #         # =====================
+    #         if parent_rel:
+    #             sibling_filter = Q()
 
-                if view_type in ("all", "paternal") and parent_rel.father:
-                    sibling_filter |= Q(father=parent_rel.father)
+    #             if view_type in ("all", "paternal") and parent_rel.father:
+    #                 sibling_filter |= Q(father=parent_rel.father)
 
-                if view_type in ("all", "maternal") and parent_rel.mother:
-                    sibling_filter |= Q(mother=parent_rel.mother)
+    #             if view_type in ("all", "maternal") and parent_rel.mother:
+    #                 sibling_filter |= Q(mother=parent_rel.mother)
 
-                sibling_rels = ParentalRelationship.objects.filter(
-                    sibling_filter,
-                    is_deleted=False
-                    , family_tree = family_tree
-                ).exclude(child=member).select_related("child")
+    #             sibling_rels = ParentalRelationship.objects.filter(
+    #                 sibling_filter,
+    #                 is_deleted=False
+    #                 , family_tree = family_tree
+    #             ).exclude(child=member).select_related("child")
 
-                for rel in sibling_rels:
-                    queue.append(rel.child)
+    #             for rel in sibling_rels:
+    #                 queue.append(rel.child)
 
-        return result
+    #     return result
 
     def get(self, request, tree_id):
         try:
@@ -320,11 +321,11 @@ class FamilyTreeFilteredView(SecuredView):
 
             if view_type == "maternal" and  maternal_member:
                 start_member = maternal_member
-                members = get_full_hierarchy_from_member(start_member, family_tree,view_type)
+                members = get_full_hierarchy_from_member(start_member, family_tree, start_member.id)
 
             elif view_type == "paternal" and paternal_member:
                 start_member = paternal_member
-                members = get_full_hierarchy_from_member(start_member,family_tree, view_type)
+                members = get_full_hierarchy_from_member(start_member,family_tree, start_member.id)
        
         serializer = FamilyTreeNodeSerializer(
             members,
@@ -343,15 +344,26 @@ class FamilyTreeUpdateAPIView(SecuredView):
 
     def patch(self, request, tree_id):
         user = self.get_current_user(request)
-        tree = get_object_or_404(
-            FamilyTree,
-            id=tree_id,
-            owner = user,
-            is_deleted=False
-        )
+        family_tree = FamilyTree.objects.filter(
+                    Q(id=tree_id, owner=user, is_deleted=False)
+                    |
+                    Q(
+                        id=tree_id,
+                        family_tree_recipients__recipient_email=user.email,
+                        family_tree_recipients__is_deleted=False,
+                        family_tree_recipients__permissions='edit',
+                        is_deleted=False
+                    )
+        ).distinct().first()
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have access to this family tree."},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         serializer = FamilyTreeUpdateSerializer(
-            tree,
+            family_tree,
             data=request.data,
             partial=True,
             context={"user": user}
