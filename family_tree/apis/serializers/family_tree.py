@@ -19,6 +19,8 @@ def calculate_age(birth_date):
 
 class FamilyTreeSerializer(serializers.ModelSerializer):
     is_owner = serializers.SerializerMethodField()
+    is_editable = serializers.SerializerMethodField()
+
 
     class Meta:
         model = FamilyTree
@@ -26,6 +28,7 @@ class FamilyTreeSerializer(serializers.ModelSerializer):
             "id",
             "slug",
             "is_owner",
+            'is_editable',
             "name",
             "description",
             "created_at",
@@ -35,6 +38,18 @@ class FamilyTreeSerializer(serializers.ModelSerializer):
     def get_is_owner(self, obj):
         user = self.context['user']
         return  True if obj.owner == user else False
+    
+    def get_is_editable(self, obj):
+        is_editable = False
+        current_user = self.context['user']
+
+        if obj.owner == current_user:
+            is_editable = True
+
+        elif obj.family_tree_recipients.filter(is_deleted = False, recipient_email=current_user.email, permissions='edit').first():
+            is_editable = True
+        
+        return is_editable
 
 
 class FamilyTreeCreateSerializer(serializers.Serializer):
@@ -930,7 +945,7 @@ class FamilyTreeRecipientBulkSerializer(serializers.Serializer):
 
         for item in recipients_data:
             email = item["email"]
-            permissions = item.get("permissions", "view")
+            permissions = item.get("permissions", "view").lower()
 
             recipient, created = FamilyTreeRecipient.objects.get_or_create(
                 family_tree=family_tree,
