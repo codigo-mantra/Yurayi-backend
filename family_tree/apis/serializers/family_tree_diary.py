@@ -139,8 +139,6 @@ class FamilyTreeDiaryCreateSerializer(serializers.Serializer):
     def create(self, validated_data):
         user = self.context["user"]
         family_tree = self.context["family_tree"]
-        from userauth.models import User 
-        user  = User.objects.get(email = "krishnayadavpb07@gmail.com")
         
         family_tree_diary = FamilyTreeDiary.objects.create(
             family_tree=family_tree,

@@ -5,12 +5,11 @@ from family_tree.apis.views.family_tree  import (
 
 )
 
-
 urlpatterns = [
     path("create/new/family-tree/", FamilyTreeCreateAPIView.as_view(), name='user_family'),
-    path("<str:family_tree_id>/add/new/member/", AddFamilyMemberAPIView.as_view(), name='add_member'),
-    path("filter/<str:tree_id>/", FamilyTreeFilteredView.as_view(), name='user_family'),
     path("tree-list/", FamilyTreeListAPIView.as_view(), name='owner_family_tree'),
+    path("filter/<str:tree_id>/", FamilyTreeFilteredView.as_view(), name='user_family'),
+    path("<str:family_tree_id>/add/new/member/", AddFamilyMemberAPIView.as_view(), name='add_member'),
     path("<uuid:tree_id>/update/",FamilyTreeUpdateAPIView.as_view(),name="family-tree-update"),
     path("<uuid:family_tree_id>/recipients/",FamilyTreeRecipientInviteAPIView.as_view(),name="family-tree-invite-recipients"),
 ]

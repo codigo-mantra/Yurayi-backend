@@ -7,7 +7,6 @@ from family_tree.apis.views.family_tree_diary import (
 
 urlpatterns = [
     path("diary-categories/", FamilyTreeDiaryCategoryAPIView.as_view()),
-    path("family-tree/diaries/", FamilyTreeDiaryAPIView.as_view()),
     path("<uuid:family_tree_id>/diaries/", FamilyTreeDiaryAPIView.as_view()),
     path("diary/updation/<uuid:tree_diary_id>/", FamilyTreeDiaryUpdationView.as_view()),
     path("diary/search/<uuid:family_tree_id>/", FamilyTreeDiarySearchAPIView.as_view()),

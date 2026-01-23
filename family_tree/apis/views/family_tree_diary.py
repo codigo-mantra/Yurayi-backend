@@ -7,6 +7,7 @@ from userauth.apis.views.views import SecuredView
 from django.db.models import Q
 from django.db.models.functions import Cast
 from django.db import models
+from userauth.models import User
 
 from family_tree.utils.pagination import (
     FamilyTreeDiaryPagination
@@ -14,6 +15,25 @@ from family_tree.utils.pagination import (
 from family_tree.models import FamilyTreeDiaryCategory, FamilyTreeDiary, FamilyMember, FamilyTree
 from family_tree.apis.serializers.family_tree_diary import FamilyTreeDiaryCategorySerializer, FamilyTreeDiarySerializer,FamilyTreeDiaryCreateSerializer,FamilyTreeDiaryUpdationSerializer
 
+def user_has_tree_edit_permission(user, family_tree):
+    """
+    Returns True if user can EDIT this family tree
+    """
+    return FamilyTree.objects.filter(
+        Q(id=family_tree.id, owner=user, is_deleted=False)
+        |
+        Q(
+            id=family_tree.id,
+            family_tree_recipients__recipient_email=user.email,
+            family_tree_recipients__permissions="edit",
+            family_tree_recipients__is_deleted=False,
+            is_deleted=False
+        )
+    ).exists()
+
+
+def get_test_user(email):
+    return User.objects.get(email = email)
 
 class FamilyTreeDiaryCategoryAPIView(SecuredView):
 
@@ -55,7 +75,9 @@ class FamilyTreeDiaryAPIView(SecuredView):
         return paginator.get_paginated_response(serializer.data)
 
     def post(self, request, family_tree_id):
+        """Create new diary via owner or shared member who have edit permisison """
         user = self.get_current_user(request)
+
         family_tree = FamilyTree.objects.filter(
                     Q(id=family_tree_id, owner=user, is_deleted=False)
                     |
@@ -63,6 +85,7 @@ class FamilyTreeDiaryAPIView(SecuredView):
                         id=family_tree_id,
                         family_tree_recipients__recipient_email=user.email,
                         family_tree_recipients__is_deleted=False,
+                        family_tree_recipients__permissions='edit',
                         is_deleted=False
                     )
             ).distinct().first()
@@ -82,11 +105,18 @@ class FamilyTreeDiaryAPIView(SecuredView):
 class FamilyTreeDiaryUpdationView(SecuredView):
    
     def patch(self, request, tree_diary_id):
+        user = self.get_current_user(request)
         tree_diary = get_object_or_404(
             FamilyTreeDiary,
             id=tree_diary_id,
             is_deleted=False
         )
+        if not user_has_tree_edit_permission(user, tree_diary.family_tree):
+            return Response(
+                {"detail": "You do not have permission to edit this diary."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
         serializer = FamilyTreeDiaryUpdationSerializer(
             tree_diary,
             data=request.data,
@@ -98,15 +128,22 @@ class FamilyTreeDiaryUpdationView(SecuredView):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def delete(self, request, tree_diary_id):
+        user = self.get_current_user(request)
         tree_diary = get_object_or_404(
             FamilyTreeDiary,
             id=tree_diary_id,
             is_deleted=False
         )
+        if not user_has_tree_edit_permission(user, tree_diary.family_tree):
+            return Response(
+                {"detail": "You do not have permission to edit this diary."},
+                status=status.HTTP_403_FORBIDDEN
+            )
         tree_diary.is_deleted =True
         tree_diary.save()
         return Response(status=status.HTTP_204_NO_CONTENT)
     
+
 class FamilyTreeDiarySearchAPIView(SecuredView):
     """
     Case-insensitive paginated search API for FamilyTreeDiary
