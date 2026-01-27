@@ -1,9 +1,11 @@
 import os
+import mimetypes
 import json
 import time
 import uuid
 import threading
 from django.conf import settings
+from django.http import FileResponse, Http404
 from django.http import JsonResponse, StreamingHttpResponse
 from django.core.cache import cache
 from django.core.files.base import ContentFile
@@ -30,8 +32,10 @@ from memory_room.upload_helper import ChunkedUploadSession,truncate_filename, s3
 
 from family_tree.utils.pagination import FamilyTreeGalleryPagination
 
+
 email = 'krishna234@gmail.com'
 def get_current_user(email):
+    """Method to getting the test user"""
     return User.objects.get(email = email)
     
 
@@ -53,7 +57,7 @@ def ensure_dir(path):
 
 def get_family_tree(user, family_tree_id):
     """
-    Returns True if user can EDIT this family tree
+    Returns owner or shared family tree if user has permission
     """
     family_tree =  FamilyTree.objects.filter(
         Q(id=family_tree_id, owner=user, is_deleted=False)
@@ -68,6 +72,23 @@ def get_family_tree(user, family_tree_id):
     ).first()
     return family_tree
 
+
+
+def get_shared_family_tree(user, family_tree_id):
+    """
+    Returns shared family tree
+    """
+    family_tree =  FamilyTree.objects.filter(
+        Q(id=family_tree_id, owner=user, is_deleted=False)
+        |
+        Q(
+            id=family_tree_id,
+            family_tree_recipients__recipient_email=user.email,
+            family_tree_recipients__is_deleted=False,
+            is_deleted=False
+        )
+    ).first()
+    return family_tree
 
 
 class ChunkedMediaFileUploadView(APIView):
@@ -448,3 +469,71 @@ class FamilyTreeGalleryEditDeleteAPIView(SecuredView):
             {"detail": "Gallery item deleted successfully."},
             status=status.HTTP_204_NO_CONTENT,
         )
+    
+
+class FamilyTreeGalleryDownloadAPIView(SecuredView):
+    """
+    Securely download gallery media files with progress support
+    """
+
+    CHUNK_SIZE = 1024 * 1024  # 1 MB
+
+    def stream_file(self, file_path):
+        with open(file_path, "rb") as f:
+            while True:
+                chunk = f.read(self.CHUNK_SIZE)
+                if not chunk:
+                    break
+                yield chunk
+
+    def get(self, request, family_tree_id, media_id):
+        user = self.get_current_user(request)
+
+        family_tree = get_shared_family_tree(
+            user=user,
+            family_tree_id=family_tree_id
+        )
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have permission to access this gallery."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        try:
+            media = FamilyTreeGallery.objects.get(
+                id=media_id,
+                family_tree=family_tree,
+                is_deleted=False
+            )
+        except FamilyTreeGallery.DoesNotExist:
+            raise Http404("Media file not found")
+
+        if not media.file:
+            raise Http404("File not available")
+
+        file_path = media.file.path
+        if not os.path.exists(file_path):
+            raise Http404("File missing on server")
+
+        file_size = os.path.getsize(file_path)
+        filename = os.path.basename(file_path)
+
+        content_type, _ = mimetypes.guess_type(filename)
+        content_type = content_type or "application/octet-stream"
+
+        response = StreamingHttpResponse(
+            streaming_content=self.stream_file(file_path),
+            content_type=content_type,
+        )
+
+        response["Content-Disposition"] = f'attachment; filename="{filename}"'
+        response["Content-Length"] = file_size
+        response["Accept-Ranges"] = "bytes"
+        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Access-Control-Expose-Headers"] = (
+            "Content-Disposition, Content-Length"
+        )
+
+        return response
