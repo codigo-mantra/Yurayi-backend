@@ -16,10 +16,13 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 
 from userauth.models import User
+from django.db.models.functions import Cast
 from userauth.apis.views.views import SecuredView
 
 from family_tree.models import FamilyTree, FamilyTreeGallery
 from django.db.models import Q
+from django.db import models
+
 
 from memory_room.utils import get_file_category
 from family_tree.apis.serializers.galery_media import FamilyTreeGallerySerializer
@@ -63,6 +66,7 @@ def get_family_tree(user, family_tree_id):
             is_deleted=False
         )
     ).first()
+    return family_tree
 
 
 
@@ -317,6 +321,73 @@ class FamilyTreeGalaryView(SecuredView):
             is_deleted=False
         ).order_by("-created_at")
 
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+
+        serializer = FamilyTreeGallerySerializer(page, many=True)
+        return paginator.get_paginated_response(serializer.data)
+
+
+class FamilyTreeGallerySearchAPIView(SecuredView):
+    """
+    Case-insensitive paginated search API for FamilyTreeGallery
+    """
+
+    pagination_class = FamilyTreeGalleryPagination
+
+    def get(self, request, family_tree_id):
+        user = self.get_current_user(request)
+
+        family_tree = get_family_tree(
+            user=user,
+            family_tree_id=family_tree_id
+        )
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have access to this family tree."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        # ---- Query params ----
+        keyword = request.query_params.get("query")
+        file_type = request.query_params.get("file_type")   # image / video / audio / other
+        author = request.query_params.get("author")
+        created = request.query_params.get("created")       # YYYY / YYYY-MM / YYYY-MM-DD
+
+        # ---- Base queryset ----
+        queryset = family_tree.gallery_items.select_related(
+            "author"
+        ).filter(is_deleted=False)
+
+        # ---- Title + description search ----
+        if keyword:
+            queryset = queryset.filter(
+                Q(title__icontains=keyword) |
+                Q(description__icontains=keyword)
+            )
+
+        # ---- File type filter ----
+        if file_type:
+            queryset = queryset.filter(file_type__iexact=file_type)
+
+        # ---- Author name / email ----
+        if author:
+            queryset = queryset.filter(
+                Q(author__first_name__icontains=author) |
+                Q(author__last_name__icontains=author) |
+                Q(author__email__icontains=author)
+            )
+
+        # ---- Created date (string contains) ----
+        if created:
+            queryset = queryset.annotate(
+                created_str=Cast("created_at", models.CharField())
+            ).filter(created_str__icontains=created)
+
+        queryset = queryset.order_by("-created_at")
+
+        # ---- Pagination ----
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
 

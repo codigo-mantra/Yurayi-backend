@@ -172,7 +172,7 @@ class FamilyTreeDiarySearchAPIView(SecuredView):
             )
 
         #  Query params (all case-insensitive)
-        keyword = request.query_params.get("q")
+        keyword = request.query_params.get("query")
         category = request.query_params.get("category")
         author = request.query_params.get("author")
         created = request.query_params.get("created")  # YYYY / YYYY-MM / YYYY-MM-DD
