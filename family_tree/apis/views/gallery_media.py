@@ -25,7 +25,7 @@ from django.db import models
 
 
 from memory_room.utils import get_file_category
-from family_tree.apis.serializers.galery_media import FamilyTreeGallerySerializer
+from family_tree.apis.serializers.galery_media import FamilyTreeGallerySerializer, GalleryUpdateSerializer
 from memory_room.upload_helper import ChunkedUploadSession,truncate_filename, s3, kms, AWS_KMS_KEY_ID
 
 from family_tree.utils.pagination import FamilyTreeGalleryPagination
@@ -351,9 +351,9 @@ class FamilyTreeGallerySearchAPIView(SecuredView):
 
         # ---- Query params ----
         keyword = request.query_params.get("query")
-        file_type = request.query_params.get("file_type")   # image / video / audio / other
+        file_type = request.query_params.get("file_type")   
         author = request.query_params.get("author")
-        created = request.query_params.get("created")       # YYYY / YYYY-MM / YYYY-MM-DD
+        created = request.query_params.get("created")       
 
         # ---- Base queryset ----
         queryset = family_tree.gallery_items.select_related(
@@ -393,3 +393,58 @@ class FamilyTreeGallerySearchAPIView(SecuredView):
 
         serializer = FamilyTreeGallerySerializer(page, many=True)
         return paginator.get_paginated_response(serializer.data)
+
+
+
+class FamilyTreeGalleryEditDeleteAPIView(SecuredView):
+    """
+    PUT / PATCH -> Edit gallery metadata
+    DELETE      -> Soft delete gallery item
+    """
+
+    def delete(self, request, family_tree_id, gallery_id):
+        user = get_current_user(email)
+
+        family_tree = get_family_tree(
+            user=user,
+            family_tree_id=family_tree_id
+        )
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have permission to delete this gallery."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        gallery = family_tree.gallery_items.filter(is_deleted = False, family_tree = family_tree, id = gallery_id).first()
+        gallery.is_deleted = True
+        gallery.save()
+
+        return Response(
+            {"detail": "Gallery item deleted successfully."},
+            status=status.HTTP_204_NO_CONTENT
+        )
+    
+    def patch(self, request, family_tree_id, gallery_id):
+        user = get_current_user(email)
+
+        family_tree = get_family_tree(
+            user=user,
+            family_tree_id=family_tree_id
+        )
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have permission to delete this gallery."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        gallery = family_tree.gallery_items.filter(is_deleted = False, family_tree = family_tree, id = gallery_id).first()
+        serializer = GalleryUpdateSerializer(gallery, data = request.data, partial = True)
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {"detail": "Gallery item deleted successfully."},
+            status=status.HTTP_204_NO_CONTENT,
+        )

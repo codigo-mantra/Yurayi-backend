@@ -37,3 +37,56 @@ class FamilyTreeGallerySerializer(serializers.ModelSerializer):
 
     def get_thumbnail_url(self, obj):
         return obj.thumbnail_preview.url if obj.thumbnail_preview else None
+    
+class GalleryUpdateSerializer(serializers.ModelSerializer):
+    title = serializers.CharField(
+        max_length=512,
+        required=False,
+        allow_blank=False
+    )
+    description = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True
+    )
+
+    class Meta:
+        model = FamilyTreeGallery
+        fields = (
+            "title",
+            "description",
+        )
+
+    def validate_title(self, value):
+        value = value.strip()
+        if len(value) < 3:
+            raise serializers.ValidationError(
+                "Title must be at least 3 characters long."
+            )
+        return value
+    
+    def validate_description(self, value):
+        value = value.strip()
+        if len(value) < 3:
+            raise serializers.ValidationError(
+                "Description must be at least 3 characters long."
+            )
+        return value
+
+    def update(self, instance, validated_data):
+        """
+        Explicit update control (only title & description)
+        """
+        instance.title = validated_data.get("title", instance.title)
+        instance.description = validated_data.get(
+            "description", instance.description
+        )
+
+        instance.save(
+            update_fields=[
+                "title",
+                "description",
+                "updated_at",
+            ]
+        )
+        return instance
