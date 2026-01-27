@@ -1,4 +1,6 @@
 from django.contrib import admin
+from django.utils.html import format_html
+
 from .models import (
     FamilyTree,
     FamilyMember,
@@ -6,7 +8,8 @@ from .models import (
     ParentalRelationship,
     FamilyTreeDiaryCategory,
     FamilyTreeDiary,
-    FamilyTreeRecipient
+    FamilyTreeRecipient,
+    FamilyTreeGallery
 )
 
 
@@ -210,3 +213,101 @@ class FamilyTreeRecipientAdmin(admin.ModelAdmin):
         queryset.update(is_deleted=True)
         self.message_user(request, "Selected recipients soft-deleted successfully.")
     soft_delete_recipients.short_description = "Soft delete selected recipients"
+
+
+@admin.register(FamilyTreeGallery)
+class FamilyTreeGalleryAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "title",
+        "family_tree",
+        "author",
+        "file_type",
+        "file_size",
+        "file_preview",
+        "thumbnail_preview_admin",
+        "is_deleted",
+        "created_at",
+    )
+
+    list_filter = (
+        "file_type",
+        "is_deleted",
+        "created_at",
+    )
+
+    search_fields = (
+        "title",
+        "description",
+        "family_tree__id",
+        "author__email",
+    )
+
+    readonly_fields = (
+        "id",
+        "file_preview",
+        "thumbnail_preview_admin",
+        "created_at",
+        "updated_at",
+    )
+
+    ordering = ("-created_at",)
+    list_per_page = 25
+
+    fieldsets = (
+        ("Basic Info", {
+            "fields": (
+                "id",
+                "family_tree",
+                "author",
+                "title",
+                "description",
+                "file_type",
+                "file_size",
+                "is_deleted",
+            )
+        }),
+        ("Media", {
+            "fields": (
+                "file",
+                "file_preview",
+                "thumbnail_preview",
+                "thumbnail_preview_admin",
+            )
+        }),
+        ("Timestamps", {
+            "fields": (
+                "created_at",
+                "updated_at",
+            )
+        }),
+    )
+
+    # --------------------------------------------------
+    # Admin helpers
+    # --------------------------------------------------
+
+    def file_preview(self, obj):
+        if not obj.file:
+            return "-"
+        return format_html(
+            '<a href="{}" target="_blank">Download</a>',
+            obj.file.url
+        )
+
+    file_preview.short_description = "File"
+
+    def thumbnail_preview_admin(self, obj):
+        if not obj.thumbnail_preview:
+            return "-"
+        return format_html(
+            '<img src="{}" style="height:80px;border-radius:4px;" />',
+            obj.thumbnail_preview.url
+        )
+
+    thumbnail_preview_admin.short_description = "Thumbnail"
+
+    def get_queryset(self, request):
+        """Show deleted items too (admin only)"""
+        qs = super().get_queryset(request)
+        return qs.select_related("family_tree", "author")

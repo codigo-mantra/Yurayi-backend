@@ -239,8 +239,12 @@ else:
     SESSION_COOKIE_SAMESITE = "None"
     CSRF_COOKIE_SAMESITE = "None"
     MEDIA_URL = '/media/'
+    MEDIA_ROOT = BASE_DIR / "media"   
     STATICFILES_DIRS = [BASE_DIR / "static"]
-    AWS_STORAGE_BUCKET_NAME = "time-capsoul-files"
+    DEFAULT_FILE_STORAGE = "django.core.files.storage.FileSystemStorage"
+    # AWS_STORAGE_BUCKET_NAME = "time-capsoul-files"
+
+
 
 
 CKEDITOR_CONFIGS = {
@@ -419,12 +423,14 @@ CORS_ALLOW_ALL_ORIGINS = False
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:3001",
     "http://127.0.0.1:3000",
     "https://yurayi.com",
     "https://app.yurayi.com",
 ]
 CSRF_TRUSTED_ORIGINS = [
     "http://localhost:3000",
+    "http://localhost:3001",
     "http://127.0.0.1:3000",
     "https://yurayi.com",
     "https://app.yurayi.com",

@@ -243,3 +243,47 @@ class FamilyTreeRecipient(TimeStampedModel):
     permissions = models.CharField(choices=PERMISSION_CHOICES, max_length=100, default='view')
     is_deleted = models.BooleanField(default=False)
 
+
+class FamilyTreeGallery(TimeStampedModel):
+    FILE_TYPE_CHOICES = (
+        ("image", "Image"),
+        ("video", "Video"),
+        ("audio", "Audio"),
+        ("other", "Other"),
+    )
+
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+
+    family_tree = models.ForeignKey(
+        FamilyTree,
+        on_delete=models.CASCADE,
+        related_name="gallery_items"
+    )
+
+    author = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="gallery_uploads"
+    )
+
+    file_type = models.CharField(max_length=20, choices=FILE_TYPE_CHOICES)
+    file_size = models.CharField(max_length=100)
+
+    title = models.CharField(max_length=512)
+    description = models.TextField(blank=True, null=True)
+
+    file = models.FileField(upload_to="gallery/")
+    thumbnail_preview = models.ImageField(
+        upload_to="gallery/thumbnails/",
+        blank=True,
+        null=True
+    )
+
+    is_deleted = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "family_tree_gallery_section"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title
