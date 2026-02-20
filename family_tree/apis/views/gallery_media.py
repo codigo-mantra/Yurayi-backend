@@ -5,7 +5,7 @@ import time
 import uuid
 import threading
 from django.conf import settings
-from django.http import FileResponse, Http404
+from django.http import FileResponse, Http404, HttpResponse
 from django.http import JsonResponse, StreamingHttpResponse
 from django.core.cache import cache
 from django.core.files.base import ContentFile
@@ -24,13 +24,14 @@ from userauth.apis.views.views import SecuredView
 from family_tree.models import FamilyTree, FamilyTreeGallery
 from django.db.models import Q
 from django.db import models
-
+import struct
 
 from memory_room.utils import get_file_category
 from family_tree.apis.serializers.galery_media import FamilyTreeGallerySerializer, GalleryUpdateSerializer
-from memory_room.upload_helper import ChunkedUploadSession,truncate_filename, s3, kms, AWS_KMS_KEY_ID
-
+# from memory_room.upload_helper import ChunkedUploadSession,truncate_filename, s3, kms, AWS_KMS_KEY_ID
+from timecapsoul.utils import MediaThumbnailExtractor
 from family_tree.utils.pagination import FamilyTreeGalleryPagination
+from family_tree.utils.upload_helper import ChunkedUploadSession
 
 
 email = 'krishna234@gmail.com'
@@ -108,19 +109,22 @@ class ChunkedMediaFileUploadView(APIView):
             return 0
 
     def get_session(self, upload_id):
-        data = cache.get(self._key(upload_id))
+        key = self._key(upload_id)
+        data = cache.get(key)
         return ChunkedUploadSession.from_dict(json.loads(data)) if data else None
 
     def save_session(self, session):
         session.last_activity = time.time()
+        key = self._key(str(session.upload_id))
         cache.set(
-            self._key(session.upload_id),
-            json.dumps(session.to_dict()),
+            key,
+            json.dumps(session.to_dict(), default=str),
             self.SESSION_TIMEOUT
         )
 
     def delete_session(self, upload_id):
-        cache.delete(self._key(upload_id))
+        cache.delete(self._key(str(upload_id)))
+
 
     # ----------------------------------------------------
     # MAIN ENTRY
@@ -173,13 +177,12 @@ class ChunkedMediaFileUploadView(APIView):
             session = ChunkedUploadSession(
                 upload_id=upload_id,
                 user_id=user.id,
-                time_capsoul_id=family_tree.id,
+                gallery_media_id=family_tree.id,
                 file_name=clean_name,
                 file_size=file_size,
                 file_type=get_file_category(clean_name),
                 total_chunks=total_chunks,
                 chunk_size=chunk_size,
-                s3_key=None,  # unused in local
             )
 
             session.local_path = local_path
@@ -216,12 +219,12 @@ class ChunkedMediaFileUploadView(APIView):
             if not session:
                 yield self._event(upload_id, "error", 0, "Session expired")
                 return
-
-            decrypted = self._decrypt_chunk(chunk_file, iv)
-
+            encrypted = chunk_file.read()
             ensure_dir(session.temp_file_path)
             with open(session.temp_file_path, "ab") as f:
-                f.write(decrypted)
+                f.write(bytes.fromhex(iv))
+                f.write(struct.pack(">I", len(encrypted)))
+                f.write(encrypted)   
 
             with session.lock:
                 session.uploaded_chunks.add(chunk_index)
@@ -241,6 +244,7 @@ class ChunkedMediaFileUploadView(APIView):
     # COMPLETE
     # ----------------------------------------------------
     def complete_upload_streaming(self, request, user, family_tree):
+        from django.core.files import File
         upload_ids = request.POST.getlist("uploadIds[]")
 
         def stream():
@@ -253,8 +257,7 @@ class ChunkedMediaFileUploadView(APIView):
                 final_path = session.local_path
                 temp_path = session.temp_file_path
 
-                with open(temp_path, "rb") as f:
-                    content = ContentFile(f.read(), name=os.path.basename(final_path))
+                os.replace(temp_path, final_path)
 
                 media = FamilyTreeGallery.objects.create(
                     author=user,
@@ -266,11 +269,42 @@ class ChunkedMediaFileUploadView(APIView):
 
                 media.file.save(
                     os.path.basename(final_path),
-                    content,
+                    File(open(final_path, "rb")),
                     save=True
                 )
 
-                os.remove(temp_path)
+                extension = os.path.splitext(final_path)[1].lower()
+                from family_tree.utils.upload_helper import UniversalThumbnailService
+                # MIN_PREVIEW_BYTES = 1024 * 1024
+
+                # chunks = []
+                # total = 0
+                # for chunk in self.decrypt_full_file(final_path):
+                #     chunks.append(chunk)
+                #     total += len(chunk)
+
+                #     if total >= MIN_PREVIEW_BYTES:
+                #         break
+                # decrypted_preview = b"".join(chunks)
+
+                thumbnail_bytes = UniversalThumbnailService.generate(
+                    final_path,
+                    self.decrypt_full_file,
+                    extension=extension
+                )
+                # print(decrypted_preview[:10])
+                # print(decrypted_preview[-10:])
+                # print("Preview size:", len(decrypted_preview))
+                # print("Thumbnail bytes:", thumbnail_bytes)
+
+                if thumbnail_bytes:
+                    media.thumbnail_preview.save(
+                        f"{upload_id}_thumb.jpg",
+                        ContentFile(thumbnail_bytes),
+                        save=True
+                    )
+
+                # os.remove(temp_path)
                 self.delete_session(upload_id)
 
                 yield self._event(upload_id, "complete", 100)
@@ -306,19 +340,46 @@ class ChunkedMediaFileUploadView(APIView):
         if error:
             payload["error"] = error
         return f"data: {json.dumps(payload)}\n\n"
+    
 
-    def _decrypt_chunk(self, chunk_file, iv_str):
-        iv = bytes.fromhex(iv_str)
-        encrypted = chunk_file.read()
+        
+
+
+
+    def decrypt_full_file(self, file_path):
+
+        import struct
 
         key = settings.ENCRYPTION_KEY
-        cipher = Cipher(
-            algorithms.AES(key),
-            modes.GCM(iv, encrypted[-16:]),
-            backend=default_backend()
-        )
-        decryptor = cipher.decryptor()
-        return decryptor.update(encrypted[:-16]) + decryptor.finalize()
+
+        with open(file_path, "rb") as f:
+
+            while True:
+
+                iv = f.read(12)
+                if not iv:
+                    break
+
+                length_bytes = f.read(4)
+                if not length_bytes:
+                    break
+
+                encrypted_length = struct.unpack(">I", length_bytes)[0]
+
+                encrypted = f.read(encrypted_length)
+
+                tag = encrypted[-16:]
+                ciphertext = encrypted[:-16]
+
+                cipher = Cipher(
+                    algorithms.AES(key),
+                    modes.GCM(iv, tag),
+                    backend=default_backend()
+                )
+
+                decryptor = cipher.decryptor()
+
+                yield decryptor.update(ciphertext) + decryptor.finalize()
 
 
 class FamilyTreeGalaryView(SecuredView):
@@ -478,16 +539,96 @@ class FamilyTreeGalleryDownloadAPIView(SecuredView):
 
     CHUNK_SIZE = 1024 * 1024  # 1 MB
 
-    def stream_file(self, file_path):
-        with open(file_path, "rb") as f:
-            while True:
-                chunk = f.read(self.CHUNK_SIZE)
-                if not chunk:
-                    break
-                yield chunk
+    # ------------------------------------------------------------
+    # Stream decrypted chunks (memory safe)
+    # ------------------------------------------------------------
+    def _stream_decrypted_chunks(self, file_path):
+        key = settings.ENCRYPTION_KEY
 
+        with open(file_path, "rb") as f:
+
+            while True:
+                iv = f.read(12)
+                if not iv:
+                    break
+
+                size_data = f.read(4)
+                if not size_data:
+                    break
+
+                encrypted_size = struct.unpack(">I", size_data)[0]
+                encrypted = f.read(encrypted_size)
+                tag = encrypted[-16:]
+                ciphertext = encrypted[:-16]
+
+                cipher = Cipher(
+                    algorithms.AES(key),
+                    modes.GCM(iv, tag),
+                    backend=default_backend()
+                )
+
+                decryptor = cipher.decryptor()
+
+                decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+                offset = 0
+                total = len(decrypted)
+
+                while offset < total:
+                    yield decrypted[offset:offset+self.DOWNLOAD_CHUNK_SIZE]
+                    offset += self.DOWNLOAD_CHUNK_SIZE
+                    time.sleep(0.01)  
+                    
+    # ------------------------------------------------------------
+    # Calculate decrypted size (for progress bar support)
+    # ------------------------------------------------------------
+    def _get_decrypted_file_size(self, file_path):
+
+        key = settings.ENCRYPTION_KEY
+        total_size = 0
+
+        with open(file_path, "rb") as f:
+
+            while True:
+
+                iv = f.read(12)
+                if not iv:
+                    break
+
+                size_data = f.read(4)
+                if not size_data:
+                    break
+
+                encrypted_size = struct.unpack(">I", size_data)[0]
+
+                encrypted = f.read(encrypted_size)
+
+                tag = encrypted[-16:]
+                ciphertext = encrypted[:-16]
+
+                cipher = Cipher(
+                    algorithms.AES(key),
+                    modes.GCM(iv, tag),
+                    backend=default_backend()
+                )
+
+                decryptor = cipher.decryptor()
+
+                decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+
+                total_size += len(decrypted)
+
+        return total_size
+
+
+    # ------------------------------------------------------------
+    # Main GET endpoint
+    # ------------------------------------------------------------
     def get(self, request, family_tree_id, media_id):
         user = self.get_current_user(request)
+
+        if not user:
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
+
 
         family_tree = get_shared_family_tree(
             user=user,
@@ -506,6 +647,7 @@ class FamilyTreeGalleryDownloadAPIView(SecuredView):
                 family_tree=family_tree,
                 is_deleted=False
             )
+
         except FamilyTreeGallery.DoesNotExist:
             raise Http404("Media file not found")
 
@@ -516,24 +658,252 @@ class FamilyTreeGalleryDownloadAPIView(SecuredView):
         if not os.path.exists(file_path):
             raise Http404("File missing on server")
 
-        file_size = os.path.getsize(file_path)
+        # file_size = os.path.getsize(file_path)
         filename = os.path.basename(file_path)
 
         content_type, _ = mimetypes.guess_type(filename)
         content_type = content_type or "application/octet-stream"
 
+        file_size = self._get_decrypted_file_size(file_path)
+
         response = StreamingHttpResponse(
-            streaming_content=self.stream_file(file_path),
-            content_type=content_type,
+            streaming_content=self._stream_decrypted_chunks(file_path),
+            content_type=content_type
         )
 
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        response["Content-Length"] = file_size
-        response["Accept-Ranges"] = "bytes"
+        response["Content-Length"] = str(file_size)
         response["Cache-Control"] = "no-cache, no-store, must-revalidate"
         response["X-Content-Type-Options"] = "nosniff"
         response["Access-Control-Expose-Headers"] = (
-            "Content-Disposition, Content-Length"
+            "Content-Length, Content-Disposition"
         )
 
         return response
+
+
+
+class ServeGalleryMedia(SecuredView):
+    """
+    Securely stream decrypted gallery media with range support
+    """
+
+    CACHE_TIMEOUT = 60 * 60 * 24 * 7
+    STREAMING_CHUNK_SIZE = 64 * 1024
+
+    IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
+    VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mov', '.mkv'}
+    AUDIO_EXTENSIONS = {'.mp3', '.wav', '.aac', '.ogg'}
+
+    # -------------------------
+    # HELPERS
+    # -------------------------
+
+    def _get_extension(self, filename):
+        return '.' + filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
+
+    def _categorize(self, filename):
+        ext = self._get_extension(filename)
+
+        if ext in self.IMAGE_EXTENSIONS:
+            return "image"
+
+        if ext in self.VIDEO_EXTENSIONS:
+            return "video"
+
+        if ext in self.AUDIO_EXTENSIONS:
+            return "audio"
+
+        return "other"
+
+    def _guess_type(self, filename):
+        import mimetypes
+        content_type, _ = mimetypes.guess_type(filename)
+        return content_type or "application/octet-stream"
+
+    # -------------------------
+    # RANGE STREAMING
+    # -------------------------
+
+    def _stream_bytes(self, request, file_bytes, content_type, filename):
+
+        file_size = len(file_bytes)
+        range_header = request.headers.get("Range")
+
+        if range_header:
+            import re
+            m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            start = int(m.group(1))
+            end = int(m.group(2)) if m.group(2) else file_size - 1
+            status = 206
+        else:
+            start = 0
+            end = file_size - 1
+            status = 200
+
+        end = min(end, file_size - 1)
+
+        def stream():
+            pos = start
+            while pos <= end:
+                chunk_end = min(pos + self.STREAMING_CHUNK_SIZE, end + 1)
+                yield file_bytes[pos:chunk_end]
+                pos = chunk_end
+
+        response = StreamingHttpResponse(
+            stream(),
+            status=status,
+            content_type=content_type
+        )
+
+        response["Accept-Ranges"] = "bytes"
+        response["Content-Length"] = str(end - start + 1)
+
+        if status == 206:
+            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+
+        response["Content-Disposition"] = "inline"
+        response["Cache-Control"] = "no-store"
+
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Expose-Headers"] = (
+            "Accept-Ranges, Content-Range, Content-Length"
+        )
+
+        return response
+
+    # -------------------------
+    # STREAM CHUNKED DECRYPT
+    # -------------------------
+
+    def _stream_chunked_decrypt(self, file_path):
+
+        import struct
+        key = settings.ENCRYPTION_KEY
+
+        with open(file_path, "rb") as f:
+
+            while True:
+
+                iv = f.read(12)
+
+                if not iv:
+                    break
+
+                length_bytes = f.read(4)
+
+                if not length_bytes:
+                    break
+
+                encrypted_length = struct.unpack(">I", length_bytes)[0]
+
+                encrypted = f.read(encrypted_length)
+
+                tag = encrypted[-16:]
+                ciphertext = encrypted[:-16]
+
+                cipher = Cipher(
+                    algorithms.AES(key),
+                    modes.GCM(iv, tag),
+                    backend=default_backend()
+                )
+
+                decryptor = cipher.decryptor()
+
+                decrypted = decryptor.update(ciphertext)
+                decrypted += decryptor.finalize()
+
+                yield decrypted
+
+    # -------------------------
+    # MAIN GET
+    # -------------------------
+
+    def get(self, request, media_id):
+
+        user = self.get_current_user(request)
+
+        media = get_object_or_404(
+            FamilyTreeGallery,
+            id=media_id,
+            # family_tree_id=family_tree_id,
+            is_deleted=False
+        )
+
+        file_path = media.file.path
+
+        filename = os.path.basename(file_path)
+
+        category = self._categorize(filename)
+
+        content_type = self._guess_type(filename)
+
+        cache_key = f"gallery_bytes_{media_id}"
+
+        file_bytes = cache.get(cache_key)
+        # extension = self._get_extension(filename)
+        # if extension == '.doc':
+        #     from memory_room.utils import convert_doc_to_docx_bytes
+        #     cache_key = f'{media_id}_docx_preview'
+        #     file_bytes = cache.get(cache_key) or convert_doc_to_docx_bytes(file_bytes, media_id, user.email)
+        #     cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+        #     content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        #     filename = filename.replace(".doc", ".docx")
+            
+
+        # -------------------------
+        # VIDEO / AUDIO
+        # -------------------------
+
+        if category in ["video", "audio"]:
+
+            if not file_bytes:
+
+                decrypted = bytearray()
+
+                for chunk in self._stream_chunked_decrypt(file_path):
+                    decrypted.extend(chunk)
+
+                file_bytes = bytes(decrypted)
+
+                cache.set(cache_key, file_bytes, self.CACHE_TIMEOUT)
+
+            return self._stream_bytes(
+                request,
+                file_bytes,
+                content_type,
+                filename
+            )
+
+        # -------------------------
+        # IMAGE (PROGRESSIVE)
+        # -------------------------
+
+        if category == "image":
+
+            return StreamingHttpResponse(
+                self._stream_chunked_decrypt(file_path),
+                content_type=content_type
+            )
+
+        # -------------------------
+        # OTHER FILES
+        # -------------------------
+
+        if not file_bytes:
+
+            decrypted = bytearray()
+
+            for chunk in self._stream_chunked_decrypt(file_path):
+                decrypted.extend(chunk)
+
+            file_bytes = bytes(decrypted)
+
+            cache.set(cache_key, file_bytes, self.CACHE_TIMEOUT)
+
+        return HttpResponse(
+            file_bytes,
+            content_type=content_type
+        )
+
+        
