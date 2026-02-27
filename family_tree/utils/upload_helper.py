@@ -25,7 +25,7 @@ class ChunkedUploadSession:
         self.file_type = file_type
         self.total_chunks = total_chunks
         self.chunk_size = chunk_size
-
+        self.received_bytes = 0
         self.uploaded_chunks = set()
         self.created_at = time.time()
         self.last_activity = time.time()
@@ -52,6 +52,7 @@ class ChunkedUploadSession:
             "created_at": self.created_at,
             "last_activity": self.last_activity,
             "is_small_file": self.is_small_file,
+            "received_bytes ": self.received_bytes,
         }
 
     @classmethod

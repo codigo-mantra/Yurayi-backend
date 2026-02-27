@@ -4,6 +4,11 @@ import json
 import time
 import uuid
 import threading
+import re
+import hmac
+import hashlib
+import struct
+import logging
 from django.conf import settings
 from django.http import FileResponse, Http404, HttpResponse
 from django.http import JsonResponse, StreamingHttpResponse
@@ -24,17 +29,19 @@ from userauth.apis.views.views import SecuredView
 from family_tree.models import FamilyTree, FamilyTreeGallery
 from django.db.models import Q
 from django.db import models
-import struct
 
 from memory_room.utils import get_file_category
 from family_tree.apis.serializers.galery_media import FamilyTreeGallerySerializer, GalleryUpdateSerializer
 # from memory_room.upload_helper import ChunkedUploadSession,truncate_filename, s3, kms, AWS_KMS_KEY_ID
-from timecapsoul.utils import MediaThumbnailExtractor
+from memory_room.utils import convert_doc_to_docx_bytes
 from family_tree.utils.pagination import FamilyTreeGalleryPagination
 from family_tree.utils.upload_helper import ChunkedUploadSession
 
 
-email = 'krishna234@gmail.com'
+
+logger = logging.getLogger(__name__)
+
+email = 'test@test.com'
 def get_current_user(email):
     """Method to getting the test user"""
     return User.objects.get(email = email)
@@ -91,8 +98,7 @@ def get_shared_family_tree(user, family_tree_id):
     ).first()
     return family_tree
 
-
-class ChunkedMediaFileUploadView(APIView):
+class ChunkedMediaFileUploadView(SecuredView):
 
     CACHE_PREFIX = "chunked_upload"
     SESSION_TIMEOUT = 3600
@@ -100,7 +106,7 @@ class ChunkedMediaFileUploadView(APIView):
     SMALL_FILE_THRESHOLD = 5 * 1024 * 1024
 
     def _key(self, upload_id):
-        return f"{self.CACHE_PREFIX}:{upload_id}"
+        return f"{self.CACHE_PREFIX}:{str(upload_id)}"
 
     def _percent(self, value):
         try:
@@ -122,6 +128,8 @@ class ChunkedMediaFileUploadView(APIView):
             self.SESSION_TIMEOUT
         )
 
+
+
     def delete_session(self, upload_id):
         cache.delete(self._key(str(upload_id)))
 
@@ -130,13 +138,13 @@ class ChunkedMediaFileUploadView(APIView):
     # MAIN ENTRY
     # ----------------------------------------------------
     def post(self, request, family_tree, action):
-        # user = self.get_current_user(request)
-        user = get_current_user(email)
+        user = self.get_current_user(request)
+        # user = get_current_user(email)
 
         family_tree = get_object_or_404(FamilyTree, id=family_tree)
         if not user_has_tree_edit_permission(user, family_tree):
             return Response(
-                {"detail": "You do not have permission to edit this diary."},
+                {"detail": "You do not have permission to edit this family tree."},
                 status=status.HTTP_403_FORBIDDEN
             )
 
@@ -160,15 +168,23 @@ class ChunkedMediaFileUploadView(APIView):
             return JsonResponse({"error": "No files provided"}, status=400)
 
         initialized_files = []
+        MAX_FILE_SIZE = 2 * 1024 * 1024 * 1024  # example 2GB
 
         for file_data in files_data:
             file_name = file_data["fileName"]
             file_size = int(file_data["fileSize"])
+            if file_size <= 0 or file_size > MAX_FILE_SIZE:
+                return JsonResponse({"error": "Invalid file size"}, status=400)
             total_chunks = int(file_data["totalChunks"])
             chunk_size = int(file_data["chunkSize"])
 
             upload_id = str(uuid.uuid4())
-            clean_name = file_name.replace(" ", "_")
+            # clean_name = file_name.replace(" ", "_")
+            from django.utils.text import get_valid_filename
+            import os
+
+            base_name = os.path.basename(file_name)
+            clean_name = get_valid_filename(base_name)
 
             local_path = get_local_upload_path(
                 family_tree.id, upload_id, clean_name
@@ -212,17 +228,47 @@ class ChunkedMediaFileUploadView(APIView):
         iv = request.POST.get("iv")
 
         if not upload_id or not chunk_file:
-            return JsonResponse({"error": "Invalid chunk"}, status=400)
-
+            return JsonResponse({"error": "Invalid request"}, status=400)
         def stream():
             session = self.get_session(upload_id)
-            if not session:
+            if not session :
+                yield self._event(upload_id, "error", 0, "Unauthorized session")
+                return
+            if time.time() - session.last_activity > self.SESSION_TIMEOUT:
+                self.delete_session(upload_id)
                 yield self._event(upload_id, "error", 0, "Session expired")
                 return
+            if chunk_index < 0 or chunk_index >= session.total_chunks:
+                yield self._event(upload_id, "error", 0, "Invalid chunk index")
+                return
+
+            if chunk_index in session.uploaded_chunks:
+                yield self._event(upload_id, "error", 0, "Duplicate chunk")
+                return
             encrypted = chunk_file.read()
+            chunk_size = len(encrypted)
+
+            if chunk_size > self.MAX_CHUNK_SIZE:
+                yield self._event(upload_id, "error", 0, "Chunk too large")
+                return
+            if not iv:
+                yield self._event(upload_id, "error", 0, "Missing IV")
+                return
+
+            try:
+                iv_bytes = bytes.fromhex(iv)
+            except ValueError:
+                yield self._event(upload_id, "error", 0, "Invalid IV format")
+                return
+
+            if len(iv_bytes) != 12:
+                yield self._event(upload_id, "error", 0, "Invalid IV length")
+                return
+
+            session.received_bytes += chunk_size
             ensure_dir(session.temp_file_path)
             with open(session.temp_file_path, "ab") as f:
-                f.write(bytes.fromhex(iv))
+                f.write(iv_bytes)
                 f.write(struct.pack(">I", len(encrypted)))
                 f.write(encrypted)   
 
@@ -240,6 +286,7 @@ class ChunkedMediaFileUploadView(APIView):
             headers={"Cache-Control": "no-cache"}
         )
 
+
     # ----------------------------------------------------
     # COMPLETE
     # ----------------------------------------------------
@@ -256,9 +303,15 @@ class ChunkedMediaFileUploadView(APIView):
 
                 final_path = session.local_path
                 temp_path = session.temp_file_path
+                if len(session.uploaded_chunks) != session.total_chunks:
+                    yield self._event(upload_id, "error", 0, "Incomplete upload")
+                    continue
 
-                os.replace(temp_path, final_path)
-
+                try:
+                    os.replace(temp_path, final_path)
+                except Exception:
+                    yield self._event(upload_id, "error", 0, "File move failed")
+                    continue
                 media = FamilyTreeGallery.objects.create(
                     author=user,
                     family_tree=family_tree,
@@ -267,11 +320,12 @@ class ChunkedMediaFileUploadView(APIView):
                     file_type=session.file_type,
                 )
 
-                media.file.save(
-                    os.path.basename(final_path),
-                    File(open(final_path, "rb")),
-                    save=True
-                )
+                with open(final_path, "rb") as f:
+                    media.file.save(
+                        os.path.basename(final_path),
+                        File(f),
+                        save=True
+                    )
 
                 extension = os.path.splitext(final_path)[1].lower()
                 from family_tree.utils.upload_helper import UniversalThumbnailService
@@ -286,12 +340,20 @@ class ChunkedMediaFileUploadView(APIView):
                 #     if total >= MIN_PREVIEW_BYTES:
                 #         break
                 # decrypted_preview = b"".join(chunks)
+                try:
+                    thumbnail_bytes = UniversalThumbnailService.generate(
+                        final_path,
+                        self.decrypt_full_file,
+                        extension=extension
+                    )
+                except Exception:
+                    if os.path.exists(final_path):
+                        os.remove(final_path)
 
-                thumbnail_bytes = UniversalThumbnailService.generate(
-                    final_path,
-                    self.decrypt_full_file,
-                    extension=extension
-                )
+                    media.delete()
+                    self.delete_session(upload_id)
+                    yield self._event(upload_id, "error", 0, "File corrupted")
+                    continue
                 # print(decrypted_preview[:10])
                 # print(decrypted_preview[-10:])
                 # print("Preview size:", len(decrypted_preview))
@@ -340,11 +402,6 @@ class ChunkedMediaFileUploadView(APIView):
         if error:
             payload["error"] = error
         return f"data: {json.dumps(payload)}\n\n"
-    
-
-        
-
-
 
     def decrypt_full_file(self, file_path):
 
@@ -367,7 +424,8 @@ class ChunkedMediaFileUploadView(APIView):
                 encrypted_length = struct.unpack(">I", length_bytes)[0]
 
                 encrypted = f.read(encrypted_length)
-
+                if len(encrypted) < 16:
+                    raise ValueError("Invalid encrypted data")
                 tag = encrypted[-16:]
                 ciphertext = encrypted[:-16]
 
@@ -398,15 +456,21 @@ class FamilyTreeGalaryView(SecuredView):
                 {"detail": "You do not have permission to access this gallery."},
                 status=status.HTTP_403_FORBIDDEN
             )
-
         queryset = family_tree.gallery_items.filter(
             is_deleted=False
-        ).order_by("-created_at")
+        )
+
+        file_type = request.query_params.get("file_type")
+
+        if file_type:
+            queryset = queryset.filter(file_type__iexact=file_type)
+
+        queryset = queryset.order_by("-created_at")
 
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
 
-        serializer = FamilyTreeGallerySerializer(page, many=True)
+        serializer = FamilyTreeGallerySerializer(page, many=True,context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 
 
@@ -473,7 +537,7 @@ class FamilyTreeGallerySearchAPIView(SecuredView):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
 
-        serializer = FamilyTreeGallerySerializer(page, many=True)
+        serializer = FamilyTreeGallerySerializer(page, many=True,context={"request": request})
         return paginator.get_paginated_response(serializer.data)
 
 
@@ -485,7 +549,7 @@ class FamilyTreeGalleryEditDeleteAPIView(SecuredView):
     """
 
     def delete(self, request, family_tree_id, gallery_id):
-        user = get_current_user(email)
+        user = self.get_current_user(request)
 
         family_tree = get_family_tree(
             user=user,
@@ -508,7 +572,7 @@ class FamilyTreeGalleryEditDeleteAPIView(SecuredView):
         )
     
     def patch(self, request, family_tree_id, gallery_id):
-        user = get_current_user(email)
+        user = self.get_current_user(request)
 
         family_tree = get_family_tree(
             user=user,
@@ -541,12 +605,11 @@ class FamilyTreeGalleryDownloadAPIView(SecuredView):
 
     # ------------------------------------------------------------
     # Stream decrypted chunks (memory safe)
-    # ------------------------------------------------------------
+    # ------------------------------------------------------------           
     def _stream_decrypted_chunks(self, file_path):
         key = settings.ENCRYPTION_KEY
 
         with open(file_path, "rb") as f:
-
             while True:
                 iv = f.read(12)
                 if not iv:
@@ -557,49 +620,6 @@ class FamilyTreeGalleryDownloadAPIView(SecuredView):
                     break
 
                 encrypted_size = struct.unpack(">I", size_data)[0]
-                encrypted = f.read(encrypted_size)
-                tag = encrypted[-16:]
-                ciphertext = encrypted[:-16]
-
-                cipher = Cipher(
-                    algorithms.AES(key),
-                    modes.GCM(iv, tag),
-                    backend=default_backend()
-                )
-
-                decryptor = cipher.decryptor()
-
-                decrypted = decryptor.update(ciphertext) + decryptor.finalize()
-                offset = 0
-                total = len(decrypted)
-
-                while offset < total:
-                    yield decrypted[offset:offset+self.DOWNLOAD_CHUNK_SIZE]
-                    offset += self.DOWNLOAD_CHUNK_SIZE
-                    time.sleep(0.01)  
-                    
-    # ------------------------------------------------------------
-    # Calculate decrypted size (for progress bar support)
-    # ------------------------------------------------------------
-    def _get_decrypted_file_size(self, file_path):
-
-        key = settings.ENCRYPTION_KEY
-        total_size = 0
-
-        with open(file_path, "rb") as f:
-
-            while True:
-
-                iv = f.read(12)
-                if not iv:
-                    break
-
-                size_data = f.read(4)
-                if not size_data:
-                    break
-
-                encrypted_size = struct.unpack(">I", size_data)[0]
-
                 encrypted = f.read(encrypted_size)
 
                 tag = encrypted[-16:]
@@ -613,13 +633,14 @@ class FamilyTreeGalleryDownloadAPIView(SecuredView):
 
                 decryptor = cipher.decryptor()
 
-                decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+                try:
+                    decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+                except Exception:
+                    raise Http404("Corrupted encrypted file")
 
-                total_size += len(decrypted)
-
-        return total_size
-
-
+                for i in range(0, len(decrypted), self.CHUNK_SIZE):
+                    yield decrypted[i:i+self.CHUNK_SIZE]
+    
     # ------------------------------------------------------------
     # Main GET endpoint
     # ------------------------------------------------------------
@@ -664,246 +685,699 @@ class FamilyTreeGalleryDownloadAPIView(SecuredView):
         content_type, _ = mimetypes.guess_type(filename)
         content_type = content_type or "application/octet-stream"
 
-        file_size = self._get_decrypted_file_size(file_path)
-
         response = StreamingHttpResponse(
-            streaming_content=self._stream_decrypted_chunks(file_path),
+            self._stream_decrypted_chunks(file_path),
             content_type=content_type
         )
 
         response["Content-Disposition"] = f'attachment; filename="{filename}"'
-        response["Content-Length"] = str(file_size)
-        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response["Cache-Control"] = "no-store"
         response["X-Content-Type-Options"] = "nosniff"
-        response["Access-Control-Expose-Headers"] = (
-            "Content-Length, Content-Disposition"
-        )
 
         return response
 
 
 
 class ServeGalleryMedia(SecuredView):
-    """
-    Securely stream decrypted gallery media with range support
-    """
 
-    CACHE_TIMEOUT = 60 * 60 * 24 * 7
-    STREAMING_CHUNK_SIZE = 64 * 1024
+    CACHE_TIMEOUT = 60 * 60 * 24 * 7  # 7 days
+    STREAMING_CHUNK_SIZE = 64 * 1024  # 1 mb
 
-    IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.webp'}
-    VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mov', '.mkv'}
-    AUDIO_EXTENSIONS = {'.mp3', '.wav', '.aac', '.ogg'}
+    IMAGE_EXTENSIONS = {
+        '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', 
+        '.tiff', '.tif', '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw'
+    }
+    VIDEO_EXTENSIONS = {
+        '.mp4', '.webm', '.mov', '.mkv', '.avi', '.wmv', 
+        '.flv', '.m4v', '.3gp', '.mpeg', '.mpg', '.ts'
+    }
+    AUDIO_EXTENSIONS = {
+        '.mp3', '.wav', '.aac', '.ogg', '.flac', '.m4a', '.wma', '.opus'
+    }
+    PDF_EXTENSIONS = {'.pdf'}
+    DOCUMENT_EXTENSIONS = {
+        '.doc', '.docx', '.xls', '.xlsx', '.csv', 
+        '.json', '.txt', '.odt', '.ods', '.pdf'
+    }
 
-    # -------------------------
+    NEEDS_CONVERSION = {
+        '.heic', '.heif', '.raw', '.cr2', '.nef', '.arw', 
+        '.tiff', '.tif',                                    
+        '.doc',                                             
+        '.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', 
+        '.m4v', '.3gp', '.mpeg', '.mpg',                 
+    }
+
+    # ---------------------------------------------------
+    # SECURITY
+    # ---------------------------------------------------
+
+    def _validate_signature(self, media_id, exp, sig):
+        data = f"{media_id}:{exp}"
+        expected_sig = hmac.new(
+            settings.SECRET_KEY.encode(),
+            data.encode(),
+            hashlib.sha256
+        ).hexdigest()
+        return hmac.compare_digest(expected_sig, sig)
+
+    # ---------------------------------------------------
     # HELPERS
-    # -------------------------
+    # ---------------------------------------------------
 
     def _get_extension(self, filename):
         return '.' + filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
 
     def _categorize(self, filename):
         ext = self._get_extension(filename)
-
+        if ext in {'.heic', '.heif', '.raw', '.cr2', '.nef', '.arw', '.tiff', '.tif'}:
+            return "image"
         if ext in self.IMAGE_EXTENSIONS:
             return "image"
-
+        if ext in {'.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', '.m4v', '.3gp', '.mpeg', '.mpg'}:
+            return "video"
         if ext in self.VIDEO_EXTENSIONS:
             return "video"
-
         if ext in self.AUDIO_EXTENSIONS:
             return "audio"
-
+        if ext in self.PDF_EXTENSIONS:
+            return "pdf"
+        if ext in self.DOCUMENT_EXTENSIONS:
+            return "document"
         return "other"
 
-    def _guess_type(self, filename):
-        import mimetypes
+    def _guess_type(self, filename, converted_ext=None):
+        """Guess content type, optionally for converted format."""
+        ext = converted_ext or self._get_extension(filename)
+        
+        type_map = {
+            '.mp4': 'video/mp4', '.webm': 'video/webm', '.mov': 'video/quicktime',
+            '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.ogg': 'audio/ogg',
+            '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+            '.gif': 'image/gif', '.webp': 'image/webp', '.svg': 'image/svg+xml',
+            '.pdf': 'application/pdf',
+            '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            '.doc': 'application/msword',
+            '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            '.xls': 'application/vnd.ms-excel',
+            '.csv': 'text/csv',
+            '.json': 'application/json',
+            '.txt': 'text/plain',
+        }
+        
+        if ext in type_map:
+            return type_map[ext]
+            
         content_type, _ = mimetypes.guess_type(filename)
         return content_type or "application/octet-stream"
 
-    # -------------------------
-    # RANGE STREAMING
-    # -------------------------
+    def _needs_conversion(self, filename):
+        """Check if file needs format conversion."""
+        return self._get_extension(filename) in self.NEEDS_CONVERSION
 
-    def _stream_bytes(self, request, file_bytes, content_type, filename):
+    # ---------------------------------------------------
+    # DECRYPT STREAM (LOCAL ENCRYPTED FILE FORMAT)
+    # ---------------------------------------------------
 
+    def _decrypt_stream(self, file_path):
+        key = settings.ENCRYPTION_KEY
+        with open(file_path, "rb") as f:
+            while True:
+                iv = f.read(12)
+                if not iv:
+                    break
+                length_bytes = f.read(4)
+                if not length_bytes:
+                    break
+                encrypted_length = struct.unpack(">I", length_bytes)[0]
+                encrypted = f.read(encrypted_length)
+                if len(encrypted) < 16:
+                    break
+                tag = encrypted[-16:]
+                ciphertext = encrypted[:-16]
+                
+                try:
+                    cipher = Cipher(
+                        algorithms.AES(key),
+                        modes.GCM(iv, tag),
+                        backend=default_backend()
+                    )
+                    decryptor = cipher.decryptor()
+                    decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+                    yield decrypted
+                except Exception as e:
+                    logger.error(f"Decryption chunk failed for {file_path}: {e}")
+                    break
+
+    def _get_decrypted_bytes(self, file_path, cache_key=None):
+        """Decrypt full file, optionally from cache."""
+        if cache_key:
+            cached = cache.get(cache_key)
+            if cached:
+                return cached
+        
+        try:
+            decrypted = bytearray()
+            for chunk in self._decrypt_stream(file_path):
+                decrypted.extend(chunk)
+            file_bytes = bytes(decrypted)
+            
+            if cache_key:
+                cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+            return file_bytes
+        except Exception as e:
+            logger.error(f"Full decryption failed for {file_path}: {e}")
+            return None
+
+    # ---------------------------------------------------
+    # FORMAT CONVERSION METHODS
+    # ---------------------------------------------------
+
+    def _convert_heic_to_jpeg(self, file_bytes, quality=85):
+        """Convert HEIC/HEIF to JPEG bytes."""
+        try:
+            from pillow_heif import register_heif_opener
+            from PIL import Image
+            import io
+            
+            register_heif_opener()
+            image = Image.open(io.BytesIO(file_bytes))
+            
+            # Convert to RGB if necessary
+            if image.mode in ('RGBA', 'P'):
+                image = image.convert('RGB')
+            
+            output = io.BytesIO()
+            image.save(output, format='JPEG', quality=quality, optimize=True)
+            return output.getvalue()
+        except Exception as e:
+            logger.error(f"HEIC conversion failed: {e}")
+            return None
+
+    def _convert_raw_to_jpeg(self, file_bytes, quality=85, max_size=(4000, 4000)):
+        """Convert RAW camera files (CR2, NEF, ARW) to JPEG."""
+        try:
+            from PIL import Image
+            import io
+            import rawpy
+            
+            # Use rawpy for RAW processing
+            with rawpy.imread(io.BytesIO(file_bytes)) as raw:
+                rgb = raw.postprocess(
+                    use_camera_wb=True,
+                    half_size=False,
+                    no_auto_bright=False,
+                    output_bps=8
+                )
+                image = Image.fromarray(rgb)
+                
+                # Resize if too large
+                if max_size:
+                    image.thumbnail(max_size, Image.Resampling.LANCZOS)
+                
+                output = io.BytesIO()
+                image.save(output, format='JPEG', quality=quality, optimize=True)
+                return output.getvalue()
+        except Exception as e:
+            logger.error(f"RAW conversion failed: {e}")
+            # Fallback to PIL if rawpy fails
+            try:
+                from PIL import Image
+                import io
+                image = Image.open(io.BytesIO(file_bytes))
+                if image.mode != 'RGB':
+                    image = image.convert('RGB')
+                output = io.BytesIO()
+                image.save(output, format='JPEG', quality=quality)
+                return output.getvalue()
+            except Exception as e2:
+                logger.error(f"RAW fallback conversion failed: {e2}")
+                return None
+
+    def _convert_tiff_to_jpeg(self, file_bytes, quality=85, max_size=(4000, 4000)):
+        """Convert TIFF to JPEG."""
+        try:
+            from PIL import Image
+            import io
+            
+            image = Image.open(io.BytesIO(file_bytes))
+            
+            # Handle multipage TIFF
+            if hasattr(image, 'n_frames') and image.n_frames > 1:
+                image.seek(0)
+            
+            if image.mode in ('RGBA', 'P', 'CMYK'):
+                image = image.convert('RGB')
+            
+            if max_size:
+                image.thumbnail(max_size, Image.Resampling.LANCZOS)
+            
+            output = io.BytesIO()
+            image.save(output, format='JPEG', quality=quality, optimize=True)
+            return output.getvalue()
+        except Exception as e:
+            logger.error(f"TIFF conversion failed: {e}")
+            return None
+
+
+    def _convert_video_to_mp4(self, file_bytes, source_ext):
+        """Convert video formats to browser-compatible MP4 (H.264/AAC)."""
+        try:
+            import subprocess
+            import tempfile
+            import os
+            
+            with tempfile.TemporaryDirectory() as tmpdir:
+                input_ext = source_ext.lstrip('.')
+                input_path = os.path.join(tmpdir, f'input.{input_ext}')
+                output_path = os.path.join(tmpdir, 'output.mp4')
+                
+                with open(input_path, 'wb') as f:
+                    f.write(file_bytes)
+                
+                # FFmpeg conversion settings optimized for web playback
+                cmd = [
+                    'ffmpeg', '-y', '-i', input_path,
+                    '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+                    '-c:a', 'aac', '-b:a', '128k',
+                    '-movflags', '+faststart',  # Web optimization
+                    '-pix_fmt', 'yuv420p',       # Browser compatibility
+                    output_path
+                ]
+                
+                result = subprocess.run(
+                    cmd, 
+                    capture_output=True, 
+                    text=True,
+                    timeout=300  # 5 minute timeout for large files
+                )
+                
+                if result.returncode != 0:
+                    logger.error(f"FFmpeg error: {result.stderr}")
+                    return None
+                
+                with open(output_path, 'rb') as f:
+                    return f.read()
+                    
+        except subprocess.TimeoutExpired:
+            logger.error(f"Video conversion timeout for {source_ext}")
+            return None
+        except FileNotFoundError:
+            logger.error("FFmpeg not found. Please install FFmpeg.")
+            return None
+        except Exception as e:
+            logger.error(f"Video conversion failed: {e}")
+            return None
+
+    # ---------------------------------------------------
+    # CONVERSION ROUTER
+    # ---------------------------------------------------
+    
+    def _convert_file(self, file_bytes, filename, media_id):
+        """Route to appropriate converter based on extension."""
+        ext = self._get_extension(filename)
+        cache_key = f"gallery_converted_{media_id}_{ext}"
+        
+        # Check cache first
+        cached = cache.get(cache_key)
+        if cached:
+            return cached, self._get_converted_filename(filename, ext)
+        
+        converted = None
+        new_ext = ext
+        
+        # Image conversions
+        if ext in ('.heic', '.heif'):
+            converted = self._convert_heic_to_jpeg(file_bytes)
+            new_ext = '.jpg'
+        elif ext in ('.raw', '.cr2', '.nef', '.arw'):
+            converted = self._convert_raw_to_jpeg(file_bytes)
+            new_ext = '.jpg'
+        elif ext in ('.tiff', '.tif'):
+            converted = self._convert_tiff_to_jpeg(file_bytes)
+            new_ext = '.jpg'
+        
+        # Document conversions
+        elif ext == '.doc':
+            converted = self._convert_doc_to_docx(file_bytes, filename)
+            new_ext = '.docx'
+        
+        # Video conversions
+        elif ext in ('.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', '.m4v', '.3gp', '.mpeg', '.mpg'):
+            converted = self._convert_video_to_mp4(file_bytes, ext)
+            new_ext = '.mp4'
+        
+        if converted:
+            cache.set(cache_key, converted, timeout=self.CACHE_TIMEOUT)
+            return converted, self._get_converted_filename(filename, new_ext)
+        
+        return None, filename
+
+    def _get_converted_filename(self, original_filename, new_ext):
+        """Generate filename for converted file."""
+        base = original_filename.rsplit('.', 1)[0]
+        return f"{base}{new_ext}"
+
+    # ---------------------------------------------------
+    # RANGE STREAMING (UNCHANGED CORE LOGIC)
+    # ---------------------------------------------------
+
+    def _serve_pdf_with_range(self, request, file_bytes, filename):
+        """Serve PDF with byte-range support."""
         file_size = len(file_bytes)
-        range_header = request.headers.get("Range")
+        range_header = request.headers.get("Range", "")
+        start, end = 0, file_size - 1
+        status_code = 200
 
         if range_header:
-            import re
             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-            start = int(m.group(1))
-            end = int(m.group(2)) if m.group(2) else file_size - 1
-            status = 206
+            if m:
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else file_size - 1
+                end = min(end, file_size - 1)
+                status_code = 206
+
+        content = file_bytes[start:end + 1]
+        
+        if status_code == 206:
+            response = StreamingHttpResponse(
+                iter([content]),
+                status=206,
+                content_type="application/pdf"
+            )
         else:
-            start = 0
-            end = file_size - 1
-            status = 200
+            response = HttpResponse(content, content_type="application/pdf", status=200)
+
+        response["Accept-Ranges"] = "bytes"
+        response["Content-Length"] = str(len(content))
+        response["Content-Disposition"] = "inline"
+        response["X-Content-Type-Options"] = "nosniff"
+        response["Cache-Control"] = "private, max-age=3600"
+        
+        if status_code == 206:
+            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+            
+        response["Access-Control-Allow-Origin"] = "*"
+        response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+        
+        try:
+            frame_ancestors = " ".join(getattr(settings, "CORS_ALLOWED_ORIGINS", []))
+            if frame_ancestors:
+                response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+        except Exception:
+            pass
+            
+        return response
+
+    def _stream_file_with_range(self, request, file_bytes, content_type, filename):
+        """Generic byte-range streaming for video/audio/documents."""
+        file_size = len(file_bytes)
+        range_header = request.headers.get("Range")
+        start = 0
+        end = file_size - 1
+        status_code = 200
+
+        if range_header:
+            m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+            if m:
+                start = int(m.group(1))
+                end = int(m.group(2)) if m.group(2) else file_size - 1
+                status_code = 206
 
         end = min(end, file_size - 1)
 
         def stream():
-            pos = start
-            while pos <= end:
-                chunk_end = min(pos + self.STREAMING_CHUNK_SIZE, end + 1)
-                yield file_bytes[pos:chunk_end]
-                pos = chunk_end
+            try:
+                pos = start
+                while pos <= end:
+                    chunk_end = min(pos + self.STREAMING_CHUNK_SIZE, end + 1)
+                    yield file_bytes[pos:chunk_end]
+                    pos = chunk_end
+            except BrokenPipeError:
+                pass
 
         response = StreamingHttpResponse(
             stream(),
-            status=status,
+            status=status_code,
             content_type=content_type
         )
-
         response["Accept-Ranges"] = "bytes"
         response["Content-Length"] = str(end - start + 1)
-
-        if status == 206:
-            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-
         response["Content-Disposition"] = "inline"
-        response["Cache-Control"] = "no-store"
-
+        response["Cache-Control"] = "private, max-age=3600"
+        response["X-Content-Type-Options"] = "nosniff"
+        
+        if status_code == 206:
+            response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+            
         response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Expose-Headers"] = (
-            "Accept-Ranges, Content-Range, Content-Length"
-        )
-
+        response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+        response["Cross-Origin-Resource-Policy"] = "cross-origin"
+        
+        try:
+            frame_ancestors = " ".join(getattr(settings, "CORS_ALLOWED_ORIGINS", []))
+            if frame_ancestors:
+                response["Content-Security-Policy"] = f"media-src *; frame-ancestors 'self' {frame_ancestors};"
+        except Exception:
+            pass
+            
         return response
 
-    # -------------------------
-    # STREAM CHUNKED DECRYPT
-    # -------------------------
+    # ---------------------------------------------------
+    # UPDATED RANGE STREAM ROUTER WITH CONVERSIONS
+    # ---------------------------------------------------
 
-    def _stream_chunked_decrypt(self, file_path):
-
-        import struct
-        key = settings.ENCRYPTION_KEY
-
-        with open(file_path, "rb") as f:
-
-            while True:
-
-                iv = f.read(12)
-
-                if not iv:
-                    break
-
-                length_bytes = f.read(4)
-
-                if not length_bytes:
-                    break
-
-                encrypted_length = struct.unpack(">I", length_bytes)[0]
-
-                encrypted = f.read(encrypted_length)
-
-                tag = encrypted[-16:]
-                ciphertext = encrypted[:-16]
-
-                cipher = Cipher(
-                    algorithms.AES(key),
-                    modes.GCM(iv, tag),
-                    backend=default_backend()
-                )
-
-                decryptor = cipher.decryptor()
-
-                decrypted = decryptor.update(ciphertext)
-                decrypted += decryptor.finalize()
-
-                yield decrypted
-
-    # -------------------------
-    # MAIN GET
-    # -------------------------
-
-    def get(self, request, media_id):
-
-        user = self.get_current_user(request)
-
-        media = get_object_or_404(
-            FamilyTreeGallery,
-            id=media_id,
-            # family_tree_id=family_tree_id,
-            is_deleted=False
-        )
-
-        file_path = media.file.path
-
-        filename = os.path.basename(file_path)
-
-        category = self._categorize(filename)
-
-        content_type = self._guess_type(filename)
-
-        cache_key = f"gallery_bytes_{media_id}"
-
-        file_bytes = cache.get(cache_key)
-        # extension = self._get_extension(filename)
-        # if extension == '.doc':
-        #     from memory_room.utils import convert_doc_to_docx_bytes
-        #     cache_key = f'{media_id}_docx_preview'
-        #     file_bytes = cache.get(cache_key) or convert_doc_to_docx_bytes(file_bytes, media_id, user.email)
-        #     cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
-        #     content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        #     filename = filename.replace(".doc", ".docx")
+    def _range_stream(self, request, file_path, content_type, filename, media_id, category):
+        """
+        Route by category with format conversion support.
+        Mirrors S3 ServeTimeCapSoulMedia pattern for local files.
+        """
+        ext = self._get_extension(filename)
+        needs_conversion = self._needs_conversion(filename)
+        
+        # Handle conversions that require full decryption first
+        if category in ("image", "document", "video") and needs_conversion:
+            decrypt_cache_key = f"gallery_bytes_{media_id}"
+            file_bytes = self._get_decrypted_bytes(file_path, decrypt_cache_key)
             
-
-        # -------------------------
-        # VIDEO / AUDIO
-        # -------------------------
-
-        if category in ["video", "audio"]:
-
             if not file_bytes:
+                raise Http404("File decryption failed")
+            
+            converted_bytes = None
+            converted_filename = filename
+            new_content_type = content_type
+        
+            if ext == '.doc':
+                cache_key = f'gallery_docx_{media_id}'
+                converted_bytes = cache.get(cache_key)
+                
+                if not converted_bytes:
+                    user = self.get_current_user(request)
+                    user_email = getattr(user, 'email', 'anonymous')
+                    
+                    converted_bytes = convert_doc_to_docx_bytes(
+                        file_bytes, media_id, user_email
+                    )
+                    if converted_bytes:
+                        cache.set(cache_key, converted_bytes, timeout=self.CACHE_TIMEOUT)
+                
+                if converted_bytes and converted_bytes != file_bytes: 
+                    new_content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    converted_filename = filename.replace(".doc", ".docx")
+                    file_bytes = converted_bytes
+                    filename = converted_filename
+                    content_type = new_content_type
+            
+            # HEIC conversion
+            elif ext in ('.heic', '.heif'):
+                cache_key = f'gallery_jpeg_{media_id}'
+                converted_bytes = cache.get(cache_key)
+                
+                if not converted_bytes:
+                    converted_bytes = self._convert_heic_to_jpeg(file_bytes)
+                    if converted_bytes:
+                        cache.set(cache_key, converted_bytes, timeout=self.CACHE_TIMEOUT)
+                
+                if converted_bytes:
+                    content_type = "image/jpeg"
+                    filename = filename.rsplit('.', 1)[0] + '.jpg'
+                    file_bytes = converted_bytes
+            
+            # TIFF conversion
+            elif ext in ('.tiff', '.tif'):
+                cache_key = f'gallery_jpeg_{media_id}'
+                converted_bytes = cache.get(cache_key)
+                
+                if not converted_bytes:
+                    converted_bytes = self._convert_tiff_to_jpeg(file_bytes)
+                    if converted_bytes:
+                        cache.set(cache_key, converted_bytes, timeout=self.CACHE_TIMEOUT)
+                
+                if converted_bytes:
+                    content_type = "image/jpeg"
+                    filename = filename.rsplit('.', 1)[0] + '.jpg'
+                    file_bytes = converted_bytes
+            
+            # RAW conversion
+            elif ext in ('.raw', '.cr2', '.nef', '.arw'):
+                cache_key = f'gallery_jpeg_{media_id}'
+                converted_bytes = cache.get(cache_key)
+                
+                if not converted_bytes:
+                    converted_bytes = self._convert_raw_to_jpeg(file_bytes)
+                    if converted_bytes:
+                        cache.set(cache_key, converted_bytes, timeout=self.CACHE_TIMEOUT)
+                
+                if converted_bytes:
+                    content_type = "image/jpeg"
+                    filename = filename.rsplit('.', 1)[0] + '.jpg'
+                    file_bytes = converted_bytes
+            
+            # Video conversion
+            elif ext in ('.mkv', '.avi', '.wmv', '.flv', '.mov', '.ts', '.m4v', '.3gp', '.mpeg', '.mpg'):
+                cache_key = f'gallery_mp4_{media_id}'
+                converted_bytes = cache.get(cache_key)
+                
+                if not converted_bytes:
+                    converted_bytes = self._convert_video_to_mp4(file_bytes, ext)
+                    if converted_bytes:
+                        cache.set(cache_key, converted_bytes, timeout=self.CACHE_TIMEOUT)
+                
+                if converted_bytes:
+                    content_type = "video/mp4"
+                    filename = filename.rsplit('.', 1)[0] + '.mp4'
+                    file_bytes = converted_bytes
+                    # Video needs range support after conversion
+                    return self._stream_file_with_range(
+                        request, file_bytes, content_type, filename
+                    )
+            
+            # After conversion, serve based on new type
+            if category == "document":
+                # DOCX should be served with range support like in S3 version
+                if filename.endswith('.docx'):
+                    return self._stream_file_with_range(
+                        request, file_bytes, content_type, filename
+                    )
+                # If conversion failed, serve original .doc as download
+                else:
+                    response = HttpResponse(file_bytes, content_type="application/msword")
+                    response["Content-Disposition"] = f'attachment; filename="{filename}"'
+                    response["Cache-Control"] = "private, max-age=3600"
+                    return response
+            
+            elif category == "image":
+                # Converted images served as simple response
+                response = HttpResponse(file_bytes, content_type=content_type)
+                response["Content-Disposition"] = "inline"
+                response["Cache-Control"] = "private, max-age=3600"
+                return response
+        
+        # Standard routing (no conversion needed)
+        cache_key = f"gallery_bytes_{media_id}" if media_id else None
 
-                decrypted = bytearray()
+        if category in ("video", "audio"):
+            file_bytes = self._get_decrypted_bytes(file_path, cache_key)
+            if not file_bytes:
+                raise Http404("File decryption failed")
+            return self._stream_file_with_range(request, file_bytes, content_type, filename)
 
-                for chunk in self._stream_chunked_decrypt(file_path):
-                    decrypted.extend(chunk)
+        if category == "pdf":
+            file_bytes = self._get_decrypted_bytes(file_path, cache_key)
+            if not file_bytes:
+                raise Http404("File decryption failed")
+            return self._serve_pdf_with_range(request, file_bytes, filename)
 
-                file_bytes = bytes(decrypted)
-
-                cache.set(cache_key, file_bytes, self.CACHE_TIMEOUT)
-
-            return self._stream_bytes(
-                request,
-                file_bytes,
-                content_type,
-                filename
-            )
-
-        # -------------------------
-        # IMAGE (PROGRESSIVE)
-        # -------------------------
+        if category == "document":
+            file_bytes = self._get_decrypted_bytes(file_path, cache_key)
+            if not file_bytes:
+                raise Http404("File decryption failed")
+            # Native DOCX/XLSX/PDF - serve with range
+            return self._stream_file_with_range(request, file_bytes, content_type, filename)
 
         if category == "image":
-
-            return StreamingHttpResponse(
-                self._stream_chunked_decrypt(file_path),
+            # SVG special handling
+            if ext == '.svg':
+                file_bytes = self._get_decrypted_bytes(file_path, cache_key)
+                response = HttpResponse(file_bytes, content_type='image/svg+xml')
+                response["Content-Security-Policy"] = (
+                    "default-src 'none'; img-src * data:; style-src 'unsafe-inline';"
+                )
+                response["Content-Disposition"] = "inline"
+                return response
+            
+            # Progressive streaming for native images
+            response = StreamingHttpResponse(
+                self._decrypt_stream(file_path),
                 content_type=content_type
             )
+            response["Content-Disposition"] = "inline"
+            response["Cache-Control"] = "private, max-age=3600"
+            response["X-Content-Type-Options"] = "nosniff"
+            return response
 
-        # -------------------------
-        # OTHER FILES
-        # -------------------------
-
+        # Fallback for other files
+        file_bytes = self._get_decrypted_bytes(file_path, cache_key)
         if not file_bytes:
+            raise Http404("File decryption failed")
+        response = HttpResponse(file_bytes, content_type=content_type)
+        response["Content-Disposition"] = "inline"
+        response["Cache-Control"] = "private, max-age=3600"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+    # ---------------------------------------------------
+    # MAIN GET (UNCHANGED)
+    # ---------------------------------------------------
 
-            decrypted = bytearray()
+    def get(self, request, media_id):
+        user = self.get_current_user(request)
 
-            for chunk in self._stream_chunked_decrypt(file_path):
-                decrypted.extend(chunk)
+        exp = request.GET.get("exp")
+        sig = request.GET.get("sig")
+        if not exp or not sig:
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
-            file_bytes = bytes(decrypted)
+        try:
+            if int(exp) < int(time.time()):
+                return Response(status=status.HTTP_404_NOT_FOUND)
+        except (ValueError, TypeError):
+            return Response(status=status.HTTP_404_NOT_FOUND)
 
-            cache.set(cache_key, file_bytes, self.CACHE_TIMEOUT)
+        if not self._validate_signature(str(media_id), exp, sig):
+            return Response(status=status.HTTP_403_FORBIDDEN)
 
-        return HttpResponse(
-            file_bytes,
-            content_type=content_type
+        try:
+            media = FamilyTreeGallery.objects.select_related("family_tree").get(
+                id=media_id,
+                is_deleted=False
+            )
+        except FamilyTreeGallery.DoesNotExist:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        family_tree = get_shared_family_tree(user=user, family_tree_id=media.family_tree_id)
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have permission to access this gallery."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        if not media.file:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        file_path = media.file.path
+        if not os.path.exists(file_path):
+            raise Http404("File not found on server")
+
+        filename = media.file.name or os.path.basename(file_path)
+        category = self._categorize(filename)
+        content_type = self._guess_type(filename)
+
+        return self._range_stream(
+            request,
+            file_path,
+            content_type,
+            os.path.basename(filename),
+            str(media_id),
+            category
         )
 
-        

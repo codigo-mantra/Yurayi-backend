@@ -1,7 +1,10 @@
 from rest_framework import serializers
 from family_tree.models import FamilyTreeGallery
-
-
+import hmac
+import hashlib
+import time
+from django.conf import settings
+from django.urls import reverse
 class FamilyTreeGallerySerializer(serializers.ModelSerializer):
     author_name = serializers.CharField(source="author.email", read_only=True)
     file_url = serializers.SerializerMethodField()
@@ -31,10 +34,30 @@ class FamilyTreeGallerySerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         )
+    def _generate_signed_url(self, request, media_id, expires_in=600):
+        exp = int(time.time()) + expires_in
+        data = f"{media_id}:{exp}"
+
+        sig = hmac.new(
+            settings.SECRET_KEY.encode(),
+            data.encode(),
+            hashlib.sha256
+        ).hexdigest()
+
+        base_url = reverse(
+            "serve-gallery-media",
+            kwargs={"media_id": media_id}
+        )
+        signed_path = f"{base_url}?exp={exp}&sig={sig}"
+
+        return signed_path
 
     def get_file_url(self, obj):
-        return obj.file.url if obj.file else None
+        request = self.context.get("request")
+        if not request:
+            return None
 
+        return self._generate_signed_url(request, obj.id)
     def get_thumbnail_url(self, obj):
         return obj.thumbnail_preview.url if obj.thumbnail_preview else None
     
