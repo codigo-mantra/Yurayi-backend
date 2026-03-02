@@ -4,7 +4,13 @@ from userauth.models import User
 from uuid6 import uuid7
 from ckeditor_uploader.fields import RichTextUploadingField
 
-
+UPLOAD_CHOICES = [
+    ("Initialized","Initialized"),
+    ("Pending","Pending"),
+    ("Uploading","Uploading"),
+    ("Completed", "Completed"),
+    ("Aborted","Aborted")
+]
 
 class TimeStampedModel(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
@@ -104,6 +110,7 @@ class FamilyMember(TimeStampedModel):
         null=True,
         blank=True
     )
+    profile_image = models.ImageField(upload_to="member_image/", null=True , blank=True)
     is_deleted = models.BooleanField(default=False)
 
     def __str__(self):
@@ -287,3 +294,11 @@ class FamilyTreeGallery(TimeStampedModel):
 
     def __str__(self):
         return self.title
+    
+class UploadSession(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid7, editable=False)
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    target_type = models.CharField(max_length=50)
+    member = models.ForeignKey(FamilyMember, on_delete=models.SET_NULL, null=True)
+    status = models.CharField(max_length=30, choices=UPLOAD_CHOICES)
+    family_tree = models.ForeignKey(FamilyTree, on_delete=models.CASCADE)

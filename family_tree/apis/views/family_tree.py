@@ -15,20 +15,23 @@ from django.db.models import Q
 from collections import defaultdict, deque
 from rest_framework.views import APIView
 from django.db.models import Q
-
-
+import json
+import time
 
 from family_tree.utils.tree_filter import get_filtered_tree
 from family_tree.utils.tree_hierarchy import get_full_hierarchy_from_member
 
-from family_tree.models import FamilyTree, FamilyMember, ParentalRelationship,Partnership,FamilyTreeRecipient
+from family_tree.models import FamilyTree, FamilyMember, ParentalRelationship,Partnership,FamilyTreeRecipient,UploadSession
 
 from family_tree.apis.serializers.family_tree import (
     FamilyTreeNodeSerializer,FamilyTreeCreateSerializer, AddNewFamilyMemberSerializer, FamilyTreeSerializer,
-    FamilyTreeRecipientBulkSerializer,FamilyTreeRecipientListSerializer, FamilyTreeRecipientManageSerializer
+    FamilyTreeRecipientBulkSerializer,FamilyTreeRecipientListSerializer, FamilyTreeRecipientManageSerializer,
+    UploadSessionSerializer
 )
 
 from userauth.models import User
+from django.http import StreamingHttpResponse
+from django.core.cache import cache
 
 
 class FamilyTreeListAPIView(SecuredView):
@@ -143,8 +146,10 @@ class AddFamilyMemberAPIView(SecuredView):
         )
         serializer.is_valid(raise_exception=True)
         member = serializer.save()
+        sessions = getattr(serializer, "_upload_sessions", None)
+        session_serializer = UploadSessionSerializer(sessions, many = True)
 
-        return Response( status=status.HTTP_201_CREATED )
+        return Response({"message":"member created successfully","member_id":member.id,"upload_id":session_serializer.data}, status=status.HTTP_201_CREATED )
 
 
 class FamilyTreeFilteredView(SecuredView):
@@ -377,3 +382,151 @@ class FamilyTreeRecipientInviteAPIView(SecuredView):
             status=status.HTTP_200_OK
         )
    
+
+POLL_INTERVAL       = 1.0
+SSE_TIMEOUT         = 600
+PROGRESS_KEY_PREFIX = "upload_progress"
+TERMINAL_STATUSES   = {"Aborted"}
+
+
+def _get_redis_progress(uid: str) -> int:
+    return cache.get(f"{PROGRESS_KEY_PREFIX}:{uid}", 0)
+
+
+class UploadProgressSSEView(SecuredView):
+    """
+    SSE endpoint — streams progress for in-flight uploads only.
+
+    GET /api/upload/progress/?session_ids=<id1>,<id2>,...
+
+    Progress is read from Redis (updated per chunk — no DB hits).
+    Status is read from DB (written only on transitions).
+
+    When a session row disappears from DB it means the upload Completed
+    and the row was deleted — the SSE sends one final 100% event and
+    drops the session from the stream.
+
+    Each event:
+    {
+        "sessionId": "<uuid>",
+        "fileName":  "holiday.mp4",   // from Redis
+        "status":    "Initialized" | "Pending" | "Uploading" | "Aborted" | "Completed",
+        "progress":  0–100
+    }
+
+    Final event when all sessions are done:
+    { "type": "done" }
+    """
+    def get(self, request):
+        user = self.get_current_user(request)
+        raw_ids     = request.GET.get("session_ids", "")
+        session_ids = [s.strip() for s in raw_ids.split(",") if s.strip()]
+
+        if not session_ids:
+            return Response(
+                {"detail": "session_ids query param is required."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        owned_ids = set(str(i) for i in UploadSession.objects.filter(
+            id__in=session_ids, user=user
+        ).values_list("id", flat=True))
+
+        if not owned_ids:
+            return Response(
+                {"detail": "No matching sessions found."},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        return StreamingHttpResponse(
+            self._stream(list(owned_ids), user),
+            content_type="text/event-stream",
+            headers={
+                "Cache-Control":     "no-cache",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    @staticmethod
+    def _event(payload: dict) -> str:
+        return f"data: {json.dumps(payload)}\n\n"
+
+    def _stream(self, session_ids: list[str], user):
+        deadline   = time.time() + SSE_TIMEOUT
+        active_ids = set(session_ids)
+
+        yield ": heartbeat\n\n"
+
+        while time.time() < deadline and active_ids:
+            # Single DB query for all active sessions
+            db_rows = UploadSession.objects.filter(
+                id__in=active_ids, user=user
+            ).only("id", "status")
+
+            db_map = {str(r.id): r for r in db_rows}
+
+            newly_finished = set()
+
+            for sid in list(active_ids):
+                progress = _get_redis_progress(sid)
+
+                if sid not in db_map:
+                    yield self._event({
+                        "sessionId": sid,
+                        "fileName":  _get_redis_filename(sid),
+                        "status":    "Completed",
+                        "progress":  100,
+                    })
+                    newly_finished.add(sid)
+                    continue
+
+                db_session = db_map[sid]
+                db_status  = db_session.status
+
+                if db_status == "Aborted":
+                    yield self._event({
+                        "sessionId": sid,
+                        "fileName":  _get_redis_filename(sid),
+                        "status":    "Aborted",
+                        "progress":  progress,
+                    })
+                    newly_finished.add(sid)
+                    continue
+
+                # Clamp progress to the band that matches status
+                if db_status == "Initialized":
+                    progress = max(0,  min(progress, 4))
+                elif db_status == "Pending":
+                    progress = max(5,  min(progress, 9))
+                elif db_status == "Uploading":
+                    progress = max(10, min(progress, 95))
+
+                yield self._event({
+                    "sessionId": sid,
+                    "fileName":  _get_redis_filename(sid),
+                    "status":    db_status,
+                    "progress":  progress,
+                })
+
+            active_ids -= newly_finished
+
+            if not active_ids:
+                yield self._event({"type": "done", "message": "All uploads finished."})
+                return
+
+            time.sleep(POLL_INTERVAL)
+
+        yield self._event({"type": "timeout", "message": "SSE connection timed out."})
+
+
+FILENAME_KEY_PREFIX = "upload_filename"
+FILENAME_TTL        = 2 * 60 * 60
+
+
+def set_upload_filename(upload_session_id: str, file_name: str):
+    cache.set(f"{FILENAME_KEY_PREFIX}:{upload_session_id}", file_name, FILENAME_TTL)
+
+
+def _get_redis_filename(upload_session_id: str) -> str:
+    return cache.get(f"{FILENAME_KEY_PREFIX}:{upload_session_id}", "")
+

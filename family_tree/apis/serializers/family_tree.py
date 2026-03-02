@@ -5,7 +5,7 @@ from django.db import models
 from userauth.tasks import send_html_email_task
 
 
-from family_tree.models import FamilyMember, Partnership, ParentalRelationship, FamilyTree, FamilyTreeRecipient
+from family_tree.models import FamilyMember, Partnership, ParentalRelationship, FamilyTree, FamilyTreeRecipient, UploadSession
 
 def calculate_age(birth_date):
     if not birth_date:
@@ -140,8 +140,12 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
 
 class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
     parent_node_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
+    gallery_media = serializers.ListField(
+        child=serializers.FileField(allow_empty_file=False),
+        required=False,
+        allow_empty=True,
+    )
 
-    
     class Meta:
         model = FamilyMember
         fields = (
@@ -158,6 +162,8 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
             "birth_date",
             "death_date",
             "profile_image_s3_key",
+            "profile_image",
+            "gallery_media",
         )
 
     
@@ -234,6 +240,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
 
 
     def create(self, validated_data):
+        upload_sessions = []
         user = self.context["user"] 
         family_tree = self.context.get("family_tree")
         email = validated_data.get("email_address")
@@ -243,6 +250,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
         married_date = validated_data.get("married_date", None)
         validated_data.pop("parent_node_id", None)
         gender = validated_data.get("gender").lower()
+        gallery_media = self.validated_data.pop("gallery_media", None)
 
         if not parent_node_id :
             raise serializers.ValidationError({'parent_node_id': 'Parent member id is required'})
@@ -393,6 +401,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
 
 
             elif relation_type == 'child':
+                validated_data.pop("gallery_media")
                 child_as_member = self.create_family_member(
                     user, family_tree, validated_data
                 )
@@ -513,6 +522,49 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"relation_type": "Invalid relation type."}
                 )
+        import uuid
+        import os 
+        from django.conf import settings
+        from django.utils.text import get_valid_filename
+        from family_tree.tasks import process_encrypted_upload
+        from family_tree.apis.views.family_tree import set_upload_filename
+        if gallery_media is not None:
+            files = gallery_media if isinstance(gallery_media, list) else [gallery_media]
+        else:
+            files = []
+
+        family_tree_obj = FamilyTree.objects.get(id=uuid.UUID(str(family_tree.id)))
+
+        for file in files:
+            if not file:
+                continue
+
+            session = UploadSession.objects.create(
+                user=user,
+                member=member,
+                target_type="gallery_media",
+                status="pending",
+                family_tree=family_tree_obj,
+            )
+            upload_id = str(session.id)
+            set_upload_filename(upload_id, get_valid_filename(file.name))
+            temp_path = os.path.join(
+                settings.MEDIA_ROOT,
+                str(family_tree.id),
+                "temp_uploads",
+                upload_id,
+            )
+            os.makedirs(temp_path, exist_ok=True)
+
+            file_path = os.path.join(temp_path, get_valid_filename(file.name))
+            with open(file_path, "wb+") as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
+            process_encrypted_upload.delay(upload_id)
+
+            upload_sessions.append(session)
+
+        self._upload_sessions = upload_sessions
         return member
 
 
@@ -533,6 +585,7 @@ class FamilyMemberUpdateSerializer(serializers.ModelSerializer):
             "birth_date",
             "death_date",
             "profile_image_s3_key",
+            "profile_image",
         )
             
 
@@ -746,6 +799,7 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
             "partner",
             "parents",
             "children",
+            "profile_image",
         )
 
     # ==================================================
@@ -1006,3 +1060,9 @@ class FamilyTreeRecipientManageSerializer(serializers.Serializer):
                     )
 
         return data
+
+
+class UploadSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = UploadSession
+        fields = "__all__"
