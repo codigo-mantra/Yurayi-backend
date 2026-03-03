@@ -32,6 +32,10 @@ from family_tree.apis.serializers.family_tree import (
 from userauth.models import User
 from django.http import StreamingHttpResponse
 from django.core.cache import cache
+from family_tree.tasks import process_encrypted_upload
+import os 
+from django.conf import settings
+from django.utils.text import get_valid_filename
 
 
 class FamilyTreeListAPIView(SecuredView):
@@ -92,16 +96,55 @@ class FamilyTreeCreateAPIView(SecuredView):
                 profession=data.get("profession", None),
                 birth_date=data.get("birth_date"),
                 profile_image_s3_key=data.get("profile_image_s3_key"),
+                profile_image=data.get("profile_image", None)
             )
 
             # Assign root member
             family_tree.root_member = family_member
             family_tree.save(update_fields=["root_member"])
+            upload_sessions = []
+            gallery_media = data.get("gallery_media",[])
+            if gallery_media is not None:
+                files = gallery_media if isinstance(gallery_media, list) else [gallery_media]
+            else:
+                files = []
 
+            family_tree_obj = FamilyTree.objects.get(id=UUID(str(family_tree.id)))
+
+            for file in files:
+                if not file:
+                    continue
+
+                session = UploadSession.objects.create(
+                    user=user,
+                    member=family_member,
+                    target_type="gallery_media",
+                    status="pending",
+                    family_tree=family_tree_obj,
+                )
+                upload_id = str(session.id)
+                set_upload_filename(upload_id, get_valid_filename(file.name))
+                temp_path = os.path.join(
+                    settings.MEDIA_ROOT,
+                    str(family_tree.id),
+                    "temp_uploads",
+                    upload_id,
+                )
+                os.makedirs(temp_path, exist_ok=True)
+
+                file_path = os.path.join(temp_path, get_valid_filename(file.name))
+                with open(file_path, "wb+") as destination:
+                    for chunk in file.chunks():
+                        destination.write(chunk)
+                process_encrypted_upload.delay(upload_id)
+
+                upload_sessions.append(session)
+            session_serializer = UploadSessionSerializer(upload_sessions, many=True)
         return Response(
             {
                 "family_tree_id": family_tree.id,
                 "root_member_id": family_member.id,
+                "upload_sesions": session_serializer.data
             },
             status=status.HTTP_201_CREATED
         )

@@ -68,6 +68,13 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
         allow_blank=True,
         allow_null=True
     )
+    profile_image = serializers.ImageField(required = False)
+    gallery_media = serializers.ListField(
+        child=serializers.FileField(allow_empty_file=False),
+        required=False,
+        allow_empty=True,
+    )
+
 
     def validate(self, attrs):
         today = date.today()
@@ -250,7 +257,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
         married_date = validated_data.get("married_date", None)
         validated_data.pop("parent_node_id", None)
         gender = validated_data.get("gender").lower()
-        gallery_media = self.validated_data.pop("gallery_media", None)
+        gallery_media = validated_data.pop("gallery_media", None)
 
         if not parent_node_id :
             raise serializers.ValidationError({'parent_node_id': 'Parent member id is required'})
@@ -401,7 +408,6 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
 
 
             elif relation_type == 'child':
-                validated_data.pop("gallery_media")
                 child_as_member = self.create_family_member(
                     user, family_tree, validated_data
                 )
