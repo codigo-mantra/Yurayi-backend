@@ -5,6 +5,8 @@ from uuid import UUID
 
 from family_tree.apis.serializers.family_tree import (
     FamilyTreeUpdateSerializer,
+    ReplaceFamilyMemberSerializer,
+    PartnerMaritalStatusSerializer
 )
 
 from rest_framework import status
@@ -573,3 +575,114 @@ def set_upload_filename(upload_session_id: str, file_name: str):
 def _get_redis_filename(upload_session_id: str) -> str:
     return cache.get(f"{FILENAME_KEY_PREFIX}:{upload_session_id}", "")
 
+
+
+class ReplaceExistingMemberAPIView(SecuredView):
+
+    def post(self, request, family_tree_id):
+        user = self.get_current_user(request)
+
+        family_tree = FamilyTree.objects.filter(
+            Q(id=family_tree_id, owner=user, is_deleted=False) |
+            Q(
+                id=family_tree_id,
+                family_tree_recipients__recipient_email=user.email,
+                family_tree_recipients__is_deleted=False,
+                family_tree_recipients__permissions="edit",
+                is_deleted=False
+            )
+        ).distinct().first()
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have access to this family tree."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        email = request.data.get("email_address")
+        first_name = request.data.get("first_name")
+        last_name = request.data.get("last_name")
+
+        if not all([email, first_name, last_name]):
+            return Response(
+                {"detail": "email_address, first_name and last_name are required to find member."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            member = FamilyMember.objects.get(
+                family_tree=family_tree,
+                email_address=email,
+                first_name=first_name,
+                last_name=last_name,
+                is_deleted=False
+            )
+        except FamilyMember.DoesNotExist:
+            return Response(
+                {"detail": "Family member not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = ReplaceFamilyMemberSerializer(
+            instance=member,
+            data=request.data,
+            context={"family_tree": family_tree, "user": user},
+            partial=True
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {
+                "message": "Member updated successfully",
+                "member_id": member.id
+            },
+            status=status.HTTP_200_OK
+        )
+    
+
+class UpdatePartnerMaritalStatusApiView(SecuredView):
+
+    def post(self, request, family_tree_id, parent_node_id):
+        user = self.get_current_user(request)
+
+        family_tree = FamilyTree.objects.filter(
+            Q(id=family_tree_id, owner=user, is_deleted=False) |
+            Q(
+                id=family_tree_id,
+                family_tree_recipients__recipient_email=user.email,
+                family_tree_recipients__is_deleted=False,
+                family_tree_recipients__permissions="edit",
+                is_deleted=False
+            )
+        ).distinct().first()
+
+        if not family_tree:
+            return Response(
+                {"detail": "You do not have access to this family tree."},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        try:
+            partner_member = FamilyMember.objects.get(id = parent_node_id)
+        except FamilyMember.DoesNotExist:
+            return Response(
+                {"detail": "Parent member not found"},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        serializer = PartnerMaritalStatusSerializer(
+            instance=partner_member,
+            data=request.data,
+            context={"family_tree": family_tree, "user": user},
+            partial=True
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(
+            {
+                "message": "Partner marital status updated successfully"
+            },
+            status=status.HTTP_200_OK
+        )

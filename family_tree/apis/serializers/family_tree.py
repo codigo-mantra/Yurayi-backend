@@ -127,6 +127,17 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
                 raise serializers.ValidationError(
                     {"death_date": "Death date must be a past date."}
                 )
+            
+        if birth_date:
+            age = today.year - birth_date.year - (
+                (today.month, today.day) < (birth_date.month, birth_date.day)
+            )
+            if age <= 14:
+                raise serializers.ValidationError(
+                    {"birth_date":"Age must be 14 years for the root member."}
+                )
+
+
         if birth_date and death_date:
             if birth_date > death_date:
                 raise serializers.ValidationError(
@@ -296,6 +307,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
             email_address=email,
             first_name=validated_data.get("first_name"),
             last_name=validated_data.get("last_name"),
+            birth_date=validated_data.get("birth_date"),
             is_deleted=False
         ).first()
 
@@ -457,7 +469,13 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                 wife = None 
                 husband = None
                 spouse = None
-
+                if not parent_member_node.is_married:
+                    raise serializers.ValidationError(
+                        {
+                            "message": "Parent Node is currently marked as unmarried.",
+                            "action": "OPEN_MARITAL_STATUS_MODAL"
+                        }
+                    )   
                 if parent_member_node.gender == 'male' and gender != 'female':
                     raise serializers.ValidationError({'gender': "Spouse gender is invalid"})
                 
@@ -1072,3 +1090,64 @@ class UploadSessionSerializer(serializers.ModelSerializer):
     class Meta:
         model = UploadSession
         fields = "__all__"
+
+class ReplaceFamilyMemberSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FamilyMember
+        fields = (
+            "first_name",
+            "last_name",
+            "gender",
+            "is_married",
+            "married_date",
+            "is_person_alive",
+            "email_address",
+            "profession",
+            "relation_type",
+            "birth_date",
+            "death_date",
+            "profile_image_s3_key",
+            "profile_image",
+        )
+    
+    def validate(self, attrs):
+        errors = {}
+
+        required_fields = [
+            "first_name",
+            "last_name",
+            "gender",
+            "is_person_alive",
+            "email_address",
+            "birth_date",
+        ]
+
+        for field in required_fields:
+            value = attrs.get(field)
+
+            if value in [None, "", []]:
+                errors[field] = f"{field.replace('_', ' ').capitalize()} is required."
+
+        if errors:
+            raise serializers.ValidationError(errors)
+
+        return attrs
+    
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+        return instance
+    
+class PartnerMaritalStatusSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = FamilyMember
+        fields =("is_married", "married_date")
+    
+    def update(self, instance, validated_data):
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+        return instance
