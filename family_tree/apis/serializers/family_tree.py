@@ -8,7 +8,7 @@ import os
 from django.conf import settings
 from django.utils.text import get_valid_filename
 from family_tree.tasks import process_encrypted_upload
-
+from userauth.apis.serializers.serializers import UniversalImageField
 from family_tree.models import FamilyMember, Partnership, ParentalRelationship, FamilyTree, FamilyTreeRecipient, UploadSession
 
 def calculate_age(birth_date):
@@ -72,7 +72,7 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
         allow_blank=True,
         allow_null=True
     )
-    profile_image = serializers.ImageField(required = False)
+    profile_image = UniversalImageField(required = False)
     gallery_media = serializers.ListField(
         child=serializers.FileField(allow_empty_file=False),
         required=False,
@@ -167,6 +167,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    profile_image = UniversalImageField(required = False)
 
     class Meta:
         model = FamilyMember
@@ -1095,6 +1096,7 @@ class ReplaceFamilyMemberSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    profile_image = UniversalImageField(required = False)
     class Meta:
         model = FamilyMember
         fields = (

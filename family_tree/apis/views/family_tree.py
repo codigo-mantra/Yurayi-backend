@@ -601,21 +601,23 @@ class ReplaceExistingMemberAPIView(SecuredView):
         email = request.data.get("email_address","")
         first_name = request.data.get("first_name")
         last_name = request.data.get("last_name")
+        birth_date = request.data.get("birth_date")
 
-        if not all([ first_name, last_name]):
+        if not all([ first_name, last_name,birth_date]):
             return Response(
-                {"detail": "first_name and last_name are required"},
+                {"detail": "first_name, last_name and birth_date are required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
         try:
-            member = FamilyMember.objects.get(
+            member = FamilyMember.objects.filter(
                 family_tree=family_tree,
                 email_address=email,
                 first_name=first_name,
                 last_name=last_name,
+                birth_date = birth_date,
                 is_deleted=False
-            )
+            ).first()
         except FamilyMember.DoesNotExist:
             return Response(
                 {"detail": "Family member not found"},
