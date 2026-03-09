@@ -3,7 +3,11 @@ from datetime import date
 from django.db.models import Q
 from django.db import models
 from userauth.tasks import send_html_email_task
-
+import uuid
+import os 
+from django.conf import settings
+from django.utils.text import get_valid_filename
+from family_tree.tasks import process_encrypted_upload
 
 from family_tree.models import FamilyMember, Partnership, ParentalRelationship, FamilyTree, FamilyTreeRecipient, UploadSession
 
@@ -194,7 +198,6 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
             "last_name",
             "gender",
             "is_person_alive",
-            "email_address",
             "birth_date",
         ]
 
@@ -546,11 +549,6 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(
                     {"relation_type": "Invalid relation type."}
                 )
-        import uuid
-        import os 
-        from django.conf import settings
-        from django.utils.text import get_valid_filename
-        from family_tree.tasks import process_encrypted_upload
         from family_tree.apis.views.family_tree import set_upload_filename
         if gallery_media is not None:
             files = gallery_media if isinstance(gallery_media, list) else [gallery_media]
@@ -1092,6 +1090,11 @@ class UploadSessionSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 class ReplaceFamilyMemberSerializer(serializers.ModelSerializer):
+    gallery_media = serializers.ListField(
+        child=serializers.FileField(allow_empty_file=False),
+        required=False,
+        allow_empty=True,
+    )
     class Meta:
         model = FamilyMember
         fields = (
@@ -1108,6 +1111,7 @@ class ReplaceFamilyMemberSerializer(serializers.ModelSerializer):
             "death_date",
             "profile_image_s3_key",
             "profile_image",
+            "gallery_media"
         )
     
     def validate(self, attrs):
@@ -1118,7 +1122,6 @@ class ReplaceFamilyMemberSerializer(serializers.ModelSerializer):
             "last_name",
             "gender",
             "is_person_alive",
-            "email_address",
             "birth_date",
         ]
 
@@ -1134,10 +1137,52 @@ class ReplaceFamilyMemberSerializer(serializers.ModelSerializer):
         return attrs
     
     def update(self, instance, validated_data):
+        upload_sessions = []
+        user = self.context["user"] 
+        gallery_media = validated_data.pop("gallery_media", [])
+
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
         instance.save()
+        if gallery_media is not None:
+            files = gallery_media if isinstance(gallery_media, list) else [gallery_media]
+        else:
+            files = []
+
+        family_tree_obj = FamilyTree.objects.get(id=uuid.UUID(str(instance.family_tree.id)))
+        from family_tree.apis.views.family_tree import set_upload_filename
+
+        for file in files:
+            if not file:
+                continue
+
+            session = UploadSession.objects.create(
+                user=user,
+                member=instance,
+                target_type="gallery_media",
+                status="pending",
+                family_tree=family_tree_obj,
+            )
+            upload_id = str(session.id)
+            set_upload_filename(upload_id, get_valid_filename(file.name))
+            temp_path = os.path.join(
+                settings.MEDIA_ROOT,
+                str(instance.family_tree.id),
+                "temp_uploads",
+                upload_id,
+            )
+            os.makedirs(temp_path, exist_ok=True)
+
+            file_path = os.path.join(temp_path, get_valid_filename(file.name))
+            with open(file_path, "wb+") as destination:
+                for chunk in file.chunks():
+                    destination.write(chunk)
+            process_encrypted_upload.delay(upload_id)
+
+            upload_sessions.append(session)
+
+        self._upload_sessions = upload_sessions
         return instance
     
 class PartnerMaritalStatusSerializer(serializers.ModelSerializer):

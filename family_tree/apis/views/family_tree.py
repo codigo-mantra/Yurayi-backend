@@ -598,13 +598,13 @@ class ReplaceExistingMemberAPIView(SecuredView):
                 {"detail": "You do not have access to this family tree."},
                 status=status.HTTP_403_FORBIDDEN
             )
-        email = request.data.get("email_address")
+        email = request.data.get("email_address","")
         first_name = request.data.get("first_name")
         last_name = request.data.get("last_name")
 
-        if not all([email, first_name, last_name]):
+        if not all([ first_name, last_name]):
             return Response(
-                {"detail": "email_address, first_name and last_name are required to find member."},
+                {"detail": "first_name and last_name are required"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -631,11 +631,15 @@ class ReplaceExistingMemberAPIView(SecuredView):
 
         serializer.is_valid(raise_exception=True)
         serializer.save()
+        sessions = getattr(serializer, "_upload_sessions", None)
+        session_serializer = UploadSessionSerializer(sessions, many = True)
+
 
         return Response(
             {
                 "message": "Member updated successfully",
-                "member_id": member.id
+                "member_id": member.id,
+                "upload_id":session_serializer.data
             },
             status=status.HTTP_200_OK
         )
