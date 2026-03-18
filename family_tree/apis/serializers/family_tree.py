@@ -58,7 +58,8 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
     gender = serializers.ChoiceField(choices=["male", "female", "other"])
     is_married = serializers.BooleanField(required=False, default=False)
     married_date = serializers.DateField(required=False, allow_null=True)
-    is_person_alive = serializers.BooleanField(default=True)
+    # is_person_alive = serializers.BooleanField(default=True)  #changed
+    is_person_alive = serializers.BooleanField(default=True, required=False)    
     death_date = serializers.DateField(required=False, allow_null=True)
     email_address = serializers.EmailField(required=False, allow_blank=True, allow_null=True)
     profession = serializers.CharField(required=False, allow_blank=True, allow_null=True)
@@ -78,13 +79,26 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         today = date.today()
-
+        attrs["is_person_alive"] = True    #changed force alive fro the root member  
+        attrs.pop("death_date", None)     # prevent conflict with forced is_alive=True
+        death_date = None
+        
         is_married = attrs.get("is_married")
         married_date = attrs.get("married_date")
-
-        is_alive = attrs.get("is_person_alive")
-        death_date = attrs.get("death_date")
+        is_alive = attrs.get("is_person_alive", True) #changed
+        death_date = attrs.get("death_date") 
         birth_date = attrs.get("birth_date")
+        #changed
+        if birth_date:
+            age = today.year - birth_date.year - (
+                (today.month, today.day) < (birth_date.month, birth_date.day)
+            )
+
+            if age < 14:
+                raise serializers.ValidationError(
+                    {"birth_date": "Root member must be at least 14 years old."}
+                )
+                
         email = attrs.get("email_address")
 
         errors = {}
@@ -93,7 +107,7 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
             "first_name",
             "last_name",
             "gender",
-            "is_person_alive",
+            # "is_person_alive",
             "email_address",
             "birth_date",
         ]
@@ -152,6 +166,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
         required=False,
         allow_empty=True,
     )
+    email_address = serializers.EmailField(required=False, allow_blank=True, allow_null=True) #changed 
 
     class Meta:
         model = FamilyMember
@@ -183,7 +198,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
             "last_name",
             "gender",
             "is_person_alive",
-            "email_address",
+            # "email_address",
             "birth_date",
         ]
 
@@ -227,7 +242,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
             father=father,
             mother=mother
         )
-        return relation
+        return relation 
     
     def get_or_create_partnership(self, husband, wife,family_tree, marriage_date):
         partnership, created = Partnership.objects.get_or_create(
@@ -290,19 +305,42 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                     'gender': 'Member gender is invalid must be male'
                 })
 
+   
+        # member = FamilyMember.objects.filter(
+        #     family_tree=family_tree,
+        #     email_address=email,
+        #     first_name=validated_data.get("first_name"),
+        #     last_name=validated_data.get("last_name"),
+        #     is_deleted=False
+        # ).first()
+        #changed 
+        email = validated_data.get("email_address")
+        first_name = validated_data.get("first_name")
+        last_name = validated_data.get("last_name")
+        birth_date = validated_data.get("birth_date")
 
-        member = FamilyMember.objects.filter(
+        query = FamilyMember.objects.filter(
             family_tree=family_tree,
-            email_address=email,
-            first_name=validated_data.get("first_name"),
-            last_name=validated_data.get("last_name"),
+            first_name=first_name,
+            last_name=last_name,
+            birth_date=birth_date,
             is_deleted=False
-        ).first()
+        )
+
+        if email:
+            query = query.filter(email_address=email)
+
+        member = query.first()
 
         if member:
             raise serializers.ValidationError(
-                {"user_already_exists": "Family member with this email already exists in the family tree."}
+                {"member_exists": "Family member already exists in this family tree."}
             )
+        
+        # if member:
+        #     raise serializers.ValidationError(
+        #         {"user_already_exists": "Family member with this email already exists in the family tree."}
+        #     )
         # here we create and add relation here 
         try:
             parent_member_node = FamilyMember.objects.get(
@@ -398,7 +436,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                         # )
                         partnership = self.get_or_create_partnership(husband=father, wife=mother_as_member, marriage_date=married_date,family_tree=family_tree)
                     else:
-                        # partnership =  Partnership.objects.get_or_create(
+                        # partnership =  Partnership.objects.get_or_create(,
                         #     family_tree=family_tree,
                         #     wife=mother_as_member,
                         #     defaults={"marriage_date": married_date}
@@ -453,7 +491,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
 
 
             elif relation_type == 'spouse':
-
+            
                 wife = None 
                 husband = None
                 spouse = None
@@ -581,9 +619,9 @@ class FamilyMemberUpdateSerializer(serializers.ModelSerializer):
         fields = (
             "first_name",
             "last_name",
-            "gender"
+            "gender",
             "is_married",
-            "married_date"
+            "married_date",
             "is_person_alive",
             "email_address",
             "profession",
@@ -593,7 +631,35 @@ class FamilyMemberUpdateSerializer(serializers.ModelSerializer):
             "profile_image_s3_key",
             "profile_image",
         )
+    #changed
+    def validate(self,attrs):
+        instance = self.instance
+
+        is_married = attrs.get("is_married", getattr(instance, "is_married", False))
+        married_date = attrs.get("married_date", getattr(instance, "married_date", None))
+        birth_date = attrs.get("birth_date", getattr(instance, "birth_date", None))
+
+        if married_date and not is_married:
+            raise serializers.ValidationError({
+                "is_married": "Please change marital status to Yes before adding a partner."
+            })
+
+        if instance and not instance.is_married and is_married:
+            if not married_date:
+                raise serializers.ValidationError({
+                    "married_date": "Marriage date is required when updating marital status to married."
+                })
+        
+        if is_married and married_date and birth_date:
+            if married_date < birth_date:
+                raise serializers.ValidationError({
+                    "married_date": "Marriage date cannot be before birth date."
+                })
             
+        return attrs 
+
+
+
 
 # class FamilyTreeNodeSerializer(serializers.ModelSerializer):
 #     id = serializers.CharField(source="pk", read_only=True)

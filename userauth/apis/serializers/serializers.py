@@ -303,6 +303,8 @@ class RegistrationSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         email = data.get("email", "").strip()
+        #changed 
+        data["email"] = email
         password = data.get("password")
         confirm_password = data.get("confirm_password")
 

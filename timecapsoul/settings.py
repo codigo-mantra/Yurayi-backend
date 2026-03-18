@@ -42,7 +42,8 @@ else:
 
 DEBUG = True
 
-ALLOWED_HOSTS = ["app.yurayi.com", "127.0.0.1", "localhost", "13.200.54.51",]
+# ALLOWED_HOSTS = ["app.yurayi.com", "127.0.0.1", "localhost", "13.200.54.51",]
+ALLOWED_HOSTS = ["*"]
 
 print(f'\n ---- Project running is env type: {ENVIRONMENT_TYPE}  and debug mode: {DEBUG} ---')
 
@@ -92,6 +93,10 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+AUTHENTICATION_BACKENDS = (
+    "django.contrib.auth.backends.ModelBackend",  # required for admin
+    "allauth.account.auth_backends.AuthenticationBackend",
+)
 ROOT_URLCONF = 'timecapsoul.urls'
 
 AUTH_USER_MODEL = 'userauth.User'
@@ -225,19 +230,30 @@ if ENVIRONMENT_TYPE == 'PROD':
     AWS_DEFAULT_ACL = None
     DEFAULT_FILE_STORAGE = 'timecapsoul.utils.MediaRootS3Boto3Storage'
     MEDIA_URL = f'{AWS_S3_URL_PROTOCOL}://{AWS_S3_CUSTOM_DOMAIN}/media/'
+# else:
+#     SameSite = None
+#     Secure = True
+#     CSRF_COOKIE_DOMAIN = None
+#     COOKIE_DOMAIN = None
+#     ACCESS_COOKIE_SECURE = True
+#     REFRESH_COOKIE_SECURE = True
+#     SESSION_COOKIE_SECURE = False
+#     CSRF_COOKIE_SECURE = False
+#     ACCESS_COOKIE_SAMESITE = "None"
+#     REFRESH_COOKIE_SAMESITE = "None"
+#     SESSION_COOKIE_SAMESITE = "None"
+#     CSRF_COOKIE_SAMESITE = "None"
+#changeddddd
 else:
-    SameSite = None
-    Secure = True
     CSRF_COOKIE_DOMAIN = None
     COOKIE_DOMAIN = None
-    ACCESS_COOKIE_SECURE = True
-    REFRESH_COOKIE_SECURE = True
+
+    # correct settings for local dev
     SESSION_COOKIE_SECURE = False
     CSRF_COOKIE_SECURE = False
-    ACCESS_COOKIE_SAMESITE = "None"
-    REFRESH_COOKIE_SAMESITE = "None"
-    SESSION_COOKIE_SAMESITE = "None"
-    CSRF_COOKIE_SAMESITE = "None"
+
+    SESSION_COOKIE_SAMESITE = "Lax"
+    CSRF_COOKIE_SAMESITE = "Lax"
     MEDIA_URL = '/media/'
     MEDIA_ROOT = BASE_DIR / "media"   
     STATICFILES_DIRS = [BASE_DIR / "static"]
@@ -300,7 +316,8 @@ SPECTACULAR_SETTINGS = {
     'VERSION': '1.0.0',
     'COMPONENT_SPLIT_REQUEST': True,
 }
-ACCOUNT_AUTHENTICATION_METHOD = "email"
+# ACCOUNT_AUTHENTICATION_METHOD = "email"
+ACCOUNT_LOGIN_METHODS = {"email"}
 # ACCOUNT_USERNAME_REQUIRED = False
 # ACCOUNT_EMAIL_REQUIRED = True
 ACCOUNT_EMAIL_VERIFICATION = "none"
@@ -435,6 +452,8 @@ CSRF_TRUSTED_ORIGINS = [
     "http://127.0.0.1:3000",
     "https://yurayi.com",
     "https://app.yurayi.com",
+    "http://127.0.0.1:8000",
+    "http://localhost:8000",
 ]
 
 CACHES = {

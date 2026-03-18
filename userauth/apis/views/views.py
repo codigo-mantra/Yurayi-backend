@@ -17,7 +17,8 @@ from allauth.socialaccount.models import SocialAccount
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import AllowAny,IsAuthenticated
-from allauth.exceptions import ImmediateHttpResponse
+# from allauth.exceptions import ImmediateHttpResponse
+from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.providers.oauth2.client import OAuth2Error
 from allauth.socialaccount.providers.google.views import GoogleOAuth2Adapter
 from allauth.socialaccount.providers.oauth2.client import OAuth2Client
@@ -243,6 +244,13 @@ class RegistrationView(APIView):
         logger.info(f'RegistrationView is called ')
         serializer = RegistrationSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
+        #changed 
+        if not serializer.is_valid():
+            logger.error(f"Registration serializer errors: {serializer.errors}")
+            return Response(serializer.errors, status=400)
+
+        logger.info("Serializer validated successfully")
+
         
         # other related info like location
         city = serializer.validated_data.get('city')
