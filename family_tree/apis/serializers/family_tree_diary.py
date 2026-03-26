@@ -123,18 +123,23 @@ class FamilyTreeDiaryUpdationSerializer(serializers.ModelSerializer):
 
 
 class FamilyTreeDiaryCreateSerializer(serializers.Serializer):
-    category = serializers.IntegerField()
+    # category = serializers.IntegerField()
+    #changedd
+    category = serializers.PrimaryKeyRelatedField(
+    queryset=FamilyTreeDiaryCategory.objects.filter(is_deleted=False)
+)
     title = serializers.CharField(max_length=255)
     description = serializers.CharField(required=False, allow_blank=True)
 
-    def validate_category(self, value):
-        try:
-            return FamilyTreeDiaryCategory.objects.get(
-                id=value,
-                is_deleted=False
-            )
-        except FamilyTreeDiaryCategory.DoesNotExist:
-            raise serializers.ValidationError("Invalid category id")
+    #changedd
+   # def validate_category(self, value):
+    #     try:
+    #         return FamilyTreeDiaryCategory.objects.get(
+    #             id=value,
+    #             is_deleted=False
+    #         )
+    #     except FamilyTreeDiaryCategory.DoesNotExist:
+    #         raise serializers.ValidationError("Invalid category id")
 
     def create(self, validated_data):
         user = self.context["user"]

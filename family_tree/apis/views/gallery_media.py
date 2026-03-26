@@ -73,7 +73,7 @@ def get_family_tree(user, family_tree_id):
         Q(
             id=family_tree_id,
             family_tree_recipients__recipient_email=user.email,
-            family_tree_recipients__permissions="edit",
+            # family_tree_recipients__permissions="edit",        #changeddd so that view-only access viewers or family memebers can also access 
             family_tree_recipients__is_deleted=False,
             is_deleted=False
         )
@@ -680,7 +680,14 @@ class FamilyTreeGalleryDownloadAPIView(SecuredView):
             raise Http404("File missing on server")
 
         # file_size = os.path.getsize(file_path)
-        filename = os.path.basename(file_path)
+        # filename = os.path.basename(file_path)
+        #changedd FIX: use user-renamed title instead of raw disk filename while user downloads the file
+        disk_filename = os.path.basename(file_path)
+        extension = os.path.splitext(disk_filename)[1]
+        user_title = media.title or disk_filename
+        if not user_title.lower().endswith(extension.lower()):
+            user_title = f"{user_title}{extension}"
+        filename = user_title
 
         content_type, _ = mimetypes.guess_type(filename)
         content_type = content_type or "application/octet-stream"

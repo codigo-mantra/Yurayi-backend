@@ -189,14 +189,17 @@ class AddFamilyMemberAPIView(SecuredView):
                 "user": user
             }
         )
-        serializer.is_valid(raise_exception=True)
+        # serializer.is_valid(raise_exception=True)
+        if not serializer.is_valid():
+            print("ERRORS:''''''''''''", serializer.errors)
+            return Response(serializer.errors, status=400)
         member = serializer.save()
         sessions = getattr(serializer, "_upload_sessions", None)
         session_serializer = UploadSessionSerializer(sessions, many = True)
 
         return Response({"message":"member created successfully","member_id":member.id,"upload_id":session_serializer.data}, status=status.HTTP_201_CREATED )
 
-
+########################################################################################################
 class FamilyTreeFilteredView(SecuredView):
     """
     Optimized Family Tree View with prefetched relationships
@@ -246,7 +249,9 @@ class FamilyTreeFilteredView(SecuredView):
         members = [family_tree.root_member]
 
         if view_type == 'all':
-                members = get_full_hierarchy_from_member(family_tree.root_member, family_tree,view_type)
+                # members = get_full_hierarchy_from_member(family_tree.root_member, family_tree,view_type) #changedd for filter issue 
+                # members = get_full_hierarchy_from_member(family_tree.root_member, family_tree)
+                members = get_full_hierarchy_from_member(family_tree.root_member, family_tree, view_type)
 
         else:
             root_member = family_tree.root_member
@@ -269,11 +274,15 @@ class FamilyTreeFilteredView(SecuredView):
 
             if view_type == "maternal" and  maternal_member:
                 start_member = maternal_member
-                members = get_full_hierarchy_from_member(start_member, family_tree, start_member.id)
+                # members = get_full_hierarchy_from_member(start_member, family_tree, start_member.id) #changedd for filter issue 
+                # members = get_full_hierarchy_from_member(start_member, family_tree)
+                members = get_full_hierarchy_from_member(family_tree.root_member, family_tree, view_type)
 
             elif view_type == "paternal" and paternal_member:
                 start_member = paternal_member
-                members = get_full_hierarchy_from_member(start_member,family_tree, start_member.id)
+                # members = get_full_hierarchy_from_member(start_member,family_tree, start_member.id)  #changedd for filter issue 
+                # members = get_full_hierarchy_from_member(start_member, family_tree)
+                members = get_full_hierarchy_from_member(family_tree.root_member, family_tree, view_type)
        
         serializer = FamilyTreeNodeSerializer(
             members,

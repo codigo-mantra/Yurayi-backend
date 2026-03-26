@@ -159,7 +159,7 @@ class FamilyTreeCreateSerializer(serializers.Serializer):
 
         return attrs
 
-
+#######################################################################################################################################
 class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
     parent_node_id = serializers.IntegerField(write_only=True, required=False, allow_null=True)
     gallery_media = serializers.ListField(
@@ -194,7 +194,7 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
         errors = {}
 
         required_fields = [
-            "parent_node_id",
+            # "parent_node_id",
             "first_name",
             "last_name",
             "gender",
@@ -262,11 +262,14 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
 
 
     def create(self, validated_data):
+        member = None
         upload_sessions = []
         user = self.context["user"] 
         family_tree = self.context.get("family_tree")
         email = validated_data.get("email_address")
-        relation_type = validated_data.get("relation_type").lower()
+        relation_type = validated_data.get("relation_type", "").strip().lower()
+        print("RELATION TYPE:", relation_type)
+        # relation_type = validated_data.get("relation_type").lower()
         parent_node_id = (validated_data.get("parent_node_id"))
         is_married = validated_data.get("is_married", False)
         married_date = validated_data.get("married_date", None)
@@ -274,12 +277,30 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
         gender = validated_data.get("gender").lower()
         gallery_media = validated_data.pop("gallery_media", None)
 
-        if not parent_node_id :
-            raise serializers.ValidationError({'parent_node_id': 'Parent member id is required'})
+        # if not parent_node_id :
+        #     raise serializers.ValidationError({'parent_node_id': 'Parent member id is required'})
         
-        parent_member_node = int(parent_node_id)
+        # parent_member_node = int(parent_node_id)
+        parent_member_node = None
 
-        if relation_type in ['father', 'mother', 'spouse']:
+        if parent_node_id:
+            try:
+                parent_member_node = FamilyMember.objects.get(
+                    id=parent_node_id,
+                    is_deleted=False
+                )
+            except FamilyMember.DoesNotExist:
+                raise serializers.ValidationError(
+                    {"parent_node_id": "Parent family member not found."}
+                )
+            
+        if not parent_member_node:
+            member = self.create_family_member(user, family_tree, validated_data)
+            self._upload_sessions = []
+            return member
+
+        # if relation_type in ['father', 'mother', 'spouse']:
+        if relation_type in ['father', 'mother', 'spouse'] and parent_member_node:
             if not is_married:
                 raise serializers.ValidationError(
                     {"is_married": "Parent must be married to add father or mother."}
@@ -357,6 +378,35 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                     parent_member_node.primary_father = father_as_member
                     parent_member_node.save()
 
+                    #changeddd
+                    # Assign father to all existing parentless siblings 
+                    # existing_siblings = FamilyMember.objects.filter(
+                    #     family_tree=family_tree,
+                    #     relation_type__in=['siblings', 'sibling'],
+                    #     primary_father__isnull=True,   #  filter by father
+                    #     is_deleted=False
+                    # )
+                    #changedd 2
+                    # FIX — only same group
+                    existing_siblings = FamilyMember.objects.filter(
+                        family_tree=family_tree,
+                        relation_type__in=['siblings', 'sibling'],
+                        primary_father__isnull=True,
+                        sibling_group_id=parent_member_node.sibling_group_id,
+                        is_deleted=False
+                    )
+                    for sibling in existing_siblings:
+                        sibling.primary_father = father_as_member  #  assign father
+                        sibling.sibling_group_id = None            # if real parents assigned , group no longer needed
+                        sibling.save()
+                        self.create_parental_relationship(
+                            family_tree=family_tree,
+                            child=sibling,
+                            father=father_as_member,   #  father variable
+                            mother=sibling.primary_mother
+                        )
+            
+
                     # add here marriage relation if married
                     mother = self.get_existing_mother(parent_member_node)
 
@@ -403,7 +453,35 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                     parent_member_node.primary_mother = mother_as_member
                     parent_member_node.save()
 
+                    # changeddd — Assign mother to all existing parentless siblings
+                    # existing_siblings = FamilyMember.objects.filter(
+                    #     family_tree=family_tree,
+                    #     relation_type__in=['siblings', 'sibling'],
+                    #     primary_mother__isnull=True,
+                    #     is_deleted=False
+                    # )
+                    # FIX
+                    existing_siblings = FamilyMember.objects.filter(
+                        family_tree=family_tree,
+                        relation_type__in=['siblings', 'sibling'],
+                        primary_mother__isnull=True,
+                        sibling_group_id=parent_member_node.sibling_group_id,
+                        is_deleted=False
+                    )
+                    for sibling in existing_siblings:
+                        sibling.primary_mother = mother_as_member
+                        sibling.sibling_group_id = None            # if real parents assigned , group no longer needed
+                        sibling.save()
+                        self.create_parental_relationship(
+                            family_tree=family_tree,
+                            child=sibling,
+                            father=sibling.primary_father,
+                            mother=mother_as_member
+                        )
+
                     father = self.get_existing_father(parent_member_node)
+
+
 
                     if father:
                         # partnership =  Partnership.objects.get_or_create(
@@ -423,7 +501,8 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
 
 
 
-            elif relation_type == 'child':
+            # elif relation_type == 'child':
+            elif relation_type == 'child' and parent_member_node:
                 child_as_member = self.create_family_member(
                     user, family_tree, validated_data
                 )
@@ -444,28 +523,90 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
                     mother=parent_member_node if parent_member_node.gender == 'female' else None
                 )
 
-            elif relation_type == 'siblings':
+            #changedd 
+            elif relation_type in ['siblings','sibling']:
 
-                father  = parent_member_node.primary_father
-                mother  = parent_member_node.primary_mother
+                # import uuid
+
+                father = parent_member_node.primary_father if parent_member_node else None
+                mother = parent_member_node.primary_mother if parent_member_node else None
+
+                sibling_as_member = self.create_family_member(
+                    user, family_tree, validated_data
+                )
+                member = sibling_as_member
+
+                #assign parents if exist
+                sibling_as_member.primary_father = father
+                sibling_as_member.primary_mother = mother
+
+                group_id = None
 
                 if father or mother:
-                    sibling_as_member = self.create_family_member(
-                        user, family_tree, validated_data
-                    )
-                    member = sibling_as_member
-                    sibling_as_member.primary_father = father
-                    sibling_as_member.primary_mother = mother
-                    sibling_as_member.save()
+                    group_id = None    ## if real parents exist → NO group needed
+                else:
+                    if parent_member_node.sibling_group_id:                # parentless siblings → use group
+                        group_id = parent_member_node.sibling_group_id     # re-use parents exiting group if exists
+                    else:
+                        group_id = uuid.uuid4()                            #else crate new group for parentless siblings
+                        parent_member_node.sibling_group_id = group_id     # assign group to parent node also
+                        parent_member_node.save()
 
-                    parental_relation = self.create_parental_relationship(
+                sibling_as_member.sibling_group_id = group_id
+                sibling_as_member.save()
+
+                #parental relation(only if parents exist) for sibling is optional and only created if parents exist, as sibling relation can be inferred via shared parents or sibling_group_id
+                if father or mother:
+                    self.create_parental_relationship(
                         family_tree=family_tree,
                         child=sibling_as_member,
                         father=father,
                         mother=mother
                     )
-                else:
-                    raise serializers.ValidationError({"parent_node_id": "Parent node is required to add sibling."})
+
+            #changedd
+            # elif relation_type in ['siblings', 'sibling']:
+
+            #     father = parent_member_node.primary_father if parent_member_node else None
+            #     mother = parent_member_node.primary_mother if parent_member_node else None
+
+            #     sibling_as_member = self.create_family_member(
+            #         user, family_tree, validated_data
+            #     )
+            #     member = sibling_as_member
+
+            #     sibling_as_member.primary_father = father
+            #     sibling_as_member.primary_mother = mother
+            #     sibling_as_member.save()
+
+            #     parental_relation = self.create_parental_relationship(
+            #         family_tree=family_tree,
+            #         child=sibling_as_member,
+            #         father=father,
+            #         mother=mother
+            #     )
+            # elif relation_type in ['siblings', 'sibling']:
+
+            #     father  = parent_member_node.primary_father
+            #     mother  = parent_member_node.primary_mother
+
+            #     if father or mother:
+            #         sibling_as_member = self.create_family_member(
+            #             user, family_tree, validated_data
+            #         )
+            #         member = sibling_as_member
+            #         sibling_as_member.primary_father = father
+            #         sibling_as_member.primary_mother = mother
+            #         sibling_as_member.save()
+
+            #         parental_relation = self.create_parental_relationship(
+            #             family_tree=family_tree,
+            #             child=sibling_as_member,
+            #             father=father,
+            #             mother=mother
+            #         )
+                # else:
+                #     raise serializers.ValidationError({"parent_node_id": "Parent node is required to add sibling."})
 
 
             elif relation_type == 'spouse':
@@ -588,7 +729,16 @@ class AddNewFamilyMemberSerializer(serializers.ModelSerializer):
             upload_sessions.append(session)
 
         self._upload_sessions = upload_sessions
+
+        if member is None:
+            raise serializers.ValidationError(
+                {"error": f"Member not created for relation_type: {relation_type}"}
+            )
+
         return member
+
+        # self._upload_sessions = upload_sessions
+        # return member
 
 
 class FamilyMemberUpdateSerializer(serializers.ModelSerializer):
@@ -792,7 +942,7 @@ class FamilyMemberUpdateSerializer(serializers.ModelSerializer):
 
 
 #         return child_ids or None
-
+###################################################################################################################
 class FamilyTreeNodeSerializer(serializers.ModelSerializer):
     id = serializers.CharField(source="pk", read_only=True)
     name = serializers.SerializerMethodField()
@@ -802,6 +952,7 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
     partner = serializers.SerializerMethodField()
     parents = serializers.SerializerMethodField()
     children = serializers.SerializerMethodField()
+    siblings = serializers.SerializerMethodField()  # changedd added
     is_onwer = serializers.SerializerMethodField()
     is_root_node = serializers.SerializerMethodField()
 
@@ -822,6 +973,7 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
             "partner",
             "parents",
             "children",
+            "siblings",    #changed added 
             "profile_image",
         )
 
@@ -859,10 +1011,20 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
         # ----------------------------
         # Cache Children by Father/Mother
         # ----------------------------
-        members = FamilyMember.objects.filter(
-            family_tree=family_tree,
-            is_deleted=False
-        ).only("id", "primary_father_id", "primary_mother_id")
+        # members = FamilyMember.objects.filter(
+        #     family_tree=family_tree,
+        #     is_deleted=False
+        # ).only("id", "primary_father_id", "primary_mother_id")
+        # members = self.instance if self.instance else []
+        #changedd for filter issue 
+        # members = self.instance or []
+        # if not isinstance(members, list):
+        #     members = [members]
+        instance = self.instance or []
+        if hasattr(instance, '__iter__') and not isinstance(instance, (list,)):
+            members = list(instance)
+        else:
+            members = instance if isinstance(instance, list) else [instance]
 
         for child in members:
             if child.primary_father_id:
@@ -922,6 +1084,17 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
 
         if not (father or mother):
             return None
+        
+        # FILTER by view_type added for filternig 
+        if self.view_type == "paternal":
+            if father:
+                parents.append(str(father.id))
+            return parents or None
+
+        elif self.view_type == "maternal":
+            if mother:
+                parents.append(str(mother.id))
+            return parents or None
 
         if father:
             partnership = self.partnership_map.get(father.id)
@@ -960,6 +1133,78 @@ class FamilyTreeNodeSerializer(serializers.ModelSerializer):
             ]
 
         return [str(c.id) for c in children] or None
+    
+
+    #changedd 
+    def get_siblings(self, obj):
+
+    # CASE 1: REAL SIBLINGS (via parents)
+        if obj.primary_father_id or obj.primary_mother_id:
+            sibling_ids = []
+            for member_id, children in self.children_map.items():
+                if member_id in (obj.primary_father_id, obj.primary_mother_id):
+                    for child in children:
+                        if child.id != obj.id:
+                            sid = str(child.id)
+                            if sid not in sibling_ids:
+                                sibling_ids.append(sid)
+            return sibling_ids or None
+
+        # CASE 2: GROUP SIBLINGS (no parents)
+        if obj.sibling_group_id:
+            siblings = FamilyMember.objects.filter(
+                family_tree=obj.family_tree,
+                sibling_group_id=obj.sibling_group_id,
+                is_deleted=False
+            ).exclude(id=obj.id)
+            return [str(s.id) for s in siblings] or None
+
+        return None
+
+    # def get_siblings(self, obj):
+        # root_node_id = self.root_node_id
+        # family_tree = self.context.get("family_tree")
+
+        # # CASE 1 — has parents, find via shared primary_father or primary_mother
+        # if obj.primary_father_id or obj.primary_mother_id:
+        #     sibling_ids = []
+        #     for member_id, children in self.children_map.items():
+        #         if member_id in (obj.primary_father_id, obj.primary_mother_id):
+        #             for child in children:
+        #                 if child.id != obj.id:
+        #                     sid = str(child.id)
+        #                     if sid not in sibling_ids:
+        #                         sibling_ids.append(sid)
+        #     return sibling_ids or None
+
+        # # CASE 2 — no parents, connect self object and siblings via role
+        # # TL rule: all siblings share same parents, assume direct connection
+        # if str(obj.id) == str(root_node_id):
+        #     # this is self object, return all members with role=siblings
+        #     sibling_ids = [
+        #         str(child.id)
+        #         for children in self.children_map.values()
+        #         for child in children
+        #         if child.relation_type in ['siblings', 'sibling']
+        #     ]
+        #     # children_map won't have them if no parents, query siblings directly
+        #     if not sibling_ids and family_tree:
+        #         from family_tree.models import FamilyMember as FM
+        #         sibling_ids = list(
+        #             FM.objects.filter(
+        #                 family_tree=family_tree,
+        #                 relation_type__in=['siblings', 'sibling'],
+        #                 is_deleted=False
+        #             ).exclude(id=obj.id).values_list('id', flat=True)
+        #         )
+        #         return [str(i) for i in sibling_ids] or None
+        #     return sibling_ids or None
+
+        # if obj.relation_type in ['siblings', 'sibling']:
+        #     # return self object (root) as sibling
+        #     return [str(root_node_id)] if root_node_id else None
+
+        # return None
 
 
 class FamilyTreeUpdateSerializer(serializers.ModelSerializer):

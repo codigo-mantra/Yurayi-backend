@@ -92,6 +92,8 @@ class FamilyMember(TimeStampedModel):
         related_name="+",
         on_delete=models.CASCADE
     )
+    #changed 
+    sibling_group_id = models.UUIDField(null=True, blank=True)
 
 
     first_name = models.CharField(max_length=150)
