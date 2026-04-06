@@ -3,6 +3,10 @@ from rest_framework import serializers
 from userauth.models import Assets
 from memory_room.models import MemoryRoom, TimeCapSoul, CustomMemoryRoomTemplate, CustomTimeCapSoulTemplate,MemoryRoomDetail
 from django.conf import settings
+import time
+import hmac
+import hashlib
+import base64
 import logging
 logger = logging.getLogger(__name__)
 
@@ -15,10 +19,30 @@ class AssetSerializer(serializers.ModelSerializer):
         fields = ['id', 'title','image_url']
 
     def get_image_url(self, obj):
-        image_url = obj.s3_url
-        if not image_url:
-            image_url = f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
-        return image_url
+        # Production uses S3 URL directly
+        if settings.ENVIRONMENT_TYPE == "PROD":
+            image_url = obj.s3_url
+            if not image_url:
+                image_url = f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
+            return image_url
+
+        # Local mode: generate signed image URL to match LocalMediaExpiryMiddleware
+        if obj.image:
+            exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+            media_path = obj.image.name
+            raw = f"{media_path}:{exp}"
+            sig = base64.urlsafe_b64encode(hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()).decode().rstrip("=")
+
+            site_url = settings.SITE_LIVE_URL.rstrip('/')
+            base_media = settings.MEDIA_URL
+            if not base_media.startswith('/'):
+                base_media = '/' + base_media.lstrip('/')
+            if not base_media.endswith('/'):
+                base_media = base_media + '/'
+
+            return f"{site_url}{base_media}{media_path}?exp={exp}&sig={sig}"
+
+        return f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
         
 class CustomMemoryRoomTemplateSerializer(serializers.ModelSerializer):
     cover_image = AssetSerializer()

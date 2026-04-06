@@ -1432,53 +1432,102 @@ class ServeProfileImage(SecuredView):
             bytes_cache_key = get_profile_s3_key(user, base_s3_key=base_s3_key)
             
             filename = bytes_cache_key.split("/")[-1].lower()
-            
-            # === Step 1: Check for cached response ===
-            response_cache_key = f"profile_image_response:{bytes_cache_key}"
-            cached_response = cache.get(response_cache_key)
-            
-            if cached_response:
-                logger.debug(f"✓ Serving cached response: {filename}")
-                return cached_response
-            
-            # === Step 2: Download from S3 (cache miss) ===
-            logger.info(f" Downloading from S3: {filename}")
-            
-            file_data, content_type = s3_helper.decrypt_s3_file_chunked_streaming(
-                bytes_cache_key,
-                chunk_size=5*1024*1024  # 2MB chunks (good for images)
-            )
-            
-            if not file_data or not content_type:
-                logger.error(f"Failed to download {bytes_cache_key} from S3")
-                return Response(status=status.HTTP_404_NOT_FOUND)
-            
-            # === Step 3: Read image bytes from BytesIO ===
-            file_bytes = file_data.read()
-            file_data.close()
-            
-            # Override content type if needed
-            content_type = self.get_mime_type(filename) or content_type
-            
-            logger.info(f"✓ Downloaded image: {filename} ({len(file_bytes)/1024:.1f} KB)")
-            
-            # === Step 4: Create response ===
-            if filename.endswith(".svg"):
-                response = self._serve_svg_safely(file_bytes, filename)
-            else:
-                response = self._create_image_response(file_bytes, content_type, filename)
-            
-            # === Step 5: Cache the complete response ===
-            cache.set(
-                response_cache_key, 
-                response, 
-                timeout=self.CACHE_TIMEOUT
-            )
-            logger.debug(f"✓ Cached complete response for {filename}")
-            
-            return response
 
+            #changedd 
+            if settings.ENVIRONMENT_TYPE == 'PROD':
+            
+                # === Step 1: Check for cached response ===
+                response_cache_key = f"profile_image_response:{bytes_cache_key}"
+                cached_response = cache.get(response_cache_key)
+                
+                if cached_response:
+                    logger.debug(f"✓ Serving cached response: {filename}")
+                    return cached_response
+                
+                # === Step 2: Download from S3 (cache miss) ===
+                logger.info(f" Downloading from S3: {filename}")
+                
+                file_data, content_type = s3_helper.decrypt_s3_file_chunked_streaming(
+                    bytes_cache_key,
+                    chunk_size=5*1024*1024  # 2MB chunks (good for images)
+                )
+                
+                if not file_data or not content_type:
+                    logger.error(f"Failed to download {bytes_cache_key} from S3")
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+                
+                # === Step 3: Read image bytes from BytesIO ===
+                file_bytes = file_data.read()
+                file_data.close()
+                
+                # Override content type if needed
+                content_type = self.get_mime_type(filename) or content_type
+                
+                logger.info(f"✓ Downloaded image: {filename} ({len(file_bytes)/1024:.1f} KB)")
+                
+                # === Step 4: Create response ===
+                if filename.endswith(".svg"):
+                    response = self._serve_svg_safely(file_bytes, filename)
+                else:
+                    response = self._create_image_response(file_bytes, content_type, filename)
+                
+                # === Step 5: Cache the complete response ===
+                cache.set(
+                    response_cache_key, 
+                    response, 
+                    timeout=self.CACHE_TIMEOUT
+                )
+                logger.debug(f"✓ Cached complete response for {filename}")
+                
+                return response
+            
+            else:
+                # === LOCAL DEV FIX ===
+                from userauth.models import UserProfile
+
+                profile = UserProfile.objects.filter(user=user).first()
+                print("DEBUG USER:", user)
+                print("DEBUGPROFILE:", profile)
+
+                if profile:
+                    print("DEBUG PROFILE IMAGE:", profile.profile_image)
+
+                    if profile.profile_image:
+                        print("DEBUG IMAGE FIELD:", profile.profile_image.image)
+                        print("DEBUG IMAGE PATH:", getattr(profile.profile_image.image, "path", None))
+
+
+                if not profile or not profile.profile_image or not profile.profile_image.image:
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+
+                file_path = profile.profile_image.image.path
+
+                print("DEBUG actual file path:", file_path)
+                print("FILE EXISTS:", os.path.exists(file_path))
+
+                if not os.path.exists(file_path):
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+
+                content_type = self.get_mime_type(file_path)
+
+                with open(file_path, "rb") as f:
+                    file_bytes = f.read()
+
+                filename = os.path.basename(file_path)
+
+                if filename.endswith(".svg"):
+                    return self._serve_svg_safely(file_bytes, filename)
+
+                return self._create_image_response(file_bytes, content_type, filename)
+            
         except Exception as e:
             logger.exception(f"Error serving profile image {base_s3_key}: {e}")
             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                        
 
+
+
+
+
+            
+       

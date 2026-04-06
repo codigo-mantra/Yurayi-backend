@@ -1499,7 +1499,7 @@ class ChunkedUploadSession:
                 "last_activity": self.last_activity,
                 "data_key_encrypted": (
                     base64.b64encode(self.data_key_encrypted).decode()
-                    if self.data_key_encrypted else None
+                    if self.data_key_encrypted and settings.ENVIRONMENT_TYPE == "PROD" else None  #changedd added = and settings.USE_S3 
                 ),
                 # JPG and small file specific fields
                 "is_jpg": self.is_jpg,
@@ -1531,12 +1531,27 @@ class ChunkedUploadSession:
         session.last_activity = data["last_activity"]
 
         # Restore encryption key
+        # if data.get("data_key_encrypted"):
+        #     encrypted = base64.b64decode(data["data_key_encrypted"])
+        #     resp = kms.decrypt(CiphertextBlob=encrypted)
+        #     session.data_key_plain = resp["Plaintext"]
+        #     session.data_key_encrypted = encrypted
+        #     session.aesgcm = AESGCM(session.data_key_plain)
+        # Restore encryption key
+        #changedd fro local dev testing 
         if data.get("data_key_encrypted"):
             encrypted = base64.b64decode(data["data_key_encrypted"])
-            resp = kms.decrypt(CiphertextBlob=encrypted)
-            session.data_key_plain = resp["Plaintext"]
-            session.data_key_encrypted = encrypted
-            session.aesgcm = AESGCM(session.data_key_plain)
+            #  LOCAL MODE: skip KMS decrypt
+            from django.conf import settings
+            if settings.ENVIRONMENT_TYPE =="PROD":
+                resp = kms.decrypt(CiphertextBlob=encrypted)
+                session.data_key_plain = resp["Plaintext"]
+                session.data_key_encrypted = encrypted
+                session.aesgcm = AESGCM(session.data_key_plain)
+            else:
+                session.data_key_plain = None
+                session.data_key_encrypted = None
+                session.aesgcm = None
 
         # Restore JPG and small file specific fields
         session.is_jpg = data.get("is_jpg", False)

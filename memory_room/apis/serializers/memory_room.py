@@ -1,6 +1,10 @@
 import boto3
 import os
 import mimetypes
+import time
+import hmac
+import hashlib
+import base64
 from rest_framework import serializers
 from django.conf import settings
 from django.core.files.images import ImageFile 
@@ -36,6 +40,7 @@ logger = logging.getLogger(__name__)
 class AssetSerializer(serializers.ModelSerializer):
     """
     Serializer for Asset model with S3 image URL.
+    Handles both S3 (production) and local file storage (local).
     """
     image_url = serializers.SerializerMethodField()
 
@@ -44,10 +49,44 @@ class AssetSerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'image_url']
 
     def get_image_url(self, obj):
-        image_url = obj.s3_url
-        if not image_url:
-            image_url = f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
-        return image_url
+        # For production - use S3 URL directly
+        if settings.ENVIRONMENT_TYPE == "PROD":
+            image_url = obj.s3_url
+            if not image_url:
+                image_url = f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
+            return image_url
+        
+        # For local mode - generate URL with exp/sig parameters for security
+        else:
+            # Check if image exists in local storage
+            if obj.image:
+                # Generate expiry and signature for local media access
+                exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+                media_path = obj.image.name
+                sig = self._generate_signature(media_path, exp)
+                
+                # Return local absolute backend URL with expiry and signature params
+                base_media = settings.MEDIA_URL
+                if not base_media.startswith('/'):
+                    base_media = '/' + base_media.lstrip('/')
+                if not base_media.endswith('/'):
+                    base_media = f'{base_media}/'
+                # Avoid double slash if SITE_LIVE_URL ends with '/'
+                site_url = settings.SITE_LIVE_URL.rstrip('/')
+                return f"{site_url}{base_media}{media_path}?exp={exp}&sig={sig}"
+            
+            # Fallback to serve endpoint if image doesn't exist
+            return f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
+    
+    @staticmethod
+    def _generate_signature(media_path: str, exp: int) -> str:
+        """
+        Generate base64-encoded HMAC signature for media path and expiry.
+        Must match the signature generation in middleware.
+        """
+        raw = f"{media_path}:{exp}"
+        sig = hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
+        return base64.urlsafe_b64encode(sig).decode().rstrip("=")
 
 
 class MemoryRoomTemplateDefaultSerializer(serializers.ModelSerializer):
@@ -529,20 +568,25 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
 
     #     return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
     
+
     def get_file_url(self, obj):
         import time
-        exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS 
-        s3_key = obj.s3_key 
+        
+        exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+        s3_key = obj.s3_key
         sig = generate_signature(s3_key, exp)
 
-        served_key = s3_key[37:]
-        if served_key.lower().endswith(".doc"):
-            served_key = served_key[:-4] + ".docx"  # change extension
+        # PROD MODE - signed serve endpoint (S3 decryption)
+        if settings.ENVIRONMENT_TYPE == "PROD":
+            served_key = s3_key[37:]
+            if served_key.lower().endswith(".doc"):
+                served_key = served_key[:-4] + ".docx"
+            return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{served_key}?exp={exp}&sig={sig}"
         
-        return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{served_key}?exp={exp}&sig={sig}"
-        
+        # LOCAL MODE - serve file directly 
+        return f"{settings.MEDIA_URL}{obj.s3_key}?exp={exp}&sig={sig}"
 
-    
+
     # def get_file_url(self, obj):
     #     import time, base64, hmac, hashlib
 

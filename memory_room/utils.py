@@ -138,6 +138,10 @@ def upload_file_to_s3_bucket(file, folder=None):
     import mimetypes
     from django.conf import settings
 
+    # changedd =  for local testing 
+    if settings.ENVIRONMENT_TYPE != "PROD":
+        return None, None, None
+
     # Step 1: Setup file name and content type
     original_file_name = file.name
     if folder:

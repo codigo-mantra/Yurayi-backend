@@ -472,6 +472,9 @@ class TimeCapSoulMediaFilesView(SecuredView):
 
                 # print(f"\n File {file_progress}")
 
+
+########################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################
+# 
         # def file_upload_stream():
         #     def process_single_file(file_index, uploaded_file, file_iv, time_capsoul):
         #         """Process a single file upload with progress tracking"""
@@ -479,141 +482,145 @@ class TimeCapSoulMediaFilesView(SecuredView):
         #             def progress_callback(progress, message):
         #                 if progress == -1:  # Error
         #                     update_file_progress(file_index, 0, message, 'failed')
-        #                 else:
+        # #                 else:
         #                     update_file_progress(file_index, progress, message, 'processing')
 
-        #             uploaded_file.seek(0)
+                    # uploaded_file.seek(0)
 
-        #             serializer = TimeCapSoulMediaFileSerializer(
-        #                 data={'file': uploaded_file, 'iv': file_iv},
-        #                 context={
-        #                     'user': user,
-        #                     'time_capsoul': time_capsoul,
-        #                     'progress_callback': progress_callback
-        #                 }
-        #             )
+                    # serializer = TimeCapSoulMediaFileSerializer(
+                    #     data={'file': uploaded_file, 'iv': file_iv},
+                    #     context={
+                    #         'user': user,
+                    #         'time_capsoul': time_capsoul,
+                    #         'progress_callback': progress_callback
+                    #     }
+                    # )
 
-        #             if serializer.is_valid():
-        #                 media_file = serializer.save()
-        #                 time_capsoul = media_file.time_capsoul
-        #                 if time_capsoul.status == 'sealed':
-        #                     capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
-        #                     if capsoul_recipients.count() >0:
-        #                         try:
-        #                             existing_media_ids = eval(capsoul_recipients[0].parent_media_refrences)
-        #                             if  existing_media_ids and  type(existing_media_ids) is list:
-        #                                 existing_media_ids.append(media_file.id)
-        #                                 capsoul_recipients.update(parent_media_refrences = existing_media_ids)
-        #                         except Exception as e:
-        #                             logger.error(f'Error while updating parent media references list: {e} for user {user.email} and capsoul id {time_capsoul.id}')
+                    # if serializer.is_valid():
+                    #     media_file = serializer.save()
+                    #     time_capsoul = media_file.time_capsoul
+                    #     if time_capsoul.status == 'sealed':
+                    #         capsoul_recipients = TimeCapSoulRecipient.objects.filter(time_capsoul = time_capsoul)
+                    #         if capsoul_recipients.count() >0:
+                    #             try:
+                    #                 existing_media_ids = eval(capsoul_recipients[0].parent_media_refrences)
+                    #                 if  existing_media_ids and  type(existing_media_ids) is list:
+                    #                     existing_media_ids.append(media_file.id)
+                    #                     capsoul_recipients.update(parent_media_refrences = existing_media_ids)
+                    #             except Exception as e:
+                    #                 logger.error(f'Error while updating parent media references list: {e} for user {user.email} and capsoul id {time_capsoul.id}')
                                 
 
                                 
-        #                         # updated_media_ids = existing_media_ids +  f',{media_file.id}'
-        #                         # capsoul_recipients.update(parent_media_refrences = updated_media_ids)
-        #                 update_file_progress(file_index, 93, 'Upload completed successfully', 'success')
+                    #             # updated_media_ids = existing_media_ids +  f',{media_file.id}'
+                    #             # capsoul_recipients.update(parent_media_refrences = updated_media_ids)
+                    #     update_file_progress(file_index, 93, 'Upload completed successfully', 'success')
                             
                         
-        #                 is_updated = update_users_storage(
-        #                     operation_type='addition',
-        #                     media_updation='capsoul',
-        #                     media_file=media_file
-        #                 )
-        #                 update_file_progress(file_index, 98, 'Upload completed successfully', 'success')
+                    #     is_updated = update_users_storage(
+                    #         operation_type='addition',
+                    #         media_updation='capsoul',
+                    #         media_file=media_file
+                    #     )
+                    #     update_file_progress(file_index, 98, 'Upload completed successfully', 'success')
 
-        #                 return {
-        #                     'index': file_index,
-        #                     'result': {
-        #                         "file": uploaded_file.name,
-        #                         "status": "success",
-        #                         "progress": 99,
-        #                         "data": TimeCapSoulMediaFileReadOnlySerializer(media_file).data
-        #                     },
-        #                     'media_file': media_file
-        #                 }
-        #             else:
-        #                 update_file_progress(file_index, 0, f"Validation failed: {serializer.errors}", 'failed')
-        #                 return {
-        #                     'index': file_index,
-        #                     'result': {
-        #                         "file": uploaded_file.name,
-        #                         "status": "failed",
-        #                         "progress": 0,
-        #                         "errors": serializer.errors
-        #                     },
-        #                     'media_file': None
-        #                 }
+                    #     return {
+                    #         'index': file_index,
+                    #         'result': {
+                    #             "file": uploaded_file.name,
+                    #             "status": "success",
+                    #             "progress": 99,
+                    #             "data": TimeCapSoulMediaFileReadOnlySerializer(media_file).data
+                    #         },
+                    #         'media_file': media_file
+                    #     }
+                    # else:
+                    #     update_file_progress(file_index, 0, f"Validation failed: {serializer.errors}", 'failed')
+                    #     return {
+                    #         'index': file_index,
+                    #         'result': {
+                    #             "file": uploaded_file.name,
+                    #             "status": "failed",
+                    #             "progress": 0,
+                    #             "errors": serializer.errors
+                    #         },
+                    #         'media_file': None
+                    #     }
 
-        #         except Exception as e:
-        #             error_msg = str(e)
-        #             update_file_progress(file_index, 0, f"Upload failed: {error_msg}", 'failed')
-        #             return {
-        #                 'index': file_index,
-        #                 'result': {
-        #                     "file": uploaded_file.name,
-        #                     "status": "failed",
-        #                     "progress": 0,
-        #                     "error": error_msg
-        #                 },
-        #                 'media_file': None
-        #             }
+            #     except Exception as e:
+            #         error_msg = str(e)
+            #         update_file_progress(file_index, 0, f"Upload failed: {error_msg}", 'failed')
+            #         return {
+            #             'index': file_index,
+            #             'result': {
+            #                 "file": uploaded_file.name,
+            #                 "status": "failed",
+            #                 "progress": 0,
+            #                 "error": error_msg
+            #             },
+            #             'media_file': None
+            #         }
 
-        #     with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        #         future_to_index = {
-        #             executor.submit(process_single_file, i, files[i], ivs[i], time_capsoul): i
-        #             for i in range(total_files)
-        #         }
+            # with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            #     future_to_index = {
+            #         executor.submit(process_single_file, i, files[i], ivs[i], time_capsoul): i
+            #         for i in range(total_files)
+            #     }
 
-        #         started_files = set()
-        #         last_sent_progress = {i: -1 for i in range(total_files)}
+            #     started_files = set()
+            #     last_sent_progress = {i: -1 for i in range(total_files)}
 
-        #         while len(results) < total_files:
-        #             with progress_lock:
-        #                 for file_index, progress_data in file_progress.items():
-        #                     file_name = files[file_index].name
+            #     while len(results) < total_files:
+            #         with progress_lock:
+            #             for file_index, progress_data in file_progress.items():
+            #                 file_name = files[file_index].name
 
-        #                     # Start message
-        #                     if file_index not in started_files and progress_data['status'] != 'pending':
-        #                         yield f"data: Starting upload of {file_name}\n\n"
-        #                         started_files.add(file_index)
+            #                 # Start message
+            #                 if file_index not in started_files and progress_data['status'] != 'pending':
+            #                     yield f"data: Starting upload of {file_name}\n\n"
+            #                     started_files.add(file_index)
 
-        #                     # Only send updated progress
-        #                     if (
-        #                         progress_data['status'] == 'processing'
-        #                         and progress_data['progress'] != last_sent_progress[file_index]
-        #                     ):
-        #                         yield f"data: {file_name} -> {progress_data['progress']}\n\n"
-        #                         last_sent_progress[file_index] = progress_data['progress']
+            #                 # Only send updated progress
+            #                 if (
+            #                     progress_data['status'] == 'processing'
+            #                     and progress_data['progress'] != last_sent_progress[file_index]
+            #                 ):
+            #                     yield f"data: {file_name} -> {progress_data['progress']}\n\n"
+            #                     last_sent_progress[file_index] = progress_data['progress']
 
-        #             # Handle completed uploads
-        #             completed_futures = []
-        #             for future in future_to_index:
-        #                 if future.done():
-        #                     completed_futures.append(future)
+            #         # Handle completed uploads
+            #         completed_futures = []
+            #         for future in future_to_index:
+            #             if future.done():
+            #                 completed_futures.append(future)
 
-        #             for future in completed_futures:
-        #                 try:
-        #                     result_data = future.result()
-        #                     if result_data['media_file']:
-        #                         created_objects.append(result_data['media_file'])
-        #                     results.append(result_data['result'])
+            #         for future in completed_futures:
+            #             try:
+            #                 result_data = future.result()
+            #                 if result_data['media_file']:
+            #                     created_objects.append(result_data['media_file'])
+            #                 results.append(result_data['result'])
 
-        #                     file_name = result_data['result']['file']
-        #                     if result_data['result']['status'] == 'success':
-        #                         yield f"data: {file_name} -> 100\n\n"
-        #                         yield f"data: {file_name} upload completed successfully\n\n"
-        #                     else:
-        #                         error_msg = result_data['result'].get('error') or result_data['result'].get('errors', 'Upload failed')
-        #                         yield f"data: {file_name} upload failed: {json.dumps(error_msg)}\n\n"
+            #                 file_name = result_data['result']['file']
+            #                 if result_data['result']['status'] == 'success':
+            #                     yield f"data: {file_name} -> 100\n\n"
+            #                     yield f"data: {file_name} upload completed successfully\n\n"
+            #                 else:
+            #                     error_msg = result_data['result'].get('error') or result_data['result'].get('errors', 'Upload failed')
+            #                     yield f"data: {file_name} upload failed: {json.dumps(error_msg)}\n\n"
 
-        #                     del future_to_index[future]
+            #                 del future_to_index[future]
 
-        #                 except Exception as e:
-        #                     logger.exception("Task completion error")
-        #                     del future_to_index[future]
+            #             except Exception as e:
+            #                 logger.exception("Task completion error")
+            #                 del future_to_index[future]
 
 
-        #     yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
+            # yield f"data: FINAL_RESULTS::{json.dumps(results)}\n\n"
+
+
+
+########################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################
         
             
         def file_upload_stream():
@@ -1057,762 +1064,764 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.backends import default_backend
 
-# class ChunkedMediaFileUploadView(APIView):
-#     CACHE_PREFIX = "chunked_upload"
-#     SESSION_TIMEOUT = 3600
-#     MAX_CHUNK_SIZE = 50 * 1024 * 1024
+
+########################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################
+# class ChunkedMediaFileUploadView(APIView): 
+    # CACHE_PREFIX = "chunked_upload"
+    # SESSION_TIMEOUT = 3600
+    # MAX_CHUNK_SIZE = 50 * 1024 * 1024
 
 
-#     def save_session(self, session):
-#         session.last_activity = time.time()
-#         cache.set(
-#             self._key(session.upload_id), 
-#             json.dumps(session.to_dict()), 
-#             self.SESSION_TIMEOUT
-#         )
-
-    
-#     def _key(self, upload_id):
-#         return f"{self.CACHE_PREFIX}:{upload_id}"
-
-
-
-#     def post(self, request, time_capsoul_id,action):
-#         """
-#         Handle chunked uploads with progress tracking.
-#         Supports init, upload, complete, and abort actions.
-#         """
-#         # action = request.POST.get('action')
-#         # user = self.get_current_user(request)
-#         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
-#         user = time_capsoul.user
-        
-#         # Handle replica creation for unlocked capsouls
-#         replica_instance = self._handle_replica_creation(user, time_capsoul)
-#         if replica_instance:
-#             time_capsoul = replica_instance
-        
-#         # Route to appropriate handler based on action
-#         if action == "init":
-#             return self.initialize_uploads(request, user, time_capsoul)
-#         elif action == "upload":
-#             return self.upload_chunk(request, user)
-#         elif action == "complete":
-#             return self.complete_upload(request, user)
-#         elif action == "abort":
-#             return self.abort_upload(request, user)
-#         else:
-#             return JsonResponse({"error": "Invalid action"}, status=400)
-
-#     def _handle_replica_creation(self, user, time_capsoul):
-#         """Handle replica creation for unlocked capsouls"""
-#         replica_instance = None
-        
-#         if time_capsoul.status == "sealed":
-#             from django.utils import timezone
-#             unlock_date = time_capsoul.unlock_date
-#             current_datetime = timezone.now()
-            
-#             if unlock_date and current_datetime > unlock_date:
-#                 time_capsoul.status = 'unlocked'
-#                 time_capsoul.save()
-        
-#         if time_capsoul.status == 'unlocked':
-#             try:
-#                 replica_instance = create_time_capsoul(
-#                     old_time_capsoul=time_capsoul,
-#                     current_user=user,
-#                     option_type='replica_creation',
-#                 )
-#                 cache.delete(f'{user.email}_capsouls')
-#                 logger.info(f'Cached cleared for Capsoul at replica creation')
-                
-#                 # Copy parent media files
-#                 if user.id == time_capsoul.user.id:
-#                     parent_media_files = TimeCapSoulMediaFile.objects.filter(
-#                         time_capsoul=time_capsoul, 
-#                         is_deleted=False
-#                     ).order_by('-updated_at')
-#                 else:
-#                     recipient = TimeCapSoulRecipient.objects.filter(
-#                         time_capsoul=time_capsoul, 
-#                         email=user.email
-#                     ).first()
-                    
-#                     if not recipient:
-#                         logger.info(f"Recipient not found for tagged capsoul {time_capsoul.id} and user {user.email}")
-#                         return None
-                    
-#                     parent_files_id = get_recipient_capsoul_ids(recipient)
-#                     parent_media_files = TimeCapSoulMediaFile.objects.filter(
-#                         time_capsoul=time_capsoul,
-#                         id__in=parent_files_id,
-#                     ).order_by('-updated_at')
-                
-#                 new_media_count = 0
-#                 old_media_count = parent_media_files.count()
-                
-#                 for parent_file in parent_media_files:
-#                     try:
-#                         is_media_created = create_time_capsoul_media_file(
-#                             old_media=parent_file,
-#                             new_capsoul=replica_instance,
-#                             current_user=user,
-#                             option_type='replica_creation',
-#                         )
-#                         if is_media_created:
-#                             new_media_count += 1
-#                     except Exception as e:
-#                         logger.exception(f'Exception while creating media-file replica for media-file id {parent_file.id}')
-#                         pass
-                
-#                 logger.info(f"Replica created: Old media count: {old_media_count}, New media count: {new_media_count}")
-                
-#             except Exception as e:
-#                 logger.error(f'Exception while creating time-capsoul replica user {user.email} capsoul-id: {replica_instance.id} errors: {e}')
-        
-#         return replica_instance
-
-#     def _extract_thumbnail_async(self, media_id, s3_key, file_type, file_ext, user_id):
-#         """Async thumbnail extraction to reduce response time"""
-#         try:
-#             from memory_room.upload_helper import extract_thumbnail_from_segment
-#             from memory_room.upload_helper import extract_audio_thumbnail_from_bytes
-
-#             media = TimeCapSoulMediaFile.objects.get(id=media_id)
-
-#             decryptor = S3MediaDecryptor(s3_key)
-#             file_bytes = decryptor.get_full_decrypted_bytes()
-#             cache_key = media_cache_key('media_bytes_', s3_key)
-#             if file_bytes:
-#                 cache.set(cache_key, file_bytes, timeout=60*60*24)
-
-#             thumbnail_data = None
-            
-#             if file_type == 'video':
-#                 thumbnail_data = extract_thumbnail_from_segment(file_bytes, file_ext, "full_file")
-#             else:
-#                 extractor = MediaThumbnailExtractor(file='', file_ext=file_ext)
-#                 thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
-#                     extension=file_ext,
-#                     decrypted_bytes=file_bytes
-#                 )
-                
-#                 if not thumbnail_data:
-#                     thumbnail_data = extract_audio_thumbnail_from_bytes(
-#                         extension=file_ext,
-#                         audio_bytes=file_bytes,
-#                     )
-
-#             if thumbnail_data:
-#                 from django.core.files.base import ContentFile
-#                 from userauth.models import Assets
-                
-#                 image_file = ContentFile(
-#                     thumbnail_data, 
-#                     name=f"thumbnail_{media.title.split('.')[0]}.jpg"
-#                 )
-#                 if image_file:
-#                     asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thumbnail/Audio')
-#                     media.thumbnail = asset
-#                     media.save()
-#                     logger.info(f'Thumbnail updated for media: {media.id}')
-#                     print(f'Thumbnail updated for media: {media.id}')
-
-#         except Exception as e:
-#             logger.error(f'Async thumbnail extraction failed for media {media_id}: {e}')
+    # def save_session(self, session):
+    #     session.last_activity = time.time()
+    #     cache.set(
+    #         self._key(session.upload_id), 
+    #         json.dumps(session.to_dict()), 
+    #         self.SESSION_TIMEOUT
+    #     )
 
     
-#     def _key(self, upload_id):
-#         return f"{self.CACHE_PREFIX}:{upload_id}"
-
-#     def get_session(self, upload_id):
-#         data = cache.get(self._key(upload_id))
-#         return ChunkedUploadSession.from_dict(json.loads(data)) if data else None
-
-#     def save_session(self, session):
-#         session.last_activity = time.time()
-#         cache.set(
-#             self._key(session.upload_id), 
-#             json.dumps(session.to_dict()), 
-#             self.SESSION_TIMEOUT
-#         )
-
-#     def delete_session(self, upload_id):
-#         cache.delete(self._key(upload_id))
-
-#     def post(self, request, time_capsoul_id, action):
-#         time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
-#         user = time_capsoul.user
+    # def _key(self, upload_id):
+    #     return f"{self.CACHE_PREFIX}:{upload_id}"
 
 
-#         if action == "init":
-#             return self.initialize_uploads(request, user, time_capsoul)
-#         if action == "upload":
-#             return self.upload_chunk(request, user)
-#         if action == "complete":
-#             return self.complete_upload(request, user)
-#         if action == "abort":
-#             return self.abort_upload(request, user)
 
-#         return JsonResponse({"error": "Invalid action"}, status=400)
+    # def post(self, request, time_capsoul_id,action):
+    #     """
+    #     Handle chunked uploads with progress tracking.
+    #     Supports init, upload, complete, and abort actions.
+    #     """
+    #     # action = request.POST.get('action')
+    #     # user = self.get_current_user(request)
+    #     time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+    #     user = time_capsoul.user
+        
+    #     # Handle replica creation for unlocked capsouls
+    #     replica_instance = self._handle_replica_creation(user, time_capsoul)
+    #     if replica_instance:
+    #         time_capsoul = replica_instance
+        
+    #     # Route to appropriate handler based on action
+    #     if action == "init":
+    #         return self.initialize_uploads(request, user, time_capsoul)
+    #     elif action == "upload":
+    #         return self.upload_chunk(request, user)
+    #     elif action == "complete":
+    #         return self.complete_upload(request, user)
+    #     elif action == "abort":
+    #         return self.abort_upload(request, user)
+    #     else:
+    #         return JsonResponse({"error": "Invalid action"}, status=400)
 
-#     def initialize_uploads(self, request, user, time_capsoul):
-#         """Initialize multiple file uploads at once"""
-#         try:
-#             files_data = json.loads(request.POST.get("filesData", "[]"))
+    # def _handle_replica_creation(self, user, time_capsoul):
+    #     """Handle replica creation for unlocked capsouls"""
+    #     replica_instance = None
+        
+    #     if time_capsoul.status == "sealed":
+    #         from django.utils import timezone
+    #         unlock_date = time_capsoul.unlock_date
+    #         current_datetime = timezone.now()
             
-#             if not files_data:
-#                 return JsonResponse({"error": "No files provided"}, status=400)
-            
-#             initialized_files = []
-            
-#             for file_data in files_data:
-#                 file_name = file_data["fileName"]
-#                 file_size = int(file_data["fileSize"])
-#                 total_chunks = int(file_data["totalChunks"])
-#                 chunk_size = int(file_data["chunkSize"])
+    #         if unlock_date and current_datetime > unlock_date:
+    #             time_capsoul.status = 'unlocked'
+    #             time_capsoul.save()
+        
+    #     if time_capsoul.status == 'unlocked':
+    #         try:
+    #             replica_instance = create_time_capsoul(
+    #                 old_time_capsoul=time_capsoul,
+    #                 current_user=user,
+    #                 option_type='replica_creation',
+    #             )
+    #             cache.delete(f'{user.email}_capsouls')
+    #             logger.info(f'Cached cleared for Capsoul at replica creation')
                 
-#                 clean_name = clean_filename(truncate_filename(file_name))
-#                 file_type = get_file_category(clean_name)
-                
-#                 if file_type == "invalid":
-#                     raise ValidationError({
-#                         "file_type": f"Unsupported file type: {file_name}"
-#                     })
-                
-#                 upload_id = str(uuid.uuid4())
-#                 file_ext = os.path.splitext(clean_name)[1].lower()
-
-#                 s3_key = generate_capsoul_media_s3_key(
-#                     clean_name, 
-#                     user.s3_storage_id, 
-#                     time_capsoul.id, 
-#                     upload_id=upload_id
-#                 )
-
-#                 session = ChunkedUploadSession(
-#                     upload_id,
-#                     user.id,
-#                     time_capsoul.id,
-#                     file_name,
-#                     file_size,
-#                     file_type,
-#                     total_chunks,
-#                     chunk_size,
-#                     s3_key,
-#                 )
-
-#                 # Generate encryption key
-#                 key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
-#                 session.data_key_plain = key["Plaintext"]
-#                 session.data_key_encrypted = key["CiphertextBlob"]
-#                 session.aesgcm = AESGCM(session.data_key_plain)
-                
-#                 # Check if file is JPG/JPEG
-#                 session.is_jpg = file_ext in ('.jpg', '.jpeg')
-#                 session.file_ext = file_ext
-                
-#                 if session.is_jpg:
-#                     # Create temporary storage for decrypted JPG chunks
-#                     session.jpg_chunks_key = f"jpg_chunks:{upload_id}"
-#                     cache.set(session.jpg_chunks_key, json.dumps([]), self.SESSION_TIMEOUT)
-
-#                 # Start multipart upload
-#                 mp = s3.create_multipart_upload(
-#                     Bucket=MEDIA_FILES_BUCKET,
-#                     Key=s3_key,
-#                     Metadata={
-#                         "edk": base64.b64encode(session.data_key_encrypted).decode(),
-#                         'chunk_size': str(chunk_size),
-#                         'file_size': str(file_size),
-#                         'totalChunks': str(total_chunks),
-#                     },
-#                 )
-#                 session.s3_upload_id = mp["UploadId"]
-
-#                 self.save_session(session)
-
-#                 initialized_files.append({
-#                     "uploadId": upload_id,
-#                     "fileName": file_name,
-#                     "s3Key": s3_key,
-#                     "totalChunks": total_chunks,
-#                     "isJpg": session.is_jpg
-#                 })
-
-#             return JsonResponse({
-#                 "files": initialized_files,
-#                 "message": f"{len(initialized_files)} file(s) initialized successfully"
-#             })
-
-#         except Exception as e:
-#             logger.exception(f"Init uploads failed: {e}")
-#             return JsonResponse({"error": str(e)}, status=500)
-
-#     def upload_chunk(self, request, user):
-#         """Upload chunk - handles JPG differently by storing decrypted chunks"""
-#         upload_id = request.POST.get("uploadId")
-#         chunk_index = int(request.POST.get("chunkIndex", -1))
-#         chunk_file = request.FILES.get("chunk")
-#         iv = request.POST.get("iv")
-
-#         lock_key = f"lock:{upload_id}:{chunk_index}"
-#         if not cache.add(lock_key, "1", 10):
-#             return JsonResponse({"error": "Chunk upload in progress"}, status=429)
-
-#         try:
-#             session = self.get_session(upload_id)
-#             if not session:
-#                 return JsonResponse({"error": "Session expired"}, status=404)
-
-#             # Check for duplicate
-#             with session.lock:
-#                 if chunk_index in session.uploaded_chunks:
-#                     uploaded_chunks = len(session.uploaded_chunks)
-#                     # For JPG files, chunk upload is only 50% of total progress
-#                     if session.is_jpg:
-#                         percentage = (uploaded_chunks / session.total_chunks) * 50
-#                     else:
-#                         percentage = (uploaded_chunks / session.total_chunks) * 100
+    #             # Copy parent media files
+    #             if user.id == time_capsoul.user.id:
+    #                 parent_media_files = TimeCapSoulMediaFile.objects.filter(
+    #                     time_capsoul=time_capsoul, 
+    #                     is_deleted=False
+    #                 ).order_by('-updated_at')
+    #             else:
+    #                 recipient = TimeCapSoulRecipient.objects.filter(
+    #                     time_capsoul=time_capsoul, 
+    #                     email=user.email
+    #                 ).first()
                     
-#                     return JsonResponse({
-#                         "status": "duplicate",
-#                         "uploadId": upload_id,
-#                         "uploadedChunks": uploaded_chunks,
-#                         "totalChunks": session.total_chunks,
-#                         "percentage": round(percentage, 2)
-#                     })
-
-#             # Decrypt chunk
-#             decrypted = self._decrypt_chunk(chunk_file, iv)
-            
-#             if session.is_jpg:
-#                 # For JPG files, store decrypted chunks temporarily
-#                 jpg_chunks_data = json.loads(cache.get(session.jpg_chunks_key, '[]'))
+    #                 if not recipient:
+    #                     logger.info(f"Recipient not found for tagged capsoul {time_capsoul.id} and user {user.email}")
+    #                     return None
+                    
+    #                 parent_files_id = get_recipient_capsoul_ids(recipient)
+    #                 parent_media_files = TimeCapSoulMediaFile.objects.filter(
+    #                     time_capsoul=time_capsoul,
+    #                     id__in=parent_files_id,
+    #                 ).order_by('-updated_at')
                 
-#                 # Store chunk with index for proper reconstruction
-#                 jpg_chunks_data.append({
-#                     'index': chunk_index,
-#                     'data': base64.b64encode(decrypted).decode('utf-8')
-#                 })
+    #             new_media_count = 0
+    #             old_media_count = parent_media_files.count()
                 
-#                 cache.set(session.jpg_chunks_key, json.dumps(jpg_chunks_data), self.SESSION_TIMEOUT)
+    #             for parent_file in parent_media_files:
+    #                 try:
+    #                     is_media_created = create_time_capsoul_media_file(
+    #                         old_media=parent_file,
+    #                         new_capsoul=replica_instance,
+    #                         current_user=user,
+    #                         option_type='replica_creation',
+    #                     )
+    #                     if is_media_created:
+    #                         new_media_count += 1
+    #                 except Exception as e:
+    #                     logger.exception(f'Exception while creating media-file replica for media-file id {parent_file.id}')
+    #                     pass
                 
-#                 # Update session
-#                 with session.lock:
-#                     session.uploaded_chunks.add(chunk_index)
+    #             logger.info(f"Replica created: Old media count: {old_media_count}, New media count: {new_media_count}")
                 
-#                 self.save_session(session)
+    #         except Exception as e:
+    #             logger.error(f'Exception while creating time-capsoul replica user {user.email} capsoul-id: {replica_instance.id} errors: {e}')
+        
+    #     return replica_instance
+
+    # def _extract_thumbnail_async(self, media_id, s3_key, file_type, file_ext, user_id):
+    #     """Async thumbnail extraction to reduce response time"""
+    #     try:
+    #         from memory_room.upload_helper import extract_thumbnail_from_segment
+    #         from memory_room.upload_helper import extract_audio_thumbnail_from_bytes
+
+    #         media = TimeCapSoulMediaFile.objects.get(id=media_id)
+
+    #         decryptor = S3MediaDecryptor(s3_key)
+    #         file_bytes = decryptor.get_full_decrypted_bytes()
+    #         cache_key = media_cache_key('media_bytes_', s3_key)
+    #         if file_bytes:
+    #             cache.set(cache_key, file_bytes, timeout=60*60*24)
+
+    #         thumbnail_data = None
+            
+    #         if file_type == 'video':
+    #             thumbnail_data = extract_thumbnail_from_segment(file_bytes, file_ext, "full_file")
+    #         else:
+    #             extractor = MediaThumbnailExtractor(file='', file_ext=file_ext)
+    #             thumbnail_data = extractor.extract_audio_thumbnail_from_bytes(
+    #                 extension=file_ext,
+    #                 decrypted_bytes=file_bytes
+    #             )
                 
-#                 uploaded_chunks = len(session.uploaded_chunks)
-#                 # For JPG: Chunk reception is 50% of progress
-#                 percentage = (uploaded_chunks / session.total_chunks) * 50
+    #             if not thumbnail_data:
+    #                 thumbnail_data = extract_audio_thumbnail_from_bytes(
+    #                     extension=file_ext,
+    #                     audio_bytes=file_bytes,
+    #                 )
+
+    #         if thumbnail_data:
+    #             from django.core.files.base import ContentFile
+    #             from userauth.models import Assets
                 
-#                 return JsonResponse({
-#                     "status": "uploaded",
-#                     "uploadId": upload_id,
-#                     "uploadedChunks": uploaded_chunks,
-#                     "totalChunks": session.total_chunks,
-#                     "percentage": round(percentage, 2),
-#                     "isJpg": True,
-#                     "stage": "receiving"
-#                 })
-#             else:
-#                 # For non-JPG files, encrypt and upload to S3 immediately
-#                 encrypted = self._encrypt_for_s3(decrypted, session.aesgcm)
+    #             image_file = ContentFile(
+    #                 thumbnail_data, 
+    #                 name=f"thumbnail_{media.title.split('.')[0]}.jpg"
+    #             )
+    #             if image_file:
+    #                 asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thumbnail/Audio')
+    #                 media.thumbnail = asset
+    #                 media.save()
+    #                 logger.info(f'Thumbnail updated for media: {media.id}')
+    #                 print(f'Thumbnail updated for media: {media.id}')
 
-#                 part_no = chunk_index + 1
-#                 resp = s3.upload_part(
-#                     Bucket=MEDIA_FILES_BUCKET,
-#                     Key=session.s3_key,
-#                     UploadId=session.s3_upload_id,
-#                     PartNumber=part_no,
-#                     Body=encrypted,
-#                 )
+    #     except Exception as e:
+    #         logger.error(f'Async thumbnail extraction failed for media {media_id}: {e}')
 
-#                 with session.lock:
-#                     session.s3_parts[str(part_no)] = resp["ETag"]
-#                     session.uploaded_chunks.add(chunk_index)
+    
+    # def _key(self, upload_id):
+    #     return f"{self.CACHE_PREFIX}:{upload_id}"
+
+    # def get_session(self, upload_id):
+    #     data = cache.get(self._key(upload_id))
+    #     return ChunkedUploadSession.from_dict(json.loads(data)) if data else None
+
+    # def save_session(self, session):
+    #     session.last_activity = time.time()
+    #     cache.set(
+    #         self._key(session.upload_id), 
+    #         json.dumps(session.to_dict()), 
+    #         self.SESSION_TIMEOUT
+    #     )
+
+    # def delete_session(self, upload_id):
+    #     cache.delete(self._key(upload_id))
+
+    # def post(self, request, time_capsoul_id, action):
+    #     time_capsoul = get_object_or_404(TimeCapSoul, id=time_capsoul_id)
+    #     user = time_capsoul.user
+
+
+    #     if action == "init":
+    #         return self.initialize_uploads(request, user, time_capsoul)
+    #     if action == "upload":
+    #         return self.upload_chunk(request, user)
+    #     if action == "complete":
+    #         return self.complete_upload(request, user)
+    #     if action == "abort":
+    #         return self.abort_upload(request, user)
+
+    #     return JsonResponse({"error": "Invalid action"}, status=400)
+
+    # def initialize_uploads(self, request, user, time_capsoul):
+    #     """Initialize multiple file uploads at once"""
+    #     try:
+    #         files_data = json.loads(request.POST.get("filesData", "[]"))
+            
+    #         if not files_data:
+    #             return JsonResponse({"error": "No files provided"}, status=400)
+            
+    #         initialized_files = []
+            
+    #         for file_data in files_data:
+    #             file_name = file_data["fileName"]
+    #             file_size = int(file_data["fileSize"])
+    #             total_chunks = int(file_data["totalChunks"])
+    #             chunk_size = int(file_data["chunkSize"])
                 
-#                 self.save_session(session)
-
-#                 uploaded_chunks = len(session.uploaded_chunks)
-#                 percentage = (uploaded_chunks / session.total_chunks) * 100
-
-#                 return JsonResponse({
-#                     "status": "uploaded",
-#                     "uploadId": upload_id,
-#                     "uploadedChunks": uploaded_chunks,
-#                     "totalChunks": session.total_chunks,
-#                     "percentage": round(percentage, 2)
-#                 })
-
-#         except Exception as e:
-#             logger.exception(f"Error uploading chunk {chunk_index}: {e}")
-#             return JsonResponse({"error": str(e)}, status=500)
-#         finally:
-#             cache.delete(lock_key)
-
-#     def complete_upload(self, request, user):
-#         """Complete a single file upload or multiple files"""
-#         upload_ids = request.POST.getlist("uploadIds[]") or [request.POST.get("uploadId")]
-        
-#         if not upload_ids or not upload_ids[0]:
-#             return JsonResponse({"error": "No upload IDs provided"}, status=400)
-
-#         completed_files = []
-#         failed_files = []
-
-#         for upload_id in upload_ids:
-#             try:
-#                 result = self._complete_single_upload(upload_id, user)
-#                 if result["status"] == "success":
-#                     completed_files.append(result)
-#                 else:
-#                     failed_files.append({"uploadId": upload_id, "error": result.get("error")})
-#             except Exception as e:
-#                 logger.exception(f"Complete upload failed for {upload_id}: {e}")
-#                 failed_files.append({"uploadId": upload_id, "error": str(e)})
-
-#         response_data = {
-#             "completedFiles": completed_files,
-#             "failedFiles": failed_files,
-#             "totalCompleted": len(completed_files),
-#             "totalFailed": len(failed_files)
-#         }
-
-#         if failed_files:
-#             response_data["message"] = f"{len(completed_files)} file(s) completed, {len(failed_files)} failed"
-#             return JsonResponse(response_data, status=207)
-        
-#         response_data["message"] = f"All {len(completed_files)} file(s) completed successfully"
-#         return JsonResponse(response_data)
-
-#     def _complete_single_upload(self, upload_id, user):
-#         """Complete a single file upload"""
-#         session = self.get_session(upload_id)
-
-#         if not session:
-#             return {"status": "error", "error": "Session missing", "uploadId": upload_id}
-
-#         if len(session.uploaded_chunks) != session.total_chunks:
-#             return {
-#                 "status": "error",
-#                 "error": f"Incomplete upload: {len(session.uploaded_chunks)}/{session.total_chunks} chunks",
-#                 "uploadId": upload_id
-#             }
-
-#         try:
-#             if session.is_jpg:
-#                 # Process JPG file: check corruption, fix if needed, then upload
-#                 # This represents the remaining 50% of progress
-#                 result = self._process_jpg_file(session, user, upload_id)
-#                 if result["status"] == "error":
-#                     return result
-#             else:
-#                 # Complete multipart upload for non-JPG files
-#                 if len(session.s3_parts) != session.total_chunks:
-#                     return {
-#                         "status": "error",
-#                         "error": f"Incomplete S3 upload: {len(session.s3_parts)}/{session.total_chunks} parts",
-#                         "uploadId": upload_id
-#                     }
+    #             clean_name = clean_filename(truncate_filename(file_name))
+    #             file_type = get_file_category(clean_name)
                 
-#                 parts = [
-#                     {"PartNumber": int(p), "ETag": et}
-#                     for p, et in session.s3_parts.items()
-#                 ]
-#                 parts.sort(key=lambda x: x["PartNumber"])
-
-#                 s3.complete_multipart_upload(
-#                     Bucket=MEDIA_FILES_BUCKET,
-#                     Key=session.s3_key,
-#                     UploadId=session.s3_upload_id,
-#                     MultipartUpload={"Parts": parts},
-#                 )
-
-#             # Create database record
-#             time_capsoul = TimeCapSoul.objects.get(id=session.time_capsoul_id)
-            
-#             from memory_room.utils import get_readable_file_size_from_bytes
-#             file_size = get_readable_file_size_from_bytes(session.file_size)
-
-#             media = TimeCapSoulMediaFile.objects.create(
-#                 user=user,
-#                 time_capsoul=time_capsoul,
-#                 thumbnail=None,
-#                 title=session.file_name,
-#                 file_size=file_size,
-#                 s3_key=session.s3_key,
-#                 file_type=session.file_type
-#             )
-
-#             # Clear cache
-#             cache_key = f'{user.email}_capsoul_{time_capsoul.id}'
-#             cache.delete(cache_key)
-            
-#             if session.is_jpg:
-#                 cache.delete(session.jpg_chunks_key)
-
-#             # Async thumbnail extraction for video/audio
-#             if session.file_type in ['video', 'audio']:
-#                 self._extract_thumbnail_async(
-#                     media.id,
-#                     session.s3_key,
-#                     session.file_type,
-#                     session.file_ext,
-#                     user.id
-#                 )
-
-#             update_users_storage("addition", "capsoul", media)
-#             self.delete_session(upload_id)
-
-#             return {
-#                 "status": "success",
-#                 "uploadId": upload_id,
-#                 "id": media.id,
-#                 "fileName": session.file_name
-#             }
-
-#         except Exception as e:
-#             logger.exception(f"Error completing upload {upload_id}: {e}")
-#             return {
-#                 "status": "error",
-#                 "error": str(e),
-#                 "uploadId": upload_id
-#             }
-
-#     def _update_jpg_progress(self, upload_id, percentage, stage):
-#         """Helper to update JPG processing progress in cache"""
-#         progress_key = f"jpg_progress:{upload_id}"
-#         cache.set(progress_key, {
-#             "percentage": percentage,
-#             "stage": stage,
-#             "timestamp": time.time()
-#         }, 300)  # 5 minutes TTL
-
-#     def _process_jpg_file(self, session, user, upload_id):
-#         """Process JPG file: check corruption, fix if needed, then upload"""
-#         try:
-#             logger.info(f"[JPG] Processing {session.file_name}...")
-            
-#             # Progress: 50% (chunks received) → 55% (reconstructing)
-#             self._update_jpg_progress(upload_id, 52, "reconstructing")
-            
-#             # Retrieve all decrypted chunks
-#             jpg_chunks_data = json.loads(cache.get(session.jpg_chunks_key, '[]'))
-            
-#             if not jpg_chunks_data:
-#                 return {"status": "error", "error": "No JPG chunks found"}
-            
-#             # Sort chunks by index
-#             jpg_chunks_data.sort(key=lambda x: x['index'])
-            
-#             # Reconstruct full file bytes
-#             original_bytes = b''.join([
-#                 base64.b64decode(chunk['data']) 
-#                 for chunk in jpg_chunks_data
-#             ])
-            
-#             logger.info(f"[JPG] Reconstructed {len(original_bytes)} bytes for {session.file_name}")
-            
-#             # Progress: 55% → 65% (checking/fixing)
-#             self._update_jpg_progress(upload_id, 65, "checking")
-            
-#             # Check and fix JPG corruption
-#             final_bytes = self._check_and_fix_jpg(original_bytes, session.file_name, upload_id)
-            
-#             # Progress: 65% → 100% (uploading to S3)
-#             self._update_jpg_progress(upload_id, 75, "uploading")
-            
-#             # Now encrypt and upload the final bytes in chunks
-#             self._upload_processed_jpg(final_bytes, session, upload_id)
-            
-#             # Progress: 100%
-#             self._update_jpg_progress(upload_id, 100, "complete")
-            
-#             logger.info(f"[JPG] Successfully processed and uploaded {session.file_name}")
-#             return {"status": "success"}
-            
-#         except Exception as e:
-#             logger.exception(f"JPG processing failed: {e}")
-#             return {"status": "error", "error": f"JPG processing failed: {str(e)}"}
-
-#     def _check_and_fix_jpg(self, original_bytes, file_name, upload_id):
-#         """Check JPG corruption and fix if needed"""
-#         logger.info(f"[JPG] Checking corruption for {file_name}...")
-        
-#         if not is_image_corrupted(original_bytes):
-#             logger.info(f"[JPG] File is valid, no repair needed")
-#             self._update_jpg_progress(upload_id, 70, "valid")
-#             return original_bytes
-        
-#         logger.warning(f"[JPG] Corruption detected, attempting repair...")
-#         self._update_jpg_progress(upload_id, 67, "repairing_pillow")
-        
-#         # Try Pillow repair
-#         repaired = try_fix_corrupted_jpg(original_bytes)
-#         if repaired:
-#             logger.info(f"[JPG] Repaired with Pillow")
-#             self._update_jpg_progress(upload_id, 70, "repaired_pillow")
-#             return repaired
-        
-#         # Try OpenCV repair
-#         logger.info(f"[JPG] Pillow failed, trying OpenCV...")
-#         self._update_jpg_progress(upload_id, 68, "repairing_opencv")
-#         cv_fixed = opencv_repair_jpg(original_bytes)
-#         if cv_fixed:
-#             logger.info(f"[JPG] Repaired with OpenCV")
-#             self._update_jpg_progress(upload_id, 70, "repaired_opencv")
-#             return cv_fixed
-        
-#         # Try extreme header rebuild
-#         logger.info(f"[JPG] OpenCV failed, trying extreme repair...")
-#         self._update_jpg_progress(upload_id, 69, "repairing_extreme")
-#         extreme_fix = force_repair_jpeg(original_bytes)
-#         if extreme_fix:
-#             logger.info(f"[JPG] Repaired with extreme method")
-#             self._update_jpg_progress(upload_id, 70, "repaired_extreme")
-#             return extreme_fix
-        
-#         # Last resort: re-encode
-#         logger.warning(f"[JPG] All repairs failed, attempting re-encode...")
-#         self._update_jpg_progress(upload_id, 69, "reencoding")
-#         try:
-#             final_bytes = reencode_jpg(original_bytes)
-#             logger.info(f"[JPG] Successfully re-encoded")
-#             self._update_jpg_progress(upload_id, 70, "reencoded")
-#             return final_bytes
-#         except Exception as e:
-#             logger.error(f"[JPG] Re-encoding failed: {e}")
-#             raise Exception(f"Image totally unrecoverable: {str(e)}")
-
-#     def _upload_processed_jpg(self, file_bytes, session, upload_id):
-#         """Upload processed JPG file to S3 in encrypted chunks"""
-#         logger.info(f"[JPG] Uploading {len(file_bytes)} bytes to S3...")
-        
-#         # Split into chunks and upload
-#         chunk_size = session.chunk_size
-#         total_bytes = len(file_bytes)
-#         total_parts = (total_bytes + chunk_size - 1) // chunk_size
-#         part_number = 1
-        
-#         for i in range(0, total_bytes, chunk_size):
-#             chunk_data = file_bytes[i:i + chunk_size]
-            
-#             # Encrypt chunk for S3
-#             encrypted = self._encrypt_for_s3(chunk_data, session.aesgcm)
-            
-#             # Upload part
-#             resp = s3.upload_part(
-#                 Bucket=MEDIA_FILES_BUCKET,
-#                 Key=session.s3_key,
-#                 UploadId=session.s3_upload_id,
-#                 PartNumber=part_number,
-#                 Body=encrypted,
-#             )
-            
-#             session.s3_parts[str(part_number)] = resp["ETag"]
-            
-#             # Update progress: 75% → 95% during upload
-#             upload_progress = 75 + (part_number / total_parts) * 20
-#             self._update_jpg_progress(upload_id, upload_progress, "uploading_s3")
-            
-#             part_number += 1
-        
-#         # Progress: 95% → 100% (completing)
-#         self._update_jpg_progress(upload_id, 95, "completing")
-        
-#         # Complete multipart upload
-#         parts = [
-#             {"PartNumber": int(p), "ETag": et}
-#             for p, et in session.s3_parts.items()
-#         ]
-#         parts.sort(key=lambda x: x["PartNumber"])
-        
-#         s3.complete_multipart_upload(
-#             Bucket=MEDIA_FILES_BUCKET,
-#             Key=session.s3_key,
-#             UploadId=session.s3_upload_id,
-#             MultipartUpload={"Parts": parts},
-#         )
-        
-#         logger.info(f"[JPG] Upload completed with {len(parts)} parts")
-
-#     def abort_upload(self, request, user):
-#         """Abort single or multiple uploads"""
-#         upload_ids = request.POST.getlist("uploadIds[]") or [request.POST.get("uploadId")]
-        
-#         aborted_count = 0
-#         for upload_id in upload_ids:
-#             if not upload_id:
-#                 continue
+    #             if file_type == "invalid":
+    #                 raise ValidationError({
+    #                     "file_type": f"Unsupported file type: {file_name}"
+    #                 })
                 
-#             session = self.get_session(upload_id)
-#             if session:
-#                 try:
-#                     s3.abort_multipart_upload(
-#                         Bucket=MEDIA_FILES_BUCKET,
-#                         Key=session.s3_key,
-#                         UploadId=session.s3_upload_id,
-#                     )
-#                 except Exception as e:
-#                     logger.error(f"Failed to abort S3 upload {upload_id}: {e}")
+    #             upload_id = str(uuid.uuid4())
+    #             file_ext = os.path.splitext(clean_name)[1].lower()
 
-#                 # Clean up JPG chunks if applicable
-#                 if session.is_jpg:
-#                     cache.delete(session.jpg_chunks_key)
-#                     cache.delete(f"jpg_progress:{upload_id}")
+    #             s3_key = generate_capsoul_media_s3_key(
+    #                 clean_name, 
+    #                 user.s3_storage_id, 
+    #                 time_capsoul.id, 
+    #                 upload_id=upload_id
+    #             )
 
-#                 self.delete_session(upload_id)
-#                 aborted_count += 1
+    #             session = ChunkedUploadSession(
+    #                 upload_id,
+    #                 user.id,
+    #                 time_capsoul.id,
+    #                 file_name,
+    #                 file_size,
+    #                 file_type,
+    #                 total_chunks,
+    #                 chunk_size,
+    #                 s3_key,
+    #             )
 
-#         return JsonResponse({
-#             "status": "aborted",
-#             "count": aborted_count
-#         })
+    #             # Generate encryption key
+    #             key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+    #             session.data_key_plain = key["Plaintext"]
+    #             session.data_key_encrypted = key["CiphertextBlob"]
+    #             session.aesgcm = AESGCM(session.data_key_plain)
+                
+    #             # Check if file is JPG/JPEG
+    #             session.is_jpg = file_ext in ('.jpg', '.jpeg')
+    #             session.file_ext = file_ext
+                
+    #             if session.is_jpg:
+    #                 # Create temporary storage for decrypted JPG chunks
+    #                 session.jpg_chunks_key = f"jpg_chunks:{upload_id}"
+    #                 cache.set(session.jpg_chunks_key, json.dumps([]), self.SESSION_TIMEOUT)
 
-#     def _decrypt_chunk(self, chunk_file, iv_str):
-#         """Decrypt chunk using AES-256-GCM"""
-#         try:
-#             if all(c in "0123456789abcdefABCDEF" for c in iv_str.strip()):
-#                 iv = bytes.fromhex(iv_str)
-#             else:
-#                 iv = base64.b64decode(iv_str)
-#         except Exception as e:
-#             raise ValueError(f"Invalid IV format: {e}")
+    #             # Start multipart upload
+    #             mp = s3.create_multipart_upload(
+    #                 Bucket=MEDIA_FILES_BUCKET,
+    #                 Key=s3_key,
+    #                 Metadata={
+    #                     "edk": base64.b64encode(session.data_key_encrypted).decode(),
+    #                     'chunk_size': str(chunk_size),
+    #                     'file_size': str(file_size),
+    #                     'totalChunks': str(total_chunks),
+    #                 },
+    #             )
+    #             session.s3_upload_id = mp["UploadId"]
 
-#         key_bytes = settings.ENCRYPTION_KEY
-#         if isinstance(key_bytes, str):
-#             key_bytes = base64.b64decode(key_bytes)
+    #             self.save_session(session)
 
-#         encrypted_data = chunk_file.read()
+    #             initialized_files.append({
+    #                 "uploadId": upload_id,
+    #                 "fileName": file_name,
+    #                 "s3Key": s3_key,
+    #                 "totalChunks": total_chunks,
+    #                 "isJpg": session.is_jpg
+    #             })
 
-#         if len(encrypted_data) < 16:
-#             raise ValueError("Encrypted chunk too short")
+    #         return JsonResponse({
+    #             "files": initialized_files,
+    #             "message": f"{len(initialized_files)} file(s) initialized successfully"
+    #         })
 
-#         ciphertext = encrypted_data[:-16]
-#         auth_tag = encrypted_data[-16:]
+    #     except Exception as e:
+    #         logger.exception(f"Init uploads failed: {e}")
+    #         return JsonResponse({"error": str(e)}, status=500)
 
-#         cipher = Cipher(
-#             algorithms.AES(key_bytes),
-#             modes.GCM(iv, auth_tag),
-#             backend=default_backend()
-#         )
-#         decryptor = cipher.decryptor()
-#         decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+    # def upload_chunk(self, request, user):
+    #     """Upload chunk - handles JPG differently by storing decrypted chunks"""
+    #     upload_id = request.POST.get("uploadId")
+    #     chunk_index = int(request.POST.get("chunkIndex", -1))
+    #     chunk_file = request.FILES.get("chunk")
+    #     iv = request.POST.get("iv")
 
-#         return decrypted
+    #     lock_key = f"lock:{upload_id}:{chunk_index}"
+    #     if not cache.add(lock_key, "1", 10):
+    #         return JsonResponse({"error": "Chunk upload in progress"}, status=429)
 
-#     def _encrypt_for_s3(self, data, aesgcm):
-#         if aesgcm is None:
-#             raise RuntimeError("AESGCM is not initialized")
+    #     try:
+    #         session = self.get_session(upload_id)
+    #         if not session:
+    #             return JsonResponse({"error": "Session expired"}, status=404)
 
-#         nonce = os.urandom(12)
-#         ciphertext = aesgcm.encrypt(nonce, data, None)
-#         return nonce + ciphertext
+    #         # Check for duplicate
+    #         with session.lock:
+    #             if chunk_index in session.uploaded_chunks:
+    #                 uploaded_chunks = len(session.uploaded_chunks)
+    #                 # For JPG files, chunk upload is only 50% of total progress
+    #                 if session.is_jpg:
+    #                     percentage = (uploaded_chunks / session.total_chunks) * 50
+    #                 else:
+    #                     percentage = (uploaded_chunks / session.total_chunks) * 100
+                    
+    #                 return JsonResponse({
+    #                     "status": "duplicate",
+    #                     "uploadId": upload_id,
+    #                     "uploadedChunks": uploaded_chunks,
+    #                     "totalChunks": session.total_chunks,
+    #                     "percentage": round(percentage, 2)
+    #                 })
 
+    #         # Decrypt chunk
+    #         decrypted = self._decrypt_chunk(chunk_file, iv)
+            
+    #         if session.is_jpg:
+    #             # For JPG files, store decrypted chunks temporarily
+    #             jpg_chunks_data = json.loads(cache.get(session.jpg_chunks_key, '[]'))
+                
+    #             # Store chunk with index for proper reconstruction
+    #             jpg_chunks_data.append({
+    #                 'index': chunk_index,
+    #                 'data': base64.b64encode(decrypted).decode('utf-8')
+    #             })
+                
+    #             cache.set(session.jpg_chunks_key, json.dumps(jpg_chunks_data), self.SESSION_TIMEOUT)
+                
+    #             # Update session
+    #             with session.lock:
+    #                 session.uploaded_chunks.add(chunk_index)
+                
+    #             self.save_session(session)
+                
+    #             uploaded_chunks = len(session.uploaded_chunks)
+    #             # For JPG: Chunk reception is 50% of progress
+    #             percentage = (uploaded_chunks / session.total_chunks) * 50
+                
+    #             return JsonResponse({
+    #                 "status": "uploaded",
+    #                 "uploadId": upload_id,
+    #                 "uploadedChunks": uploaded_chunks,
+    #                 "totalChunks": session.total_chunks,
+    #                 "percentage": round(percentage, 2),
+    #                 "isJpg": True,
+    #                 "stage": "receiving"
+    #             })
+    #         else:
+    #             # For non-JPG files, encrypt and upload to S3 immediately
+    #             encrypted = self._encrypt_for_s3(decrypted, session.aesgcm)
+
+    #             part_no = chunk_index + 1
+    #             resp = s3.upload_part(
+    #                 Bucket=MEDIA_FILES_BUCKET,
+    #                 Key=session.s3_key,
+    #                 UploadId=session.s3_upload_id,
+    #                 PartNumber=part_no,
+    #                 Body=encrypted,
+    #             )
+
+    #             with session.lock:
+    #                 session.s3_parts[str(part_no)] = resp["ETag"]
+    #                 session.uploaded_chunks.add(chunk_index)
+                
+    #             self.save_session(session)
+
+    #             uploaded_chunks = len(session.uploaded_chunks)
+    #             percentage = (uploaded_chunks / session.total_chunks) * 100
+
+    #             return JsonResponse({
+    #                 "status": "uploaded",
+    #                 "uploadId": upload_id,
+    #                 "uploadedChunks": uploaded_chunks,
+    #                 "totalChunks": session.total_chunks,
+    #                 "percentage": round(percentage, 2)
+    #             })
+
+    #     except Exception as e:
+    #         logger.exception(f"Error uploading chunk {chunk_index}: {e}")
+    #         return JsonResponse({"error": str(e)}, status=500)
+    #     finally:
+    #         cache.delete(lock_key)
+
+    # def complete_upload(self, request, user):
+    #     """Complete a single file upload or multiple files"""
+    #     upload_ids = request.POST.getlist("uploadIds[]") or [request.POST.get("uploadId")]
+        
+    #     if not upload_ids or not upload_ids[0]:
+    #         return JsonResponse({"error": "No upload IDs provided"}, status=400)
+
+    #     completed_files = []
+    #     failed_files = []
+
+    #     for upload_id in upload_ids:
+    #         try:
+    #             result = self._complete_single_upload(upload_id, user)
+    #             if result["status"] == "success":
+    #                 completed_files.append(result)
+    #             else:
+    #                 failed_files.append({"uploadId": upload_id, "error": result.get("error")})
+    #         except Exception as e:
+    #             logger.exception(f"Complete upload failed for {upload_id}: {e}")
+    #             failed_files.append({"uploadId": upload_id, "error": str(e)})
+
+    #     response_data = {
+    #         "completedFiles": completed_files,
+    #         "failedFiles": failed_files,
+    #         "totalCompleted": len(completed_files),
+    #         "totalFailed": len(failed_files)
+    #     }
+
+    #     if failed_files:
+    #         response_data["message"] = f"{len(completed_files)} file(s) completed, {len(failed_files)} failed"
+    #         return JsonResponse(response_data, status=207)
+        
+    #     response_data["message"] = f"All {len(completed_files)} file(s) completed successfully"
+    #     return JsonResponse(response_data)
+
+    # def _complete_single_upload(self, upload_id, user):
+    #     """Complete a single file upload"""
+    #     session = self.get_session(upload_id)
+
+    #     if not session:
+    #         return {"status": "error", "error": "Session missing", "uploadId": upload_id}
+
+    #     if len(session.uploaded_chunks) != session.total_chunks:
+    #         return {
+    #             "status": "error",
+    #             "error": f"Incomplete upload: {len(session.uploaded_chunks)}/{session.total_chunks} chunks",
+    #             "uploadId": upload_id
+    #         }
+
+    #     try:
+    #         if session.is_jpg:
+    #             # Process JPG file: check corruption, fix if needed, then upload
+    #             # This represents the remaining 50% of progress
+    #             result = self._process_jpg_file(session, user, upload_id)
+    #             if result["status"] == "error":
+    #                 return result
+    #         else:
+    #             # Complete multipart upload for non-JPG files
+    #             if len(session.s3_parts) != session.total_chunks:
+    #                 return {
+    #                     "status": "error",
+    #                     "error": f"Incomplete S3 upload: {len(session.s3_parts)}/{session.total_chunks} parts",
+    #                     "uploadId": upload_id
+    #                 }
+                
+    #             parts = [
+    #                 {"PartNumber": int(p), "ETag": et}
+    #                 for p, et in session.s3_parts.items()
+    #             ]
+    #             parts.sort(key=lambda x: x["PartNumber"])
+
+    #             s3.complete_multipart_upload(
+    #                 Bucket=MEDIA_FILES_BUCKET,
+    #                 Key=session.s3_key,
+    #                 UploadId=session.s3_upload_id,
+    #                 MultipartUpload={"Parts": parts},
+    #             )
+
+    #         # Create database record
+    #         time_capsoul = TimeCapSoul.objects.get(id=session.time_capsoul_id)
+            
+    #         from memory_room.utils import get_readable_file_size_from_bytes
+    #         file_size = get_readable_file_size_from_bytes(session.file_size)
+
+    #         media = TimeCapSoulMediaFile.objects.create(
+    #             user=user,
+    #             time_capsoul=time_capsoul,
+    #             thumbnail=None,
+    #             title=session.file_name,
+    #             file_size=file_size,
+    #             s3_key=session.s3_key,
+    #             file_type=session.file_type
+    #         )
+
+    #         # Clear cache
+    #         cache_key = f'{user.email}_capsoul_{time_capsoul.id}'
+    #         cache.delete(cache_key)
+            
+    #         if session.is_jpg:
+    #             cache.delete(session.jpg_chunks_key)
+
+    #         # Async thumbnail extraction for video/audio
+    #         if session.file_type in ['video', 'audio']:
+    #             self._extract_thumbnail_async(
+    #                 media.id,
+    #                 session.s3_key,
+    #                 session.file_type,
+    #                 session.file_ext,
+    #                 user.id
+    #             )
+
+    #         update_users_storage("addition", "capsoul", media)
+    #         self.delete_session(upload_id)
+
+    #         return {
+    #             "status": "success",
+    #             "uploadId": upload_id,
+    #             "id": media.id,
+    #             "fileName": session.file_name
+    #         }
+
+    #     except Exception as e:
+    #         logger.exception(f"Error completing upload {upload_id}: {e}")
+    #         return {
+    #             "status": "error",
+    #             "error": str(e),
+    #             "uploadId": upload_id
+    #         }
+
+    # def _update_jpg_progress(self, upload_id, percentage, stage):
+    #     """Helper to update JPG processing progress in cache"""
+    #     progress_key = f"jpg_progress:{upload_id}"
+    #     cache.set(progress_key, {
+    #         "percentage": percentage,
+    #         "stage": stage,
+    #         "timestamp": time.time()
+    #     }, 300)  # 5 minutes TTL
+
+    # def _process_jpg_file(self, session, user, upload_id):
+    #     """Process JPG file: check corruption, fix if needed, then upload"""
+    #     try:
+    #         logger.info(f"[JPG] Processing {session.file_name}...")
+            
+    #         # Progress: 50% (chunks received) → 55% (reconstructing)
+    #         self._update_jpg_progress(upload_id, 52, "reconstructing")
+            
+    #         # Retrieve all decrypted chunks
+    #         jpg_chunks_data = json.loads(cache.get(session.jpg_chunks_key, '[]'))
+            
+    #         if not jpg_chunks_data:
+    #             return {"status": "error", "error": "No JPG chunks found"}
+            
+    #         # Sort chunks by index
+    #         jpg_chunks_data.sort(key=lambda x: x['index'])
+            
+    #         # Reconstruct full file bytes
+    #         original_bytes = b''.join([
+    #             base64.b64decode(chunk['data']) 
+    #             for chunk in jpg_chunks_data
+    #         ])
+            
+    #         logger.info(f"[JPG] Reconstructed {len(original_bytes)} bytes for {session.file_name}")
+            
+    #         # Progress: 55% → 65% (checking/fixing)
+    #         self._update_jpg_progress(upload_id, 65, "checking")
+            
+    #         # Check and fix JPG corruption
+    #         final_bytes = self._check_and_fix_jpg(original_bytes, session.file_name, upload_id)
+            
+    #         # Progress: 65% → 100% (uploading to S3)
+    #         self._update_jpg_progress(upload_id, 75, "uploading")
+            
+    #         # Now encrypt and upload the final bytes in chunks
+    #         self._upload_processed_jpg(final_bytes, session, upload_id)
+            
+    #         # Progress: 100%
+    #         self._update_jpg_progress(upload_id, 100, "complete")
+            
+    #         logger.info(f"[JPG] Successfully processed and uploaded {session.file_name}")
+    #         return {"status": "success"}
+            
+    #     except Exception as e:
+    #         logger.exception(f"JPG processing failed: {e}")
+    #         return {"status": "error", "error": f"JPG processing failed: {str(e)}"}
+
+    # def _check_and_fix_jpg(self, original_bytes, file_name, upload_id):
+    #     """Check JPG corruption and fix if needed"""
+    #     logger.info(f"[JPG] Checking corruption for {file_name}...")
+        
+    #     if not is_image_corrupted(original_bytes):
+    #         logger.info(f"[JPG] File is valid, no repair needed")
+    #         self._update_jpg_progress(upload_id, 70, "valid")
+    #         return original_bytes
+        
+    #     logger.warning(f"[JPG] Corruption detected, attempting repair...")
+    #     self._update_jpg_progress(upload_id, 67, "repairing_pillow")
+        
+    #     # Try Pillow repair
+    #     repaired = try_fix_corrupted_jpg(original_bytes)
+    #     if repaired:
+    #         logger.info(f"[JPG] Repaired with Pillow")
+    #         self._update_jpg_progress(upload_id, 70, "repaired_pillow")
+    #         return repaired
+        
+    #     # Try OpenCV repair
+    #     logger.info(f"[JPG] Pillow failed, trying OpenCV...")
+    #     self._update_jpg_progress(upload_id, 68, "repairing_opencv")
+    #     cv_fixed = opencv_repair_jpg(original_bytes)
+    #     if cv_fixed:
+    #         logger.info(f"[JPG] Repaired with OpenCV")
+    #         self._update_jpg_progress(upload_id, 70, "repaired_opencv")
+    #         return cv_fixed
+        
+    #     # Try extreme header rebuild
+    #     logger.info(f"[JPG] OpenCV failed, trying extreme repair...")
+    #     self._update_jpg_progress(upload_id, 69, "repairing_extreme")
+    #     extreme_fix = force_repair_jpeg(original_bytes)
+    #     if extreme_fix:
+    #         logger.info(f"[JPG] Repaired with extreme method")
+    #         self._update_jpg_progress(upload_id, 70, "repaired_extreme")
+    #         return extreme_fix
+        
+    #     # Last resort: re-encode
+    #     logger.warning(f"[JPG] All repairs failed, attempting re-encode...")
+    #     self._update_jpg_progress(upload_id, 69, "reencoding")
+    #     try:
+    #         final_bytes = reencode_jpg(original_bytes)
+    #         logger.info(f"[JPG] Successfully re-encoded")
+    #         self._update_jpg_progress(upload_id, 70, "reencoded")
+    #         return final_bytes
+    #     except Exception as e:
+    #         logger.error(f"[JPG] Re-encoding failed: {e}")
+    #         raise Exception(f"Image totally unrecoverable: {str(e)}")
+
+    # def _upload_processed_jpg(self, file_bytes, session, upload_id):
+    #     """Upload processed JPG file to S3 in encrypted chunks"""
+    #     logger.info(f"[JPG] Uploading {len(file_bytes)} bytes to S3...")
+        
+    #     # Split into chunks and upload
+    #     chunk_size = session.chunk_size
+    #     total_bytes = len(file_bytes)
+    #     total_parts = (total_bytes + chunk_size - 1) // chunk_size
+    #     part_number = 1
+        
+    #     for i in range(0, total_bytes, chunk_size):
+    #         chunk_data = file_bytes[i:i + chunk_size]
+            
+    #         # Encrypt chunk for S3
+    #         encrypted = self._encrypt_for_s3(chunk_data, session.aesgcm)
+            
+    #         # Upload part
+    #         resp = s3.upload_part(
+    #             Bucket=MEDIA_FILES_BUCKET,
+    #             Key=session.s3_key,
+    #             UploadId=session.s3_upload_id,
+    #             PartNumber=part_number,
+    #             Body=encrypted,
+    #         )
+            
+    #         session.s3_parts[str(part_number)] = resp["ETag"]
+            
+    #         # Update progress: 75% → 95% during upload
+    #         upload_progress = 75 + (part_number / total_parts) * 20
+    #         self._update_jpg_progress(upload_id, upload_progress, "uploading_s3")
+            
+    #         part_number += 1
+        
+    #     # Progress: 95% → 100% (completing)
+    #     self._update_jpg_progress(upload_id, 95, "completing")
+        
+    #     # Complete multipart upload
+    #     parts = [
+    #         {"PartNumber": int(p), "ETag": et}
+    #         for p, et in session.s3_parts.items()
+    #     ]
+    #     parts.sort(key=lambda x: x["PartNumber"])
+        
+    #     s3.complete_multipart_upload(
+    #         Bucket=MEDIA_FILES_BUCKET,
+    #         Key=session.s3_key,
+    #         UploadId=session.s3_upload_id,
+    #         MultipartUpload={"Parts": parts},
+    #     )
+        
+    #     logger.info(f"[JPG] Upload completed with {len(parts)} parts")
+
+    # def abort_upload(self, request, user):
+    #     """Abort single or multiple uploads"""
+    #     upload_ids = request.POST.getlist("uploadIds[]") or [request.POST.get("uploadId")]
+        
+    #     aborted_count = 0
+    #     for upload_id in upload_ids:
+    #         if not upload_id:
+    #             continue
+                
+    #         session = self.get_session(upload_id)
+    #         if session:
+    #             try:
+    #                 s3.abort_multipart_upload(
+    #                     Bucket=MEDIA_FILES_BUCKET,
+    #                     Key=session.s3_key,
+    #                     UploadId=session.s3_upload_id,
+    #                 )
+    #             except Exception as e:
+    #                 logger.error(f"Failed to abort S3 upload {upload_id}: {e}")
+
+    #             # Clean up JPG chunks if applicable
+    #             if session.is_jpg:
+    #                 cache.delete(session.jpg_chunks_key)
+    #                 cache.delete(f"jpg_progress:{upload_id}")
+
+    #             self.delete_session(upload_id)
+    #             aborted_count += 1
+
+    #     return JsonResponse({
+    #         "status": "aborted",
+    #         "count": aborted_count
+    #     })
+
+    # def _decrypt_chunk(self, chunk_file, iv_str):
+    #     """Decrypt chunk using AES-256-GCM"""
+    #     try:
+    #         if all(c in "0123456789abcdefABCDEF" for c in iv_str.strip()):
+    #             iv = bytes.fromhex(iv_str)
+    #         else:
+    #             iv = base64.b64decode(iv_str)
+    #     except Exception as e:
+    #         raise ValueError(f"Invalid IV format: {e}")
+
+    #     key_bytes = settings.ENCRYPTION_KEY
+    #     if isinstance(key_bytes, str):
+    #         key_bytes = base64.b64decode(key_bytes)
+
+    #     encrypted_data = chunk_file.read()
+
+    #     if len(encrypted_data) < 16:
+    #         raise ValueError("Encrypted chunk too short")
+
+    #     ciphertext = encrypted_data[:-16]
+    #     auth_tag = encrypted_data[-16:]
+
+    #     cipher = Cipher(
+    #         algorithms.AES(key_bytes),
+    #         modes.GCM(iv, auth_tag),
+    #         backend=default_backend()
+    #     )
+    #     decryptor = cipher.decryptor()
+    #     decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+
+    #     return decrypted
+
+    # def _encrypt_for_s3(self, data, aesgcm):
+    #     if aesgcm is None:
+    #         raise RuntimeError("AESGCM is not initialized")
+
+    #     nonce = os.urandom(12)
+    #     ciphertext = aesgcm.encrypt(nonce, data, None)
+    #     return nonce + ciphertext
+########################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################
 from memory_room.upload_helper import extract_thumbnail_from_segment
 
 
@@ -1969,10 +1978,20 @@ class ChunkedMediaFileUploadView(SecuredView):
                 )
 
                 # Generate encryption key
-                key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
-                session.data_key_plain = key["Plaintext"]
-                session.data_key_encrypted = key["CiphertextBlob"]
-                session.aesgcm = AESGCM(session.data_key_plain)
+                # key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+                if settings.ENVIRONMENT_TYPE == "PROD":           #changedd so that in local development, we skip actual KMS key generation to speed up the process and avoid unnecessary AWS interactions
+                    key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+                    session.data_key_plain = key["Plaintext"]
+                    session.data_key_encrypted = key["CiphertextBlob"]
+                    session.aesgcm = AESGCM(session.data_key_plain)
+                else:
+                    session.data_key_plain = b"dummy"
+                    session.data_key_encrypted = b"dummy"
+                    session.aesgcm = None
+                ##
+                # session.data_key_plain = key["Plaintext"]
+                # session.data_key_encrypted = key["CiphertextBlob"]
+                # session.aesgcm = AESGCM(session.data_key_plain)
                 
                 # Check if file is JPG/JPEG or small file
                 session.is_jpg = file_ext in ('.jpg', '.jpeg')
@@ -1985,17 +2004,32 @@ class ChunkedMediaFileUploadView(SecuredView):
                     cache.set(session.temp_chunks_key, json.dumps([]), self.SESSION_TIMEOUT)
 
                 # Start multipart upload
-                mp = s3.create_multipart_upload(
-                    Bucket=MEDIA_FILES_BUCKET,
-                    Key=s3_key,
-                    Metadata={
-                        "edk": base64.b64encode(session.data_key_encrypted).decode(),
-                        'chunk_size': str(chunk_size),
-                        'file_size': str(file_size),
-                        'totalChunks': str(total_chunks),
-                    },
-                )
-                session.s3_upload_id = mp["UploadId"]
+                # mp = s3.create_multipart_upload(
+                #     Bucket=MEDIA_FILES_BUCKET,
+                #     Key=s3_key,
+                #     Metadata={
+                #         "edk": base64.b64encode(session.data_key_encrypted).decode(),
+                #         'chunk_size': str(chunk_size),
+                #         'file_size': str(file_size),
+                #         'totalChunks': str(total_chunks),
+                #     },
+                # )
+                # session.s3_upload_id = mp["UploadId"]
+                #changedd = so that in local development, we skip actual multipart upload initialization to speed up the process and avoid unnecessary S3 interactions
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    mp = s3.create_multipart_upload(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=s3_key,
+                        Metadata={
+                            "edk": base64.b64encode(session.data_key_encrypted).decode(),
+                            'chunk_size': str(chunk_size),
+                            'file_size': str(file_size),
+                            'totalChunks': str(total_chunks),
+                        },
+                    )
+                    session.s3_upload_id = mp["UploadId"]
+                else:
+                    session.s3_upload_id = "local-upload"
 
                 self.save_session(session)
 
@@ -2058,6 +2092,12 @@ class ChunkedMediaFileUploadView(SecuredView):
                         })}\n\n"
                         return
 
+                # decrypted = self._decrypt_chunk(chunk_file, iv)
+                # changedd LOCAL MODE: skip decryption
+                # if settings.ENVIRONMENT_TYPE == "PROD":
+                #     decrypted = self._decrypt_chunk(chunk_file, iv)
+                # else:
+                #     decrypted = chunk_file.read()  # raw bytes, no decryption needed
                 decrypted = self._decrypt_chunk(chunk_file, iv)
 
                 # ---------- JPG TEMP CACHE ----------
@@ -2085,20 +2125,51 @@ class ChunkedMediaFileUploadView(SecuredView):
                     return
 
                 # ---------- S3 UPLOAD ----------
-                encrypted = self._encrypt_for_s3(decrypted, session.aesgcm)
-                part_no = chunk_index + 1
+                # encrypted = self._encrypt_for_s3(decrypted, session.aesgcm)
+                #changedd for local testing 
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    encrypted = self._encrypt_for_s3(decrypted, session.aesgcm)
 
-                resp = s3.upload_part(
-                    Bucket=MEDIA_FILES_BUCKET,
-                    Key=session.s3_key,
-                    UploadId=session.s3_upload_id,
-                    PartNumber=part_no,
-                    Body=encrypted,
-                )
+                    part_no = chunk_index + 1
+                    resp = s3.upload_part(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=session.s3_key,
+                        UploadId=session.s3_upload_id,
+                        PartNumber=part_no,
+                        Body=encrypted,
+                    )
 
-                with session.lock:
-                    session.s3_parts[str(part_no)] = resp["ETag"]
-                    session.uploaded_chunks.add(chunk_index)
+                    with session.lock:
+                        session.s3_parts[str(part_no)] = resp["ETag"]
+                        session.uploaded_chunks.add(chunk_index)
+
+                # else:
+                #     # changedd = LOCAL MODE
+                #     with session.lock:
+                #         session.uploaded_chunks.add(chunk_index)
+
+                else:
+                    # LOCAL MODE — save bytes to cache
+                    chunk_cache_key = f"local_chunks:{upload_id}"
+                    existing = cache.get(chunk_cache_key) or {}
+                    existing[str(chunk_index)] = base64.b64encode(decrypted).decode()
+                    cache.set(chunk_cache_key, existing, timeout=3600)
+                    with session.lock:
+                        session.uploaded_chunks.add(chunk_index)
+                #changedd for local testing 
+                # part_no = chunk_index + 1
+
+                # resp = s3.upload_part(
+                #     Bucket=MEDIA_FILES_BUCKET,
+                #     Key=session.s3_key,
+                #     UploadId=session.s3_upload_id,
+                #     PartNumber=part_no,
+                #     Body=encrypted,
+                # )
+
+                # with session.lock:
+                #     session.s3_parts[str(part_no)] = resp["ETag"]
+                #     session.uploaded_chunks.add(chunk_index)
 
                 self.save_session(session)
 
@@ -2212,30 +2283,32 @@ class ChunkedMediaFileUploadView(SecuredView):
 
             # ---------- SMALL FILE FLOW ----------
             elif session.is_small_file:
-                if len(session.s3_parts) != session.total_chunks:
-                    yield {
-                        "uploadId": upload_id,
-                        "stage": "error",
-                        "error": "Missing S3 parts",
-                        "percentage": 85
-                    }
-                    return
+                #  LOCAL MODE: skip S3 parts check
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    if len(session.s3_parts) != session.total_chunks:
+                        yield {
+                            "uploadId": upload_id,
+                            "stage": "error",
+                            "error": "Missing S3 parts",
+                            "percentage": 85
+                        }
+                        return
 
-                if session.file_type in ["video", "audio"]:
-                    yield {"uploadId": upload_id, "stage": "completing_s3", "percentage": 87}
+                    if session.file_type in ["video", "audio"]:
+                        yield {"uploadId": upload_id, "stage": "completing_s3", "percentage": 87}
 
-                parts = [
-                    {"PartNumber": int(p), "ETag": et}
-                    for p, et in session.s3_parts.items()
-                ]
-                parts.sort(key=lambda x: x["PartNumber"])
+                    parts = [
+                        {"PartNumber": int(p), "ETag": et}
+                        for p, et in session.s3_parts.items()
+                    ]
+                    parts.sort(key=lambda x: x["PartNumber"])
 
-                s3.complete_multipart_upload(
-                    Bucket=MEDIA_FILES_BUCKET,
-                    Key=session.s3_key,
-                    UploadId=session.s3_upload_id,
-                    MultipartUpload={"Parts": parts},
-                )
+                    s3.complete_multipart_upload(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=session.s3_key,
+                        UploadId=session.s3_upload_id,
+                        MultipartUpload={"Parts": parts},
+                    )
 
                 yield {
                     "uploadId": upload_id,
@@ -2245,39 +2318,111 @@ class ChunkedMediaFileUploadView(SecuredView):
 
             # ---------- LARGE FILE FLOW ----------
             else:
-                if len(session.s3_parts) != session.total_chunks:
+                #  LOCAL MODE: skip S3 parts check
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    if len(session.s3_parts) != session.total_chunks:
+                        yield {
+                            "uploadId": upload_id,
+                            "stage": "error",
+                            "error": "Missing S3 parts",
+                            "percentage": 85
+                        }
+                        return
+
                     yield {
                         "uploadId": upload_id,
-                        "stage": "error",
-                        "error": "Missing S3 parts",
-                        "percentage": 85
+                        "stage": "completing_s3",
+                        "percentage": 87 if session.file_type in ["video", "audio"] else 95
                     }
-                    return
 
-                yield {
-                    "uploadId": upload_id,
-                    "stage": "completing_s3",
-                    "percentage": 87 if session.file_type in ["video", "audio"] else 95
-                }
+                    parts = [
+                        {"PartNumber": int(p), "ETag": et}
+                        for p, et in session.s3_parts.items()
+                    ]
+                    parts.sort(key=lambda x: x["PartNumber"])
 
-                parts = [
-                    {"PartNumber": int(p), "ETag": et}
-                    for p, et in session.s3_parts.items()
-                ]
-                parts.sort(key=lambda x: x["PartNumber"])
-
-                s3.complete_multipart_upload(
-                    Bucket=MEDIA_FILES_BUCKET,
-                    Key=session.s3_key,
-                    UploadId=session.s3_upload_id,
-                    MultipartUpload={"Parts": parts},
-                )
+                    s3.complete_multipart_upload(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=session.s3_key,
+                        UploadId=session.s3_upload_id,
+                        MultipartUpload={"Parts": parts},
+                    )
 
                 yield {
                     "uploadId": upload_id,
                     "stage": "s3_complete",
                     "percentage": 90 if session.file_type in ["video", "audio"] else 98
                 }
+
+
+                        # elif session.is_small_file:
+            #     if len(session.s3_parts) != session.total_chunks:
+            #         yield {
+            #             "uploadId": upload_id,
+            #             "stage": "error",
+            #             "error": "Missing S3 parts",
+            #             "percentage": 85
+            #         }
+            #         return
+
+            #     if session.file_type in ["video", "audio"]:
+            #         yield {"uploadId": upload_id, "stage": "completing_s3", "percentage": 87}
+
+            #     parts = [
+            #         {"PartNumber": int(p), "ETag": et}
+            #         for p, et in session.s3_parts.items()
+            #     ]
+            #     parts.sort(key=lambda x: x["PartNumber"])
+
+            #     s3.complete_multipart_upload(
+            #         Bucket=MEDIA_FILES_BUCKET,
+            #         Key=session.s3_key,
+            #         UploadId=session.s3_upload_id,
+            #         MultipartUpload={"Parts": parts},
+            #     )
+
+            #     yield {
+            #         "uploadId": upload_id,
+            #         "stage": "s3_complete",
+            #         "percentage": 90 if session.file_type in ["video", "audio"] else 99
+            #     }
+
+            # # ---------- LARGE FILE FLOW ----------
+            # else:
+            #     if len(session.s3_parts) != session.total_chunks:
+            #         yield {
+            #             "uploadId": upload_id,
+            #             "stage": "error",
+            #             "error": "Missing S3 parts",
+            #             "percentage": 85
+            #         }
+            #         return
+
+            #     yield {
+            #         "uploadId": upload_id,
+            #         "stage": "completing_s3",
+            #         "percentage": 87 if session.file_type in ["video", "audio"] else 95
+            #     }
+
+            #     parts = [
+            #         {"PartNumber": int(p), "ETag": et}
+            #         for p, et in session.s3_parts.items()
+            #     ]
+            #     parts.sort(key=lambda x: x["PartNumber"])
+
+            #     s3.complete_multipart_upload(
+            #         Bucket=MEDIA_FILES_BUCKET,
+            #         Key=session.s3_key,
+            #         UploadId=session.s3_upload_id,
+            #         MultipartUpload={"Parts": parts},
+            #     )
+
+            #     yield {
+            #         "uploadId": upload_id,
+            #         "stage": "s3_complete",
+            #         "percentage": 90 if session.file_type in ["video", "audio"] else 98
+            #     }
+
 
             # ---------- CREATE DB RECORD ----------
             yield {
@@ -2290,6 +2435,38 @@ class ChunkedMediaFileUploadView(SecuredView):
             
             from memory_room.utils import get_readable_file_size_from_bytes
             file_size = get_readable_file_size_from_bytes(session.file_size)
+            #changedd for local dev. testing 
+            from django.core.files.base import ContentFile
+            from django.core.files.storage import default_storage
+
+            
+
+            #changedd = for handling jpg files for local dev
+            if not settings.ENVIRONMENT_TYPE == "PROD":
+                if session.is_jpg and session.temp_chunks_key:
+                    # JPG chunks stored in temp_chunks_key
+                    chunks_data = json.loads(cache.get(session.temp_chunks_key, '[]'))
+                    chunks_data.sort(key=lambda x: x['index'])
+                    sorted_bytes = b"".join(
+                        base64.b64decode(chunk['data'])
+                        for chunk in chunks_data
+                    )
+                else:
+                    # Non-JPG chunks stored in local_chunks
+                    chunk_cache_key = f"local_chunks:{upload_id}"
+                    chunks_dict = cache.get(chunk_cache_key) or {}
+                    sorted_bytes = b"".join(
+                        base64.b64decode(chunks_dict[str(i)])
+                        for i in sorted(int(k) for k in chunks_dict.keys())
+                    )
+                    cache.delete(chunk_cache_key)
+                
+                file_path = default_storage.save(
+                    f"uploads/{session.file_name}",
+                    ContentFile(sorted_bytes)
+                )
+                session.s3_key = file_path
+            #########
 
             media = TimeCapSoulMediaFile.objects.create(
                 user=user,
@@ -2502,26 +2679,39 @@ class ChunkedMediaFileUploadView(SecuredView):
         total_size = len(file_bytes)
         MIN_PART_SIZE = 5 * 1024 * 1024  # 5MB
 
+        if not settings.ENVIRONMENT_TYPE == "PROD":
+            from django.core.files.base import ContentFile
+            from django.core.files.storage import default_storage
+            file_path = default_storage.save(
+                f"uploads/{session.file_name}",
+                ContentFile(file_bytes)
+            )
+            session.s3_key = file_path
+            yield {"uploadId": upload_id, "stage": "upload_complete", "percentage": 90}
+            return
+
         # ---------- SMALL FILE → SINGLE PUT ----------
         if total_size < MIN_PART_SIZE:
             yield {"uploadId": upload_id, "stage": "encrypting", "percentage": 74}
 
-            encrypted = self._encrypt_for_s3(file_bytes, session.aesgcm)
+            if settings.ENVIRONMENT_TYPE == "PROD":
 
-            yield {"uploadId": upload_id, "stage": "uploading_single", "percentage": 82}
+                encrypted = self._encrypt_for_s3(file_bytes, session.aesgcm)
 
-            s3.put_object(
-                Bucket=MEDIA_FILES_BUCKET,
-                Key=session.s3_key,
-                Body=encrypted,
-                Metadata={
-                    "edk": base64.b64encode(session.data_key_encrypted).decode(),
-                    "file_size": str(session.file_size),
-                },
-            )
+                yield {"uploadId": upload_id, "stage": "uploading_single", "percentage": 82}
 
-            yield {"uploadId": upload_id, "stage": "upload_complete", "percentage": 90}
-            return  # ❗ VERY IMPORTANT (no multipart complete)
+                s3.put_object(
+                    Bucket=MEDIA_FILES_BUCKET,
+                    Key=session.s3_key,
+                    Body=encrypted,
+                    Metadata={
+                        "edk": base64.b64encode(session.data_key_encrypted).decode(),
+                        "file_size": str(session.file_size),
+                    },
+                )
+
+                yield {"uploadId": upload_id, "stage": "upload_complete", "percentage": 90}
+                return  # ❗ VERY IMPORTANT (no multipart complete)
 
         # ---------- MULTIPART (>=5MB) ----------
         yield {"uploadId": upload_id, "stage": "encrypting_chunks", "percentage": 74}
@@ -2689,6 +2879,8 @@ class ChunkedMediaFileUploadView(SecuredView):
 
     def abort_upload(self, request, user):
         """Abort single or multiple uploads"""
+        if not settings.ENVIRONMENT_TYPE == "PROD":       #changedd added for local testing to skip S3 abort logic   , check 
+            return JsonResponse({"status": "aborted","message": "Local mode (S3 disabled)"})
         upload_ids = request.POST.getlist("uploadIds[]") or [request.POST.get("uploadId")]
         
         aborted_count = 0
@@ -2701,13 +2893,16 @@ class ChunkedMediaFileUploadView(SecuredView):
             session = self.get_session(upload_id)
             if session:
                 try:
-                    # Abort S3 multipart upload
-                    s3.abort_multipart_upload(
-                        Bucket=MEDIA_FILES_BUCKET,
-                        Key=session.s3_key,
-                        UploadId=session.s3_upload_id,
-                    )
-                    logger.info(f"Aborted S3 multipart upload for {upload_id}")
+                    # changed 
+                    if settings.ENVIRONMENT_TYPE == "PROD":
+                        s3.abort_multipart_upload(
+                            Bucket=MEDIA_FILES_BUCKET,
+                            Key=session.s3_key,
+                            UploadId=session.s3_upload_id,
+                        )
+                        logger.info(f"Aborted S3 multipart upload for {upload_id}")
+                    else:
+                        logger.info(f"Local mode: skipped S3 abort for {upload_id}")
                 except Exception as e:
                     logger.error(f"Failed to abort S3 upload {upload_id}: {e}")
                     failed_aborts.append({
@@ -2743,8 +2938,8 @@ class ChunkedMediaFileUploadView(SecuredView):
 
         return JsonResponse(response_data)
 
+    
     def _decrypt_chunk(self, chunk_file, iv_str):
-        """Decrypt chunk using AES-256-GCM"""
         try:
             if all(c in "0123456789abcdefABCDEF" for c in iv_str.strip()):
                 iv = bytes.fromhex(iv_str)
@@ -2771,21 +2966,48 @@ class ChunkedMediaFileUploadView(SecuredView):
             backend=default_backend()
         )
         decryptor = cipher.decryptor()
-        decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+        return decryptor.update(ciphertext) + decryptor.finalize()
 
-        return decrypted
+    # def _decrypt_chunk(self, chunk_file, iv_str):
+    #     """Decrypt chunk using AES-256-GCM"""
+    #     try:
+    #         if all(c in "0123456789abcdefABCDEF" for c in iv_str.strip()):
+    #             iv = bytes.fromhex(iv_str)
+    #         else:
+    #             iv = base64.b64decode(iv_str)
+    #     except Exception as e:
+    #         raise ValueError(f"Invalid IV format: {e}")
 
-    def _encrypt_for_s3(self, data, aesgcm):
-        """Encrypt data for S3 storage using KMS key"""
-        if aesgcm is None:
-            raise RuntimeError("AESGCM is not initialized")
+    #     key_bytes = settings.ENCRYPTION_KEY
+    #     if isinstance(key_bytes, str):
+    #         key_bytes = base64.b64decode(key_bytes)
 
-        nonce = os.urandom(12)
-        ciphertext = aesgcm.encrypt(nonce, data, None)
-        return nonce + ciphertext
+    #     encrypted_data = chunk_file.read()
 
+    #     if len(encrypted_data) < 16:
+    #         raise ValueError("Encrypted chunk too short")
 
+    #     ciphertext = encrypted_data[:-16]
+    #     auth_tag = encrypted_data[-16:]
 
+    #     cipher = Cipher(
+    #         algorithms.AES(key_bytes),
+    #         modes.GCM(iv, auth_tag),
+    #         backend=default_backend()
+    #     )
+    #     decryptor = cipher.decryptor()
+    #     decrypted = decryptor.update(ciphertext) + decryptor.finalize()
+
+    #     return decrypted
+
+    # def _encrypt_for_s3(self, data, aesgcm):
+    #     """Encrypt data for S3 storage using KMS key"""
+    #     if aesgcm is None:
+    #         raise RuntimeError("AESGCM is not initialized")
+
+    #     nonce = os.urandom(12)
+    #     ciphertext = aesgcm.encrypt(nonce, data, None)
+    #     return nonce + ciphertext
 
 class TimeCapSoulUnlockView(SecuredView):
 
@@ -2813,8 +3035,6 @@ class TimeCapSoulUnlockView(SecuredView):
 
             return Response({"message": "TimeCapsoul locked successfully."}, status=status.HTTP_200_OK)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-
-
 
 class RecipientsDetailCreateOrUpdateView(SecuredView):
     """
@@ -2910,7 +3130,6 @@ class TimeCapsoulMediaFileFilterView(SecuredView):
 
         serializer = TimeCapSoulMediaFileReadOnlySerializer(paginated_queryset, many=True)
         return paginator.get_paginated_response({'media_files': serializer.data})
-
 
 
 class TimeCapsoulFilterView(SecuredView):
@@ -3104,1015 +3323,1016 @@ SECRET = settings.SECRET_KEY.encode()
 
 # previous one
 # class ServeTimeCapSoulMedia(SecuredView):
-#     """
-#     Securely serve decrypted media from S3 via Django.
-#     Streaming responses for all files with lazy loading for audio/video.
-#     """
+    # """
+    # Securely serve decrypted media from S3 via Django.
+    # Streaming responses for all files with lazy loading for audio/video.
+    # """
     
-#     CACHE_TIMEOUT = 60 * 60 * 2  # 2 hours
+    # CACHE_TIMEOUT = 60 * 60 * 2  # 2 hours
     
-#     def _serve_svg_safely(self, file_bytes, filename):
-#         """
-#         Serve SVG files with proper security headers to prevent XSS.
-#         """
-#         response = HttpResponse(file_bytes, content_type="image/svg+xml")
-#         response["Content-Length"] = str(len(file_bytes))
-#         response["Content-Disposition"] = f'inline; filename="{filename}"'
-#         response["Cache-Control"] = "private, max-age=3600"
-#         # Strict CSP for SVG to prevent script execution
-#         response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
-#         response["X-Content-Type-Options"] = "nosniff"
-#         return response
+    # def _serve_svg_safely(self, file_bytes, filename):
+    #     """
+    #     Serve SVG files with proper security headers to prevent XSS.
+    #     """
+    #     response = HttpResponse(file_bytes, content_type="image/svg+xml")
+    #     response["Content-Length"] = str(len(file_bytes))
+    #     response["Content-Disposition"] = f'inline; filename="{filename}"'
+    #     response["Cache-Control"] = "private, max-age=3600"
+    #     # Strict CSP for SVG to prevent script execution
+    #     response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+    #     response["X-Content-Type-Options"] = "nosniff"
+    #     return response
 
-#     def _stream_file_with_range(self, request, file_bytes, content_type, filename):
-#         """Stream bytes with HTTP range support for audio/video."""
-#         file_size = len(file_bytes)
-#         range_header = request.headers.get("Range", "").strip()
+    # def _stream_file_with_range(self, request, file_bytes, content_type, filename):
+    #     """Stream bytes with HTTP range support for audio/video."""
+    #     file_size = len(file_bytes)
+    #     range_header = request.headers.get("Range", "").strip()
         
-#         if range_header:
-#             import re
-#             range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
-#             if range_match:
-#                 start = int(range_match.group(1))
-#                 end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
-#                 length = end - start + 1
+    #     if range_header:
+    #         import re
+    #         range_match = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #         if range_match:
+    #             start = int(range_match.group(1))
+    #             end = int(range_match.group(2)) if range_match.group(2) else file_size - 1
+    #             length = end - start + 1
                 
-#                 resp = StreamingHttpResponse(
-#                     FileWrapper(BytesIO(file_bytes[start:end+1]), 8192),
-#                     status=206,
-#                     content_type=content_type
-#                 )
-#                 resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
-#                 resp["Content-Length"] = str(length)
-#             else:
-#                 resp = StreamingHttpResponse(
-#                     FileWrapper(BytesIO(file_bytes), 8192),
-#                     content_type=content_type
-#                 )
-#                 resp["Content-Length"] = str(file_size)
-#         else:
-#             resp = StreamingHttpResponse(
-#                 FileWrapper(BytesIO(file_bytes), 8192),
-#                 content_type=content_type
-#             )
-#             resp["Content-Length"] = str(file_size)
+    #             resp = StreamingHttpResponse(
+    #                 FileWrapper(BytesIO(file_bytes[start:end+1]), 8192),
+    #                 status=206,
+    #                 content_type=content_type
+    #             )
+    #             resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    #             resp["Content-Length"] = str(length)
+    #         else:
+    #             resp = StreamingHttpResponse(
+    #                 FileWrapper(BytesIO(file_bytes), 8192),
+    #                 content_type=content_type
+    #             )
+    #             resp["Content-Length"] = str(file_size)
+    #     else:
+    #         resp = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes), 8192),
+    #             content_type=content_type
+    #         )
+    #         resp["Content-Length"] = str(file_size)
         
-#         resp["Accept-Ranges"] = "bytes"
-#         resp["Content-Disposition"] = f'inline; filename="{filename}"'
-#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#         resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-#         return resp
+    #     resp["Accept-Ranges"] = "bytes"
+    #     resp["Content-Disposition"] = f'inline; filename="{filename}"'
+    #     frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #     resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #     return resp
 
-#     def get(self, request, s3_key, media_file_id=None):
-#         exp = request.GET.get("exp")
-#         sig = request.GET.get("sig")
+    # def get(self, request, s3_key, media_file_id=None):
+    #     exp = request.GET.get("exp")
+    #     sig = request.GET.get("sig")
         
-#         if not exp or not sig:
-#             return Response(status=status.HTTP_404_NOT_FOUND)
+    #     if not exp or not sig:
+    #         return Response(status=status.HTTP_404_NOT_FOUND)
 
-#         if int(exp) < int(time.time()):
-#             return Response(status=status.HTTP_404_NOT_FOUND)
+    #     if int(exp) < int(time.time()):
+    #         return Response(status=status.HTTP_404_NOT_FOUND)
 
-#         user = self.get_current_user(request)
-#         if user is None:
-#             return Response(status=status.HTTP_401_UNAUTHORIZED)
+    #     user = self.get_current_user(request)
+    #     if user is None:
+    #         return Response(status=status.HTTP_401_UNAUTHORIZED)
 
-#         # Optimize: Only get s3_key and file_type from DB (minimal data)
-#         try:
-#             media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
-#                 id=media_file_id, user=user
-#             )
-#         except TimeCapSoulMediaFile.DoesNotExist:
-#             try:
-#                 media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
-#                     id=media_file_id
-#                 )
-#             except TimeCapSoulMediaFile.DoesNotExist:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #     # Optimize: Only get s3_key and file_type from DB (minimal data)
+    #     try:
+    #         media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
+    #             id=media_file_id, user=user
+    #         )
+    #     except TimeCapSoulMediaFile.DoesNotExist:
+    #         try:
+    #             media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
+    #                 id=media_file_id
+    #             )
+    #         except TimeCapSoulMediaFile.DoesNotExist:
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
             
-#             if not verify_signature(media_file.s3_key, exp, sig):
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #         if not verify_signature(media_file.s3_key, exp, sig):
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
             
-#             time_capsoul = media_file.time_capsoul
-#             capsoul_recipients = TimeCapSoulRecipient.objects.filter(
-#                 time_capsoul=time_capsoul, email=user.email
-#             ).first()
+    #         time_capsoul = media_file.time_capsoul
+    #         capsoul_recipients = TimeCapSoulRecipient.objects.filter(
+    #             time_capsoul=time_capsoul, email=user.email
+    #         ).first()
             
-#             if not capsoul_recipients:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #         if not capsoul_recipients:
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
 
-#             from django.utils import timezone
-#             current_date = timezone.now()
-#             is_unlocked = (
-#                 bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
-#             )
-#             if not is_unlocked:
-#                 logger.info("Recipient not found for tagged capsoul")
-#                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+    #         from django.utils import timezone
+    #         current_date = timezone.now()
+    #         is_unlocked = (
+    #             bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
+    #         )
+    #         if not is_unlocked:
+    #             logger.info("Recipient not found for tagged capsoul")
+    #             return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-#         s3_key = media_file.s3_key
-#         filename = s3_key.split("/")[-1]
-#         file_ext = s3_key.lower()
+    #     s3_key = media_file.s3_key
+    #     filename = s3_key.split("/")[-1]
+    #     file_ext = s3_key.lower()
         
-#         # Check if it's an image first - fast path for images
-#         is_image = file_ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'))
-#         is_svg = file_ext.endswith('.svg')
+    #     # Check if it's an image first - fast path for images
+    #     is_image = file_ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg'))
+    #     is_svg = file_ext.endswith('.svg')
         
         
-#         # Cache decrypted file bytes to avoid repeated S3 calls
-#         bytes_cache_key = f"media_bytes_{s3_key}"
+    #     # Cache decrypted file bytes to avoid repeated S3 calls
+    #     bytes_cache_key = f"media_bytes_{s3_key}"
         
-#         cached_data = cache.get(bytes_cache_key)
-#         if cached_data:
-#             file_bytes, content_type = cached_data
-#         else:
-#             file_bytes, content_type = decrypt_s3_file_chunked(s3_key)
-#             if not file_bytes or not content_type:
-#                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-#             # Cache the decrypted bytes for future requests
-#             cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
+    #     cached_data = cache.get(bytes_cache_key)
+    #     if cached_data:
+    #         file_bytes, content_type = cached_data
+    #     else:
+    #         file_bytes, content_type = decrypt_s3_file_chunked(s3_key)
+    #         if not file_bytes or not content_type:
+    #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    #         # Cache the decrypted bytes for future requests
+    #         cache.set(bytes_cache_key, (file_bytes, content_type), timeout=self.CACHE_TIMEOUT)
         
-#         # For images, try cache first before any processing
-#         if is_image or is_svg:
+    #     # For images, try cache first before any processing
+    #     if is_image or is_svg:
         
-#             # SVG gets special secure handling
-#             if is_svg:
-#                 return self._serve_svg_safely(file_bytes, filename)
-#             # Direct response for cached images - fastest path
-#             response = HttpResponse(file_bytes, content_type=content_type)
-#             response["Content-Length"] = str(len(file_bytes))
-#             response["Content-Disposition"] = f'inline; filename="{filename}"'
-#             response["Cache-Control"] = "private, max-age=3600"
-#             response["X-Content-Type-Options"] = "nosniff"
-#             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#             response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-#             return response
+    #         # SVG gets special secure handling
+    #         if is_svg:
+    #             return self._serve_svg_safely(file_bytes, filename)
+    #         # Direct response for cached images - fastest path
+    #         response = HttpResponse(file_bytes, content_type=content_type)
+    #         response["Content-Length"] = str(len(file_bytes))
+    #         response["Content-Disposition"] = f'inline; filename="{filename}"'
+    #         response["Cache-Control"] = "private, max-age=3600"
+    #         response["X-Content-Type-Options"] = "nosniff"
+    #         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #         return response
         
-#         # Handle DOC to DOCX conversion with caching
-#         if file_ext.endswith(".doc"):
-#             docx_cache_key = f'{bytes_cache_key}_docx_preview'
-#             docx_bytes = cache.get(docx_cache_key)
-#             if not docx_bytes:
-#                 docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-#                 cache.set(docx_cache_key, docx_bytes, timeout=self.CACHE_TIMEOUT)
-#             return self._stream_file_with_range(
-#                 request, docx_bytes, 
-#                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-#                 filename.replace(".doc", ".docx")
-#             )
+    #     # Handle DOC to DOCX conversion with caching
+    #     if file_ext.endswith(".doc"):
+    #         docx_cache_key = f'{bytes_cache_key}_docx_preview'
+    #         docx_bytes = cache.get(docx_cache_key)
+    #         if not docx_bytes:
+    #             docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+    #             cache.set(docx_cache_key, docx_bytes, timeout=self.CACHE_TIMEOUT)
+    #         return self._stream_file_with_range(
+    #             request, docx_bytes, 
+    #             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    #             filename.replace(".doc", ".docx")
+    #         )
         
-#         # Handle HEIC to JPEG conversion with caching
-#         elif file_ext.endswith((".heic", ".heif")):
-#             jpeg_cache_key = f'{bytes_cache_key}_jpeg'
-#             jpeg_file_bytes = cache.get(jpeg_cache_key)
-#             if not jpeg_file_bytes:
-#                 jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
-#                 cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=self.CACHE_TIMEOUT)
-#             # Fast HttpResponse for converted images
-#             resp = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
-#             resp["Content-Length"] = str(len(jpeg_file_bytes))
-#             resp["Content-Disposition"] = f'inline; filename="{filename.replace(".heic", ".jpg").replace(".heif", ".jpg")}"'
-#             resp["Cache-Control"] = "private, max-age=3600"
-#             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#             resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-#             return resp
+    #     # Handle HEIC to JPEG conversion with caching
+    #     elif file_ext.endswith((".heic", ".heif")):
+    #         jpeg_cache_key = f'{bytes_cache_key}_jpeg'
+    #         jpeg_file_bytes = cache.get(jpeg_cache_key)
+    #         if not jpeg_file_bytes:
+    #             jpeg_file_bytes, content_type = convert_heic_to_jpeg_bytes(file_bytes)
+    #             cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=self.CACHE_TIMEOUT)
+    #         # Fast HttpResponse for converted images
+    #         resp = HttpResponse(jpeg_file_bytes, content_type="image/jpeg")
+    #         resp["Content-Length"] = str(len(jpeg_file_bytes))
+    #         resp["Content-Disposition"] = f'inline; filename="{filename.replace(".heic", ".jpg").replace(".heif", ".jpg")}"'
+    #         resp["Cache-Control"] = "private, max-age=3600"
+    #         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #         resp["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #         return resp
 
-#         # Handle MKV to MP4 conversion with caching
-#         elif file_ext.endswith(".mkv"):
-#             mp4_cache_key = f'{bytes_cache_key}_mp4'
-#             mp4_bytes = cache.get(mp4_cache_key)
-#             if not mp4_bytes:
-#                 try:
-#                     mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
-#                     cache.set(mp4_cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
-#                 except Exception as e:
-#                     logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
-#                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-#             return self._stream_file_with_range(
-#                 request, mp4_bytes, "video/mp4",
-#                 filename.replace(".mkv", ".mp4")
-#             )
+    #     # Handle MKV to MP4 conversion with caching
+    #     elif file_ext.endswith(".mkv"):
+    #         mp4_cache_key = f'{bytes_cache_key}_mp4'
+    #         mp4_bytes = cache.get(mp4_cache_key)
+    #         if not mp4_bytes:
+    #             try:
+    #                 mp4_bytes, content_type = convert_mkv_to_mp4_bytes(file_bytes)
+    #                 cache.set(mp4_cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+    #             except Exception as e:
+    #                 logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
+    #                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    #         return self._stream_file_with_range(
+    #             request, mp4_bytes, "video/mp4",
+    #             filename.replace(".mkv", ".mp4")
+    #         )
 
-#         # Stream all other files (video/audio/images/documents)
-#         return self._stream_file_with_range(request, file_bytes, content_type, filename)
+    #     # Stream all other files (video/audio/images/documents)
+    #     return self._stream_file_with_range(request, file_bytes, content_type, filename)
 
 # current one 
 # class ServeTimeCapSoulMedia(SecuredView):
-#     """
-#     Securely serve decrypted media from S3 via Django.
-#     Streaming responses for all files with lazy loading for audio/video.
-#     """
+    # """
+    # Securely serve decrypted media from S3 via Django.
+    # Streaming responses for all files with lazy loading for audio/video.
+    # """
     
-#     CACHE_TIMEOUT = 60 * 60 * 24  # 2 hours
+    # CACHE_TIMEOUT = 60 * 60 * 24  # 2 hours
     
-#     def _guess_content_type(self, filename):
-#         """Guess content type from filename extension for better browser compatibility."""
-#         import mimetypes
-#         content_type, _ = mimetypes.guess_type(filename)
+    # def _guess_content_type(self, filename):
+    #     """Guess content type from filename extension for better browser compatibility."""
+    #     import mimetypes
+    #     content_type, _ = mimetypes.guess_type(filename)
         
-#         lower_filename = filename.lower()
-#         if lower_filename.endswith(('.mp4', '.m4v')):
-#             return 'video/mp4'
-#         elif lower_filename.endswith('.webm'):
-#             return 'video/webm'
-#         elif lower_filename.endswith('.mov'):
-#             return 'video/quicktime'
-#         elif lower_filename.endswith(('.mkv', '.avi', '.flv', '.wmv')):
-#             return 'video/mp4'
-#         elif lower_filename.endswith('.mp3'):
-#             return 'audio/mpeg'
-#         elif lower_filename.endswith(('.m4a', '.aac')):
-#             return 'audio/mp4'
-#         elif lower_filename.endswith('.wav'):
-#             return 'audio/wav'
-#         elif lower_filename.endswith('.flac'):
-#             return 'audio/flac'
-#         elif lower_filename.endswith(('.ogg', '.opus')):
-#             return 'audio/ogg'
-#         elif lower_filename.endswith('.wma'):
-#             return 'audio/x-ms-wma'
-#         elif lower_filename.endswith('.svg'):
-#             return 'image/svg+xml'
-#         elif lower_filename.endswith('.pdf'):
-#             return 'application/pdf'
-#         elif lower_filename.endswith(('.doc', '.docx')):
-#             return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    #     lower_filename = filename.lower()
+    #     if lower_filename.endswith(('.mp4', '.m4v')):
+    #         return 'video/mp4'
+    #     elif lower_filename.endswith('.webm'):
+    #         return 'video/webm'
+    #     elif lower_filename.endswith('.mov'):
+    #         return 'video/quicktime'
+    #     elif lower_filename.endswith(('.mkv', '.avi', '.flv', '.wmv')):
+    #         return 'video/mp4'
+    #     elif lower_filename.endswith('.mp3'):
+    #         return 'audio/mpeg'
+    #     elif lower_filename.endswith(('.m4a', '.aac')):
+    #         return 'audio/mp4'
+    #     elif lower_filename.endswith('.wav'):
+    #         return 'audio/wav'
+    #     elif lower_filename.endswith('.flac'):
+    #         return 'audio/flac'
+    #     elif lower_filename.endswith(('.ogg', '.opus')):
+    #         return 'audio/ogg'
+    #     elif lower_filename.endswith('.wma'):
+    #         return 'audio/x-ms-wma'
+    #     elif lower_filename.endswith('.svg'):
+    #         return 'image/svg+xml'
+    #     elif lower_filename.endswith('.pdf'):
+    #         return 'application/pdf'
+    #     elif lower_filename.endswith(('.doc', '.docx')):
+    #         return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
         
-#         return content_type or 'application/octet-stream'
+    #     return content_type or 'application/octet-stream'
     
-#     def _serve_svg_safely(self, file_bytes, filename):
-#         """Serve SVG files with proper security headers to prevent XSS."""
-#         response = HttpResponse(file_bytes, content_type="image/svg+xml")
-#         response["Content-Length"] = str(len(file_bytes))
-#         response["Content-Disposition"] = "inline"
-#         response["Cache-Control"] = "private, max-age=3600"
-#         response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
-#         response["X-Content-Type-Options"] = "nosniff"
-#         return response
+    # def _serve_svg_safely(self, file_bytes, filename):
+    #     """Serve SVG files with proper security headers to prevent XSS."""
+    #     response = HttpResponse(file_bytes, content_type="image/svg+xml")
+    #     response["Content-Length"] = str(len(file_bytes))
+    #     response["Content-Disposition"] = "inline"
+    #     response["Cache-Control"] = "private, max-age=3600"
+    #     response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+    #     response["X-Content-Type-Options"] = "nosniff"
+    #     return response
     
-#     def _is_video_file(self, filename):
-#         """Check if file is a video by extension."""
-#         return filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v'))
+    # def _is_video_file(self, filename):
+    #     """Check if file is a video by extension."""
+    #     return filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v'))
     
-#     def _is_audio_file(self, filename):
-#         """Check if file is audio by extension."""
-#         return filename.lower().endswith(('.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.wma', '.opus'))
+    # def _is_audio_file(self, filename):
+    #     """Check if file is audio by extension."""
+    #     return filename.lower().endswith(('.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.wma', '.opus'))
 
-#     def _stream_file_with_range(self, request, file_bytes, content_type, filename):
-#         """Stream decrypted media file with proper Range support (seekable, inline playback)."""
-#         file_size = len(file_bytes)
-#         range_header = request.headers.get("Range", "")
+    # def _stream_file_with_range(self, request, file_bytes, content_type, filename):
+    #     """Stream decrypted media file with proper Range support (seekable, inline playback)."""
+    #     file_size = len(file_bytes)
+    #     range_header = request.headers.get("Range", "")
 
-#         # Parse range
-#         start, end = 0, file_size - 1
-#         if range_header:
-#             import re
-#             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-#             if m:
-#                 start = int(m.group(1))
-#                 if m.group(2):
-#                     end = int(m.group(2))
-#                 end = min(end, file_size - 1)
+    #     # Parse range
+    #     start, end = 0, file_size - 1
+    #     if range_header:
+    #         import re
+    #         m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #         if m:
+    #             start = int(m.group(1))
+    #             if m.group(2):
+    #                 end = int(m.group(2))
+    #             end = min(end, file_size - 1)
 
-#         length = end - start + 1
-#         is_partial = range_header != ""
-#         status_code = 206 if is_partial else 200
+    #     length = end - start + 1
+    #     is_partial = range_header != ""
+    #     status_code = 206 if is_partial else 200
 
-#         # Use guessed content type
-#         content_type = self._guess_content_type(filename)
+    #     # Use guessed content type
+    #     content_type = self._guess_content_type(filename)
 
-#         # Use HttpResponse for non-partial, StreamingHttpResponse only for Range requests
-#         if is_partial:
-#             resp = StreamingHttpResponse(
-#                 FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
-#                 status=status_code,
-#                 content_type=content_type,
-#             )
-#         else:
-#             # For direct access without Range, use HttpResponse (cacheable and inline)
-#             resp = HttpResponse(
-#                 file_bytes,
-#                 status=status_code,
-#                 content_type=content_type,
-#             )
+    #     # Use HttpResponse for non-partial, StreamingHttpResponse only for Range requests
+    #     if is_partial:
+    #         resp = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
+    #             status=status_code,
+    #             content_type=content_type,
+    #         )
+    #     else:
+    #         # For direct access without Range, use HttpResponse (cacheable and inline)
+    #         resp = HttpResponse(
+    #             file_bytes,
+    #             status=status_code,
+    #             content_type=content_type,
+    #         )
 
-#         # Critical headers for inline playback
-#         resp["Accept-Ranges"] = "bytes"
-#         resp["Content-Length"] = str(length)
-#         resp["Content-Disposition"] = "inline"
-#         resp["X-Content-Type-Options"] = "nosniff"
+    #     # Critical headers for inline playback
+    #     resp["Accept-Ranges"] = "bytes"
+    #     resp["Content-Length"] = str(length)
+    #     resp["Content-Disposition"] = "inline"
+    #     resp["X-Content-Type-Options"] = "nosniff"
 
-#         if is_partial:
-#             resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    #     if is_partial:
+    #         resp["Content-Range"] = f"bytes {start}-{end}/{file_size}"
 
-#         # CORS + security
-#         resp["Cross-Origin-Resource-Policy"] = "cross-origin"
-#         resp["Access-Control-Allow-Origin"] = "*"
-#         resp["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
-#         resp["Cache-Control"] = "private, max-age=3600"
+    #     # CORS + security
+    #     resp["Cross-Origin-Resource-Policy"] = "cross-origin"
+    #     resp["Access-Control-Allow-Origin"] = "*"
+    #     resp["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+    #     resp["Cache-Control"] = "private, max-age=3600"
         
-#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#         resp["Content-Security-Policy"] = f"media-src *; frame-ancestors 'self' {frame_ancestors};"
+    #     frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #     resp["Content-Security-Policy"] = f"media-src *; frame-ancestors 'self' {frame_ancestors};"
 
-#         return resp
+    #     return resp
     
-#     def _create_inline_response(self, file_bytes, content_type, filename):
-#         """Create a standard inline response for non-streaming files."""
-#         response = HttpResponse(file_bytes, content_type=content_type)
-#         response["Content-Length"] = str(len(file_bytes))
-#         response["Content-Disposition"] = "inline"
-#         response["Cache-Control"] = "private, max-age=3600"
-#         response["X-Content-Type-Options"] = "nosniff"
-#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
-#         return response
+    # def _create_inline_response(self, file_bytes, content_type, filename):
+    #     """Create a standard inline response for non-streaming files."""
+    #     response = HttpResponse(file_bytes, content_type=content_type)
+    #     response["Content-Length"] = str(len(file_bytes))
+    #     response["Content-Disposition"] = "inline"
+    #     response["Cache-Control"] = "private, max-age=3600"
+    #     response["X-Content-Type-Options"] = "nosniff"
+    #     frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #     response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #     return response
 
-#     def get(self, request, s3_key, media_file_id=None):
-#         exp = request.GET.get("exp")
-#         sig = request.GET.get("sig")
+    # def get(self, request, s3_key, media_file_id=None):
+    #     exp = request.GET.get("exp")
+    #     sig = request.GET.get("sig")
         
-#         if not exp or not sig:
-#             return Response(status=status.HTTP_404_NOT_FOUND)
+    #     if not exp or not sig:
+    #         return Response(status=status.HTTP_404_NOT_FOUND)
 
-#         if int(exp) < int(time.time()):
-#             return Response(status=status.HTTP_404_NOT_FOUND)
+    #     if int(exp) < int(time.time()):
+    #         return Response(status=status.HTTP_404_NOT_FOUND)
 
-#         user = self.get_current_user(request)
-#         if user is None:
-#             return Response(status=status.HTTP_401_UNAUTHORIZED)
+    #     user = self.get_current_user(request)
+    #     if user is None:
+    #         return Response(status=status.HTTP_401_UNAUTHORIZED)
 
-#         # Optimize: Only get s3_key and file_type from DB (minimal data)
-#         try:
-#             media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
-#                 id=media_file_id, user=user
-#             )
-#         except TimeCapSoulMediaFile.DoesNotExist:
-#             try:
-#                 media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
-#                     id=media_file_id
-#                 )
-#             except TimeCapSoulMediaFile.DoesNotExist:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #     # Optimize: Only get s3_key and file_type from DB (minimal data)
+    #     try:
+    #         media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
+    #             id=media_file_id, user=user
+    #         )
+    #     except TimeCapSoulMediaFile.DoesNotExist:
+    #         try:
+    #             media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
+    #                 id=media_file_id
+    #             )
+    #         except TimeCapSoulMediaFile.DoesNotExist:
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
             
-#             if not verify_signature(media_file.s3_key, exp, sig):
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #         if not verify_signature(media_file.s3_key, exp, sig):
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
             
-#             time_capsoul = media_file.time_capsoul
-#             capsoul_recipients = TimeCapSoulRecipient.objects.filter(
-#                 time_capsoul=time_capsoul, email=user.email
-#             ).first()
+    #         time_capsoul = media_file.time_capsoul
+    #         capsoul_recipients = TimeCapSoulRecipient.objects.filter(
+    #             time_capsoul=time_capsoul, email=user.email
+    #         ).first()
             
-#             if not capsoul_recipients:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #         if not capsoul_recipients:
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
 
-#             from django.utils import timezone
-#             current_date = timezone.now()
-#             is_unlocked = (
-#                 bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
-#             )
-#             if not is_unlocked:
-#                 logger.info("Recipient not found for tagged capsoul")
-#                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+    #         from django.utils import timezone
+    #         current_date = timezone.now()
+    #         is_unlocked = (
+    #             bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
+    #         )
+    #         if not is_unlocked:
+    #             logger.info("Recipient not found for tagged capsoul")
+    #             return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-#         s3_key = media_file.s3_key
-#         filename = s3_key.split("/")[-1]
-#         file_ext = s3_key.lower()
-#         extension = s3_key.lower().split('/')[-1].split('.')[-1]
+    #     s3_key = media_file.s3_key
+    #     filename = s3_key.split("/")[-1]
+    #     file_ext = s3_key.lower()
+    #     extension = s3_key.lower().split('/')[-1].split('.')[-1]
         
-#         # Check file types
-#         is_image = file_ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
-#         is_svg = file_ext.endswith('.svg')
-#         is_video = self._is_video_file(filename)
-#         is_audio = self._is_audio_file(filename)
-#         is_doc = file_ext.endswith('.doc')
-#         is_heic = file_ext.endswith(('.heic', '.heif'))
-#         is_mkv = file_ext.endswith('.mkv')
-#         is_avi = file_ext.endswith('.avi')
-#         is_wmv = file_ext.endswith('.wmv')
-
-        
+    #     # Check file types
+    #     is_image = file_ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
+    #     is_svg = file_ext.endswith('.svg')
+    #     is_video = self._is_video_file(filename)
+    #     is_audio = self._is_audio_file(filename)
+    #     is_doc = file_ext.endswith('.doc')
+    #     is_heic = file_ext.endswith(('.heic', '.heif'))
+    #     is_mkv = file_ext.endswith('.mkv')
+    #     is_avi = file_ext.endswith('.avi')
+    #     is_wmv = file_ext.endswith('.wmv')
 
         
-#         # Cache decrypted file bytes to avoid repeated S3 calls
-#         bytes_cache_key = f"media_bytes_{s3_key}"
-#         cached_data = cache.get(bytes_cache_key)
+
         
-#         if cached_data:
-#             file_bytes, original_content_type = cached_data
-#         else:
-#             file_bytes, original_content_type = decrypt_s3_file_chunked(s3_key)
-#             if not file_bytes or not original_content_type:
-#                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-#             # Cache the decrypted bytes for future requests
-#             cache.set(bytes_cache_key, (file_bytes, original_content_type), timeout=self.CACHE_TIMEOUT)
+    #     # Cache decrypted file bytes to avoid repeated S3 calls
+    #     bytes_cache_key = f"media_bytes_{s3_key}"
+    #     cached_data = cache.get(bytes_cache_key)
         
-#         # Guess better content type from filename
-#         content_type = self._guess_content_type(filename)
+    #     if cached_data:
+    #         file_bytes, original_content_type = cached_data
+    #     else:
+    #         file_bytes, original_content_type = decrypt_s3_file_chunked(s3_key)
+    #         if not file_bytes or not original_content_type:
+    #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    #         # Cache the decrypted bytes for future requests
+    #         cache.set(bytes_cache_key, (file_bytes, original_content_type), timeout=self.CACHE_TIMEOUT)
         
-#         # Handle special conversions
-#         if is_doc:
-#             docx_cache_key = f'{bytes_cache_key}_docx_preview'
-#             docx_bytes = cache.get(docx_cache_key)
-#             if not docx_bytes:
-#                 docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-#                 cache.set(docx_cache_key, docx_bytes, timeout=self.CACHE_TIMEOUT)
+    #     # Guess better content type from filename
+    #     content_type = self._guess_content_type(filename)
+        
+    #     # Handle special conversions
+    #     if is_doc:
+    #         docx_cache_key = f'{bytes_cache_key}_docx_preview'
+    #         docx_bytes = cache.get(docx_cache_key)
+    #         if not docx_bytes:
+    #             docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+    #             cache.set(docx_cache_key, docx_bytes, timeout=self.CACHE_TIMEOUT)
             
-#             file_bytes = docx_bytes
-#             content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-#             filename = filename.replace(".doc", ".docx")
+    #         file_bytes = docx_bytes
+    #         content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    #         filename = filename.replace(".doc", ".docx")
         
-#         elif is_heic:
-#             jpeg_cache_key = f'{bytes_cache_key}_jpeg'
-#             jpeg_file_bytes = cache.get(jpeg_cache_key)
-#             if not jpeg_file_bytes:
-#                 jpeg_file_bytes, _ = convert_heic_to_jpeg_bytes(file_bytes)
-#                 cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=self.CACHE_TIMEOUT)
+    #     elif is_heic:
+    #         jpeg_cache_key = f'{bytes_cache_key}_jpeg'
+    #         jpeg_file_bytes = cache.get(jpeg_cache_key)
+    #         if not jpeg_file_bytes:
+    #             jpeg_file_bytes, _ = convert_heic_to_jpeg_bytes(file_bytes)
+    #             cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=self.CACHE_TIMEOUT)
             
-#             file_bytes = jpeg_file_bytes
-#             content_type = "image/jpeg"
-#             filename = filename.replace(".heic", ".jpg").replace(".heif", ".jpg")
+    #         file_bytes = jpeg_file_bytes
+    #         content_type = "image/jpeg"
+    #         filename = filename.replace(".heic", ".jpg").replace(".heif", ".jpg")
         
-#         elif is_mkv or is_wmv or is_avi:
-#             mp4_cache_key = f'{bytes_cache_key}_mp4'
-#             mp4_bytes = cache.get(mp4_cache_key)
-#             if not mp4_bytes:
-#                 try:
-#                     # mp4_bytes, _ = convert_mkv_to_mp4_bytes(file_bytes)
-#                     mp4_bytes, _ = convert_video_to_mp4_bytes(
-#                         source_format = f'.{extension}',
-#                         file_bytes = file_bytes
-#                     )
-#                     cache.set(mp4_cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
-#                 except Exception as e:
-#                     logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
-#                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    #     elif is_mkv or is_wmv or is_avi:
+    #         mp4_cache_key = f'{bytes_cache_key}_mp4'
+    #         mp4_bytes = cache.get(mp4_cache_key)
+    #         if not mp4_bytes:
+    #             try:
+    #                 # mp4_bytes, _ = convert_mkv_to_mp4_bytes(file_bytes)
+    #                 mp4_bytes, _ = convert_video_to_mp4_bytes(
+    #                     source_format = f'.{extension}',
+    #                     file_bytes = file_bytes
+    #                 )
+    #                 cache.set(mp4_cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+    #             except Exception as e:
+    #                 logger.error(f"MKV conversion failed: {e} for {user.email} media-id: {media_file.id}")
+    #                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-#             file_bytes = mp4_bytes
-#             content_type = "video/mp4"
-#             if is_mkv:
-#                 filename = filename.replace(".mkv", ".mp4")
-#             elif is_wmv:
-#                 filename = filename.replace(".wmv", ".mp4")
-#             else:
-#                 filename = filename.replace(".avi", ".mp4")
+    #         file_bytes = mp4_bytes
+    #         content_type = "video/mp4"
+    #         if is_mkv:
+    #             filename = filename.replace(".mkv", ".mp4")
+    #         elif is_wmv:
+    #             filename = filename.replace(".wmv", ".mp4")
+    #         else:
+    #             filename = filename.replace(".avi", ".mp4")
                 
         
-#         # Return appropriate response based on file type
-#         if is_svg:
-#             return self._serve_svg_safely(file_bytes, filename)
-#         elif is_video or is_audio:
-#             # This handles both direct access and Range requests properly
-#             return self._stream_file_with_range(request, file_bytes, content_type, filename)
-#         else:
-#             # All other files (PDFs, images, documents, etc.)
-#             return self._create_inline_response(file_bytes, content_type, filename)
+    #     # Return appropriate response based on file type
+    #     if is_svg:
+    #         return self._serve_svg_safely(file_bytes, filename)
+    #     elif is_video or is_audio:
+    #         # This handles both direct access and Range requests properly
+    #         return self._stream_file_with_range(request, file_bytes, content_type, filename)
+    #     else:
+    #         # All other files (PDFs, images, documents, etc.)
+    #         return self._create_inline_response(file_bytes, content_type, filename)
 
 # better one
 # class ServeTimeCapSoulMedia(SecuredView):
-#     """
-#     Securely serve decrypted media from S3 via Django.
-#     Streaming responses for all files with lazy loading for audio/video.
-#     """
+    # """
+    # Securely serve decrypted media from S3 via Django.
+    # Streaming responses for all files with lazy loading for audio/video.
+    # """
     
-#     CACHE_TIMEOUT = 60 * 60 * 24  # 24 hours
-#     STREAMING_CHUNK_SIZE = 64 * 1024  # 64KB chunks
+    # CACHE_TIMEOUT = 60 * 60 * 24  # 24 hours
+    # STREAMING_CHUNK_SIZE = 64 * 1024  # 64KB chunks
     
-#     def _guess_content_type(self, filename):
-#         """Guess content type from filename extension for better browser compatibility."""
-#         import mimetypes
-#         content_type, _ = mimetypes.guess_type(filename)
+    # def _guess_content_type(self, filename):
+    #     """Guess content type from filename extension for better browser compatibility."""
+    #     import mimetypes
+    #     content_type, _ = mimetypes.guess_type(filename)
         
-#         lower_filename = filename.lower()
+    #     lower_filename = filename.lower()
         
-#         # Quick lookup for common types
-#         type_map = {
-#             # Video
-#             '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
-#             '.mov': 'video/quicktime', '.mkv': 'video/mp4', '.avi': 'video/mp4',
-#             '.flv': 'video/mp4', '.wmv': 'video/mp4',
-#             # Audio
-#             '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/mp4',
-#             '.wav': 'audio/wav', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
-#             '.opus': 'audio/ogg', '.wma': 'audio/x-ms-wma',
-#             # Image
-#             '.svg': 'image/svg+xml',
-#             # Documents
-#             '.pdf': 'application/pdf',
-#             '.doc': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-#             '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-#         }
+    #     # Quick lookup for common types
+    #     type_map = {
+    #         # Video
+    #         '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
+    #         '.mov': 'video/quicktime', '.mkv': 'video/mp4', '.avi': 'video/mp4',
+    #         '.flv': 'video/mp4', '.wmv': 'video/mp4',
+    #         # Audio
+    #         '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/mp4',
+    #         '.wav': 'audio/wav', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
+    #         '.opus': 'audio/ogg', '.wma': 'audio/x-ms-wma',
+    #         # Image
+    #         '.svg': 'image/svg+xml',
+    #         # Documents
+    #         '.pdf': 'application/pdf',
+    #         '.doc': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    #         '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    #     }
         
-#         for ext, mime in type_map.items():
-#             if lower_filename.endswith(ext):
-#                 return mime
+    #     for ext, mime in type_map.items():
+    #         if lower_filename.endswith(ext):
+    #             return mime
         
-#         return content_type or 'application/octet-stream'
+    #     return content_type or 'application/octet-stream'
     
-#     def _is_video_file(self, filename):
-#         """Check if file is a video by extension."""
-#         return filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v'))
+    # def _is_video_file(self, filename):
+    #     """Check if file is a video by extension."""
+    #     return filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v'))
     
-#     def _is_audio_file(self, filename):
-#         """Check if file is audio by extension."""
-#         return filename.lower().endswith(('.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.wma', '.opus'))
+    # def _is_audio_file(self, filename):
+    #     """Check if file is audio by extension."""
+    #     return filename.lower().endswith(('.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.wma', '.opus'))
 
-#     def _create_response(self, content, content_type, filename, streaming=False, 
-#                         range_support=False, start=0, end=None, total_size=None):
-#         """
-#         Unified response creator for all file types.
+    # def _create_response(self, content, content_type, filename, streaming=False, 
+    #                     range_support=False, start=0, end=None, total_size=None):
+    #     """
+    #     Unified response creator for all file types.
         
-#         Args:
-#             content: File bytes or generator for streaming
-#             content_type: MIME type
-#             filename: Original filename
-#             streaming: Whether to use StreamingHttpResponse
-#             range_support: Whether to add Range headers
-#             start: Start byte for range requests
-#             end: End byte for range requests
-#             total_size: Total file size for range requests
-#         """
-#         # Create appropriate response type
-#         if streaming:
-#             # For range requests, wrap bytes in FileWrapper
-#             if isinstance(content, bytes):
-#                 from wsgiref.util import FileWrapper
-#                 from io import BytesIO
-#                 content = FileWrapper(BytesIO(content), 8192)
+    #     Args:
+    #         content: File bytes or generator for streaming
+    #         content_type: MIME type
+    #         filename: Original filename
+    #         streaming: Whether to use StreamingHttpResponse
+    #         range_support: Whether to add Range headers
+    #         start: Start byte for range requests
+    #         end: End byte for range requests
+    #         total_size: Total file size for range requests
+    #     """
+    #     # Create appropriate response type
+    #     if streaming:
+    #         # For range requests, wrap bytes in FileWrapper
+    #         if isinstance(content, bytes):
+    #             from wsgiref.util import FileWrapper
+    #             from io import BytesIO
+    #             content = FileWrapper(BytesIO(content), 8192)
             
-#             response = StreamingHttpResponse(content, content_type=content_type)
-#             if range_support and start > 0:
-#                 response.status_code = 206
-#         else:
-#             response = HttpResponse(content, content_type=content_type)
+    #         response = StreamingHttpResponse(content, content_type=content_type)
+    #         if range_support and start > 0:
+    #             response.status_code = 206
+    #     else:
+    #         response = HttpResponse(content, content_type=content_type)
         
-#         # Set content length
-#         if total_size:
-#             length = (end - start + 1) if end else total_size
-#             response["Content-Length"] = str(length)
-#         elif not streaming and isinstance(content, bytes):
-#             response["Content-Length"] = str(len(content))
+    #     # Set content length
+    #     if total_size:
+    #         length = (end - start + 1) if end else total_size
+    #         response["Content-Length"] = str(length)
+    #     elif not streaming and isinstance(content, bytes):
+    #         response["Content-Length"] = str(len(content))
         
-#         # Range headers
-#         if range_support:
-#             response["Accept-Ranges"] = "bytes"
-#             if start > 0 and end and total_size:
-#                 response["Content-Range"] = f"bytes {start}-{end}/{total_size}"
+    #     # Range headers
+    #     if range_support:
+    #         response["Accept-Ranges"] = "bytes"
+    #         if start > 0 and end and total_size:
+    #             response["Content-Range"] = f"bytes {start}-{end}/{total_size}"
         
-#         # Security headers
-#         response["Content-Disposition"] = "inline"
-#         response["X-Content-Type-Options"] = "nosniff"
-#         response["Cache-Control"] = "private, max-age=3600"
+    #     # Security headers
+    #     response["Content-Disposition"] = "inline"
+    #     response["X-Content-Type-Options"] = "nosniff"
+    #     response["Cache-Control"] = "private, max-age=3600"
         
-#         # Special CSP for SVG
-#         if content_type == "image/svg+xml":
-#             response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
-#         else:
-#             frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#             csp = f"frame-ancestors 'self' {frame_ancestors};"
-#             if range_support:
-#                 csp = f"media-src *; {csp}"
-#             response["Content-Security-Policy"] = csp
+    #     # Special CSP for SVG
+    #     if content_type == "image/svg+xml":
+    #         response["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:;"
+    #     else:
+    #         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #         csp = f"frame-ancestors 'self' {frame_ancestors};"
+    #         if range_support:
+    #             csp = f"media-src *; {csp}"
+    #         response["Content-Security-Policy"] = csp
         
-#         # CORS headers
-#         response["Cross-Origin-Resource-Policy"] = "cross-origin"
-#         response["Access-Control-Allow-Origin"] = "*"
-#         if range_support:
-#             response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+    #     # CORS headers
+    #     response["Cross-Origin-Resource-Policy"] = "cross-origin"
+    #     response["Access-Control-Allow-Origin"] = "*"
+    #     if range_support:
+    #         response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
         
-#         return response
+    #     return response
 
-#     def get(self, request, s3_key, media_file_id=None):
-#         exp = request.GET.get("exp")
-#         sig = request.GET.get("sig")
+    # def get(self, request, s3_key, media_file_id=None):
+    #     exp = request.GET.get("exp")
+    #     sig = request.GET.get("sig")
         
-#         if not exp or not sig:
-#             return Response(status=status.HTTP_404_NOT_FOUND)
+    #     if not exp or not sig:
+    #         return Response(status=status.HTTP_404_NOT_FOUND)
 
-#         if int(exp) < int(time.time()):
-#             return Response(status=status.HTTP_404_NOT_FOUND)
+    #     if int(exp) < int(time.time()):
+    #         return Response(status=status.HTTP_404_NOT_FOUND)
 
-#         user = self.get_current_user(request)
-#         if user is None:
-#             return Response(status=status.HTTP_401_UNAUTHORIZED)
+    #     user = self.get_current_user(request)
+    #     if user is None:
+    #         return Response(status=status.HTTP_401_UNAUTHORIZED)
 
-#         # Optimize: Only get s3_key and file_type from DB (minimal data)
-#         try:
-#             media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
-#                 id=media_file_id, user=user
-#             )
-#         except TimeCapSoulMediaFile.DoesNotExist:
-#             try:
-#                 media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
-#                     id=media_file_id
-#                 )
-#             except TimeCapSoulMediaFile.DoesNotExist:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #     # Optimize: Only get s3_key and file_type from DB (minimal data)
+    #     try:
+    #         media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
+    #             id=media_file_id, user=user
+    #         )
+    #     except TimeCapSoulMediaFile.DoesNotExist:
+    #         try:
+    #             media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
+    #                 id=media_file_id
+    #             )
+    #         except TimeCapSoulMediaFile.DoesNotExist:
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
             
-#             if not verify_signature(media_file.s3_key, exp, sig):
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #         if not verify_signature(media_file.s3_key, exp, sig):
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
             
-#             time_capsoul = media_file.time_capsoul
-#             capsoul_recipients = TimeCapSoulRecipient.objects.filter(
-#                 time_capsoul=time_capsoul, email=user.email
-#             ).first()
+    #         time_capsoul = media_file.time_capsoul
+    #         capsoul_recipients = TimeCapSoulRecipient.objects.filter(
+    #             time_capsoul=time_capsoul, email=user.email
+    #         ).first()
             
-#             if not capsoul_recipients:
-#                 return Response(status=status.HTTP_404_NOT_FOUND)
+    #         if not capsoul_recipients:
+    #             return Response(status=status.HTTP_404_NOT_FOUND)
 
-#             from django.utils import timezone
-#             current_date = timezone.now()
-#             is_unlocked = (
-#                 bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
-#             )
-#             if not is_unlocked:
-#                 logger.info("Recipient not found for tagged capsoul")
-#                 return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
+    #         from django.utils import timezone
+    #         current_date = timezone.now()
+    #         is_unlocked = (
+    #             bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
+    #         )
+    #         if not is_unlocked:
+    #             logger.info("Recipient not found for tagged capsoul")
+    #             return Response({"media_files": []}, status=status.HTTP_404_NOT_FOUND)
 
-#         s3_key = media_file.s3_key
-#         filename = s3_key.split("/")[-1]
-#         file_ext = s3_key.lower()
-#         extension = s3_key.lower().split('/')[-1].split('.')[-1]
+    #     s3_key = media_file.s3_key
+    #     filename = s3_key.split("/")[-1]
+    #     file_ext = s3_key.lower()
+    #     extension = s3_key.lower().split('/')[-1].split('.')[-1]
         
-#         # Check file types
-#         is_image = file_ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
-#         is_svg = file_ext.endswith('.svg')
-#         is_video = self._is_video_file(filename)
-#         is_audio = self._is_audio_file(filename)
-#         is_doc = file_ext.endswith('.doc')
-#         is_heic = file_ext.endswith(('.heic', '.heif'))
-#         needs_conversion = file_ext.endswith(('.mkv', '.avi', '.wmv'))
+    #     # Check file types
+    #     is_image = file_ext.endswith(('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'))
+    #     is_svg = file_ext.endswith('.svg')
+    #     is_video = self._is_video_file(filename)
+    #     is_audio = self._is_audio_file(filename)
+    #     is_doc = file_ext.endswith('.doc')
+    #     is_heic = file_ext.endswith(('.heic', '.heif'))
+    #     needs_conversion = file_ext.endswith(('.mkv', '.avi', '.wmv'))
 
-#         # Cache decrypted file bytes to avoid repeated S3 calls
-#         bytes_cache_key = f"media_bytes_{s3_key}"
-#         cached_data = cache.get(bytes_cache_key)
+    #     # Cache decrypted file bytes to avoid repeated S3 calls
+    #     bytes_cache_key = f"media_bytes_{s3_key}"
+    #     cached_data = cache.get(bytes_cache_key)
         
-#         if cached_data:
-#             file_bytes, original_content_type = cached_data
-#         else:
-#             file_bytes, original_content_type = decrypt_s3_file_chunked(s3_key)
-#             if not file_bytes or not original_content_type:
-#                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-#             # Cache the decrypted bytes for future requests
-#             cache.set(bytes_cache_key, (file_bytes, original_content_type), timeout=self.CACHE_TIMEOUT)
+    #     if cached_data:
+    #         file_bytes, original_content_type = cached_data
+    #     else:
+    #         file_bytes, original_content_type = decrypt_s3_file_chunked(s3_key)
+    #         if not file_bytes or not original_content_type:
+    #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    #         # Cache the decrypted bytes for future requests
+    #         cache.set(bytes_cache_key, (file_bytes, original_content_type), timeout=self.CACHE_TIMEOUT)
         
-#         # Guess better content type from filename
-#         content_type = self._guess_content_type(filename)
+    #     # Guess better content type from filename
+    #     content_type = self._guess_content_type(filename)
         
-#         # Handle special conversions
-#         if is_doc:
-#             docx_cache_key = f'{bytes_cache_key}_docx_preview'
-#             docx_bytes = cache.get(docx_cache_key)
-#             if not docx_bytes:
-#                 docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
-#                 cache.set(docx_cache_key, docx_bytes, timeout=self.CACHE_TIMEOUT)
+    #     # Handle special conversions
+    #     if is_doc:
+    #         docx_cache_key = f'{bytes_cache_key}_docx_preview'
+    #         docx_bytes = cache.get(docx_cache_key)
+    #         if not docx_bytes:
+    #             docx_bytes = convert_doc_to_docx_bytes(file_bytes, media_file_id=media_file.id, email=user.email)
+    #             cache.set(docx_cache_key, docx_bytes, timeout=self.CACHE_TIMEOUT)
             
-#             file_bytes = docx_bytes
-#             content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-#             filename = filename.replace(".doc", ".docx")
+    #         file_bytes = docx_bytes
+    #         content_type = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    #         filename = filename.replace(".doc", ".docx")
         
-#         elif is_heic:
-#             jpeg_cache_key = f'{bytes_cache_key}_jpeg'
-#             jpeg_file_bytes = cache.get(jpeg_cache_key)
-#             if not jpeg_file_bytes:
-#                 jpeg_file_bytes, _ = convert_heic_to_jpeg_bytes(file_bytes)
-#                 cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=self.CACHE_TIMEOUT)
+    #     elif is_heic:
+    #         jpeg_cache_key = f'{bytes_cache_key}_jpeg'
+    #         jpeg_file_bytes = cache.get(jpeg_cache_key)
+    #         if not jpeg_file_bytes:
+    #             jpeg_file_bytes, _ = convert_heic_to_jpeg_bytes(file_bytes)
+    #             cache.set(jpeg_cache_key, jpeg_file_bytes, timeout=self.CACHE_TIMEOUT)
             
-#             file_bytes = jpeg_file_bytes
-#             content_type = "image/jpeg"
-#             filename = filename.replace(".heic", ".jpg").replace(".heif", ".jpg")
+    #         file_bytes = jpeg_file_bytes
+    #         content_type = "image/jpeg"
+    #         filename = filename.replace(".heic", ".jpg").replace(".heif", ".jpg")
         
-#         elif needs_conversion:
-#             mp4_cache_key = f'{bytes_cache_key}_mp4'
-#             mp4_bytes = cache.get(mp4_cache_key)
+    #     elif needs_conversion:
+    #         mp4_cache_key = f'{bytes_cache_key}_mp4'
+    #         mp4_bytes = cache.get(mp4_cache_key)
             
-#             if not mp4_bytes:
-#                 try:
-#                     logger.info(f"Converting .{extension} to MP4 for {filename}")
-#                     mp4_bytes, _ = convert_video_to_mp4_bytes(
-#                         source_format=f'.{extension}',
-#                         file_bytes=file_bytes
-#                     )
-#                     cache.set(mp4_cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
-#                 except Exception as e:
-#                     logger.error(f"Video conversion failed: {e} for {user.email} media-id: {media_file.id}")
-#                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    #         if not mp4_bytes:
+    #             try:
+    #                 logger.info(f"Converting .{extension} to MP4 for {filename}")
+    #                 mp4_bytes, _ = convert_video_to_mp4_bytes(
+    #                     source_format=f'.{extension}',
+    #                     file_bytes=file_bytes
+    #                 )
+    #                 cache.set(mp4_cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
+    #             except Exception as e:
+    #                 logger.error(f"Video conversion failed: {e} for {user.email} media-id: {media_file.id}")
+    #                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             
-#             file_bytes = mp4_bytes
-#             content_type = "video/mp4"
-#             filename = filename.rsplit('.', 1)[0] + '.mp4'
+    #         file_bytes = mp4_bytes
+    #         content_type = "video/mp4"
+    #         filename = filename.rsplit('.', 1)[0] + '.mp4'
             
-#             # After conversion, stream with range support
-#             logger.info(f"Streaming converted MP4: {filename}")
-#             file_size = len(file_bytes)
+    #         # After conversion, stream with range support
+    #         logger.info(f"Streaming converted MP4: {filename}")
+    #         file_size = len(file_bytes)
             
-#             # Parse range header
-#             start, end = 0, file_size - 1
-#             range_header = request.headers.get("Range", "")
-#             if range_header:
-#                 import re
-#                 m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-#                 if m:
-#                     start = int(m.group(1))
-#                     if m.group(2):
-#                         end = int(m.group(2))
-#                     end = min(end, file_size - 1)
+    #         # Parse range header
+    #         start, end = 0, file_size - 1
+    #         range_header = request.headers.get("Range", "")
+    #         if range_header:
+    #             import re
+    #             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #             if m:
+    #                 start = int(m.group(1))
+    #                 if m.group(2):
+    #                     end = int(m.group(2))
+    #                 end = min(end, file_size - 1)
             
-#             is_partial = range_header != ""
+    #         is_partial = range_header != ""
             
-#             # Return streaming response with range support
-#             return self._create_response(
-#                 file_bytes[start:end + 1],
-#                 content_type, filename,
-#                 streaming=is_partial, range_support=True,
-#                 start=start, end=end, total_size=file_size
-#             )
+    #         # Return streaming response with range support
+    #         return self._create_response(
+    #             file_bytes[start:end + 1],
+    #             content_type, filename,
+    #             streaming=is_partial, range_support=True,
+    #             start=start, end=end, total_size=file_size
+    #         )
         
-#         # Return appropriate response based on file type
-#         if is_svg:
-#             return self._create_response(file_bytes, content_type, filename)
-#         elif is_video or is_audio:
-#             # Stream with range support for video/audio
-#             file_size = len(file_bytes)
+    #     # Return appropriate response based on file type
+    #     if is_svg:
+    #         return self._create_response(file_bytes, content_type, filename)
+    #     elif is_video or is_audio:
+    #         # Stream with range support for video/audio
+    #         file_size = len(file_bytes)
             
-#             # Parse range header
-#             start, end = 0, file_size - 1
-#             range_header = request.headers.get("Range", "")
-#             if range_header:
-#                 import re
-#                 m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-#                 if m:
-#                     start = int(m.group(1))
-#                     if m.group(2):
-#                         end = int(m.group(2))
-#                     end = min(end, file_size - 1)
+    #         # Parse range header
+    #         start, end = 0, file_size - 1
+    #         range_header = request.headers.get("Range", "")
+    #         if range_header:
+    #             import re
+    #             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #             if m:
+    #                 start = int(m.group(1))
+    #                 if m.group(2):
+    #                     end = int(m.group(2))
+    #                 end = min(end, file_size - 1)
             
-#             is_partial = range_header != ""
+    #         is_partial = range_header != ""
             
-#             return self._create_response(
-#                 file_bytes[start:end + 1],
-#                 content_type, filename,
-#                 streaming=is_partial, range_support=True,
-#                 start=start, end=end, total_size=file_size
-#             )
-#         else:
-#             # All other files (PDFs, images, documents, etc.)
-#             return self._create_response(file_bytes, content_type, filename)
+    #         return self._create_response(
+    #             file_bytes[start:end + 1],
+    #             content_type, filename,
+    #             streaming=is_partial, range_support=True,
+    #             start=start, end=end, total_size=file_size
+    #         )
+    #     else:
+    #         # All other files (PDFs, images, documents, etc.)
+    #         return self._create_response(file_bytes, content_type, filename)
 
 # best one 
 # class ServeTimeCapSoulMedia(SecuredView):
-#     """
-#     Securely serve decrypted media from S3 via Django.
-#     Streaming responses for all files with lazy loading for audio/video.
-#     """
+    # """
+    # Securely serve decrypted media from S3 via Django.
+    # Streaming responses for all files with lazy loading for audio/video.
+    # """
     
-#     CACHE_TIMEOUT = 60 * 60 * 24  # 24 hours
-#     STREAMING_CHUNK_SIZE = 64 * 1024  # 64KB chunks
+    # CACHE_TIMEOUT = 60 * 60 * 24  # 24 hours
+    # STREAMING_CHUNK_SIZE = 64 * 1024  # 64KB chunks
     
-#     def _guess_content_type(self, filename):
-#         """Guess content type from filename extension for better browser compatibility."""
-#         import mimetypes
-#         content_type, _ = mimetypes.guess_type(filename)
+    # def _guess_content_type(self, filename):
+    #     """Guess content type from filename extension for better browser compatibility."""
+    #     import mimetypes
+    #     content_type, _ = mimetypes.guess_type(filename)
         
-#         lower_filename = filename.lower()
+    #     lower_filename = filename.lower()
         
-#         # Quick lookup for common types
-#         type_map = {
-#             # Video
-#             '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
-#             '.mov': 'video/quicktime', '.mkv': 'video/mp4', '.avi': 'video/mp4',
-#             '.flv': 'video/mp4', '.wmv': 'video/mp4',
-#             # Audio
-#             '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/mp4',
-#             '.wav': 'audio/wav', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
-#             '.opus': 'audio/ogg', '.wma': 'audio/x-ms-wma',
-#             # Image
-#             '.svg': 'image/svg+xml',
-#             # Documents
-#             '.pdf': 'application/pdf',
-#             '.doc': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-#             '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-#         }
+    #     # Quick lookup for common types
+    #     type_map = {
+    #         # Video
+    #         '.mp4': 'video/mp4', '.m4v': 'video/mp4', '.webm': 'video/webm',
+    #         '.mov': 'video/quicktime', '.mkv': 'video/mp4', '.avi': 'video/mp4',
+    #         '.flv': 'video/mp4', '.wmv': 'video/mp4',
+    #         # Audio
+    #         '.mp3': 'audio/mpeg', '.m4a': 'audio/mp4', '.aac': 'audio/mp4',
+    #         '.wav': 'audio/wav', '.flac': 'audio/flac', '.ogg': 'audio/ogg',
+    #         '.opus': 'audio/ogg', '.wma': 'audio/x-ms-wma',
+    #         # Image
+    #         '.svg': 'image/svg+xml',
+    #         # Documents
+    #         '.pdf': 'application/pdf',
+    #         '.doc': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    #         '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    #     }
         
-#         for ext, mime in type_map.items():
-#             if lower_filename.endswith(ext):
-#                 return mime
+    #     for ext, mime in type_map.items():
+    #         if lower_filename.endswith(ext):
+    #             return mime
         
-#         return content_type or 'application/octet-stream'
+    #     return content_type or 'application/octet-stream'
     
-#     def _is_video_file(self, filename):
-#         """Check if file is a video by extension."""
-#         return filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v'))
+    # def _is_video_file(self, filename):
+    #     """Check if file is a video by extension."""
+    #     return filename.lower().endswith(('.mp4', '.mkv', '.webm', '.mov', '.avi', '.flv', '.wmv', '.m4v'))
     
-#     def _is_audio_file(self, filename):
-#         """Check if file is audio by extension."""
-#         return filename.lower().endswith(('.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.wma', '.opus'))
+    # def _is_audio_file(self, filename):
+    #     """Check if file is audio by extension."""
+    #     return filename.lower().endswith(('.mp3', '.m4a', '.aac', '.wav', '.flac', '.ogg', '.wma', '.opus'))
     
-#     def _is_pdf_file(self, filename):
-#         """Check if file is a PDF."""
-#         return filename.lower().endswith('.pdf')
+    # def _is_pdf_file(self, filename):
+    #     """Check if file is a PDF."""
+    #     return filename.lower().endswith('.pdf')
     
-#     def _is_csv_file(self, filename):
-#         """Check if file is a CSV."""
-#         return filename.lower().endswith('.csv')
+    # def _is_csv_file(self, filename):
+    #     """Check if file is a CSV."""
+    #     return filename.lower().endswith('.csv')
     
-#     def _is_json_file(self, filename):
-#         """Check if file is a JSON."""
-#         return filename.lower().endswith('.json')
+    # def _is_json_file(self, filename):
+    #     """Check if file is a JSON."""
+    #     return filename.lower().endswith('.json')
 
-#     def _serve_pdf_with_range(self, request, file_bytes, filename):
-#         """
-#         Serve PDF with proper Range support for browser preview.
-#         PDFs need range support for progressive loading in browser viewers.
-#         """
-#         file_size = len(file_bytes)
-#         range_header = request.headers.get("Range", "")
+    # def _serve_pdf_with_range(self, request, file_bytes, filename):
+    #     """
+    #     Serve PDF with proper Range support for browser preview.
+    #     PDFs need range support for progressive loading in browser viewers.
+    #     """
+    #     file_size = len(file_bytes)
+    #     range_header = request.headers.get("Range", "")
         
-#         # Parse range
-#         start, end = 0, file_size - 1
-#         if range_header:
-#             import re
-#             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-#             if m:
-#                 start = int(m.group(1))
-#                 if m.group(2):
-#                     end = int(m.group(2))
-#                 end = min(end, file_size - 1)
+    #     # Parse range
+    #     start, end = 0, file_size - 1
+    #     if range_header:
+    #         import re
+    #         m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #         if m:
+    #             start = int(m.group(1))
+    #             if m.group(2):
+    #                 end = int(m.group(2))
+    #             end = min(end, file_size - 1)
         
-#         is_partial = range_header != ""
+    #     is_partial = range_header != ""
         
-#         # Use streaming response for range requests, regular for full file
-#         if is_partial:
-#             from wsgiref.util import FileWrapper
-#             from io import BytesIO
-#             response = StreamingHttpResponse(
-#                 FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
-#                 content_type="application/pdf",
-#                 status=206
-#             )
-#         else:
-#             response = HttpResponse(
-#                 file_bytes,
-#                 content_type="application/pdf",
-#                 status=200
-#             )
+    #     # Use streaming response for range requests, regular for full file
+    #     if is_partial:
+    #         from wsgiref.util import FileWrapper
+    #         from io import BytesIO
+    #         response = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
+    #             content_type="application/pdf",
+    #             status=206
+    #         )
+    #     else:
+    #         response = HttpResponse(
+    #             file_bytes,
+    #             content_type="application/pdf",
+    #             status=200
+    #         )
         
-#         # PDF-specific headers
-#         response["Accept-Ranges"] = "bytes"
-#         response["Content-Length"] = str(end - start + 1)
-#         response["Content-Disposition"] = "inline"
-#         response["X-Content-Type-Options"] = "nosniff"
-#         response["Cache-Control"] = "private, max-age=3600"
+    #     # PDF-specific headers
+    #     response["Accept-Ranges"] = "bytes"
+    #     response["Content-Length"] = str(end - start + 1)
+    #     response["Content-Disposition"] = "inline"
+    #     response["X-Content-Type-Options"] = "nosniff"
+    #     response["Cache-Control"] = "private, max-age=3600"
         
-#         if is_partial:
-#             response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    #     if is_partial:
+    #         response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
         
-#         # CORS for PDF.js and other viewers
-#         response["Access-Control-Allow-Origin"] = "*"
-#         response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
-#         response["Cross-Origin-Resource-Policy"] = "cross-origin"
+    #     # CORS for PDF.js and other viewers
+    #     response["Access-Control-Allow-Origin"] = "*"
+    #     response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+    #     response["Cross-Origin-Resource-Policy"] = "cross-origin"
         
-#         # Allow embedding in iframes from allowed origins
-#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#         response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
+    #     # Allow embedding in iframes from allowed origins
+    #     frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #     response["Content-Security-Policy"] = f"frame-ancestors 'self' {frame_ancestors};"
         
-#         return response
+    #     return response
     
-#     def _serve_csv_with_range(self, request, file_bytes, filename):
-#         """
-#         Serve CSV with Range support for large file preview.
-#         Allows browsers/editors to load CSV progressively.
-#         """
-#         file_size = len(file_bytes)
-#         range_header = request.headers.get("Range", "")
+    # def _serve_csv_with_range(self, request, file_bytes, filename):
+    #     """
+    #     Serve CSV with Range support for large file preview.
+    #     Allows browsers/editors to load CSV progressively.
+    #     """
+    #     file_size = len(file_bytes)
+    #     range_header = request.headers.get("Range", "")
         
-#         # Parse range
-#         start, end = 0, file_size - 1
-#         if range_header:
-#             import re
-#             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-#             if m:
-#                 start = int(m.group(1))
-#                 if m.group(2):
-#                     end = int(m.group(2))
-#                 end = min(end, file_size - 1)
+    #     # Parse range
+    #     start, end = 0, file_size - 1
+    #     if range_header:
+    #         import re
+    #         m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #         if m:
+    #             start = int(m.group(1))
+    #             if m.group(2):
+    #                 end = int(m.group(2))
+    #             end = min(end, file_size - 1)
         
-#         is_partial = range_header != ""
+    #     is_partial = range_header != ""
         
-#         # Use streaming response for range requests
-#         if is_partial:
-#             from wsgiref.util import FileWrapper
-#             from io import BytesIO
-#             response = StreamingHttpResponse(
-#                 FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
-#                 content_type="text/csv",
-#                 status=206
-#             )
-#         else:
-#             response = HttpResponse(
-#                 file_bytes,
-#                 content_type="text/csv",
-#                 status=200
-#             )
+    #     # Use streaming response for range requests
+    #     if is_partial:
+    #         from wsgiref.util import FileWrapper
+    #         from io import BytesIO
+    #         response = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
+    #             content_type="text/csv",
+    #             status=206
+    #         )
+    #     else:
+    #         response = HttpResponse(
+    #             file_bytes,
+    #             content_type="text/csv",
+    #             status=200
+    #         )
         
-#         # CSV-specific headers
-#         response["Accept-Ranges"] = "bytes"
-#         response["Content-Length"] = str(end - start + 1)
-#         response["Content-Disposition"] = "inline"
-#         response["X-Content-Type-Options"] = "nosniff"
-#         response["Cache-Control"] = "private, max-age=3600"
+    #     # CSV-specific headers
+    #     response["Accept-Ranges"] = "bytes"
+    #     response["Content-Length"] = str(end - start + 1)
+    #     response["Content-Disposition"] = "inline"
+    #     response["X-Content-Type-Options"] = "nosniff"
+    #     response["Cache-Control"] = "private, max-age=3600"
         
-#         if is_partial:
-#             response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    #     if is_partial:
+    #         response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
         
-#         # CORS for CSV viewers
-#         response["Access-Control-Allow-Origin"] = "*"
-#         response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
-#         response["Cross-Origin-Resource-Policy"] = "cross-origin"
+    #     # CORS for CSV viewers
+    #     response["Access-Control-Allow-Origin"] = "*"
+    #     response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+    #     response["Cross-Origin-Resource-Policy"] = "cross-origin"
         
-#         # Allow embedding
-#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#         response["Content-Security-Policy"] = f"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self' {frame_ancestors};"
+    #     # Allow embedding
+    #     frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #     response["Content-Security-Policy"] = f"default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'self' {frame_ancestors};"
         
-#         return response
+    #     return response
     
-#     def _serve_json_with_range(self, request, file_bytes, filename):
-#         """
-#         Serve JSON with Range support for large file preview.
-#         Allows progressive loading of large JSON files.
-#         """
-#         file_size = len(file_bytes)
-#         range_header = request.headers.get("Range", "")
+    # def _serve_json_with_range(self, request, file_bytes, filename):
+    #     """
+    #     Serve JSON with Range support for large file preview.
+    #     Allows progressive loading of large JSON files.
+    #     """
+    #     file_size = len(file_bytes)
+    #     range_header = request.headers.get("Range", "")
         
-#         # Parse range
-#         start, end = 0, file_size - 1
-#         if range_header:
-#             import re
-#             m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-#             if m:
-#                 start = int(m.group(1))
-#                 if m.group(2):
-#                     end = int(m.group(2))
-#                 end = min(end, file_size - 1)
+    #     # Parse range
+    #     start, end = 0, file_size - 1
+    #     if range_header:
+    #         import re
+    #         m = re.match(r"bytes=(\d+)-(\d*)", range_header)
+    #         if m:
+    #             start = int(m.group(1))
+    #             if m.group(2):
+    #                 end = int(m.group(2))
+    #             end = min(end, file_size - 1)
         
-#         is_partial = range_header != ""
+    #     is_partial = range_header != ""
         
-#         # Use streaming response for range requests
-#         if is_partial:
-#             from wsgiref.util import FileWrapper
-#             from io import BytesIO
-#             response = StreamingHttpResponse(
-#                 FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
-#                 content_type="application/json",
-#                 status=206
-#             )
-#         else:
-#             response = HttpResponse(
-#                 file_bytes,
-#                 content_type="application/json",
-#                 status=200
-#             )
+    #     # Use streaming response for range requests
+    #     if is_partial:
+    #         from wsgiref.util import FileWrapper
+    #         from io import BytesIO
+    #         response = StreamingHttpResponse(
+    #             FileWrapper(BytesIO(file_bytes[start:end + 1]), 8192),
+    #             content_type="application/json",
+    #             status=206
+    #         )
+    #     else:
+    #         response = HttpResponse(
+    #             file_bytes,
+    #             content_type="application/json",
+    #             status=200
+    #         )
         
-#         # JSON-specific headers
-#         response["Accept-Ranges"] = "bytes"
-#         response["Content-Length"] = str(end - start + 1)
-#         response["Content-Disposition"] = "inline"
-#         response["X-Content-Type-Options"] = "nosniff"
-#         response["Cache-Control"] = "private, max-age=3600"
+    #     # JSON-specific headers
+    #     response["Accept-Ranges"] = "bytes"
+    #     response["Content-Length"] = str(end - start + 1)
+    #     response["Content-Disposition"] = "inline"
+    #     response["X-Content-Type-Options"] = "nosniff"
+    #     response["Cache-Control"] = "private, max-age=3600"
         
-#         if is_partial:
-#             response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
+    #     if is_partial:
+    #         response["Content-Range"] = f"bytes {start}-{end}/{file_size}"
         
-#         # CORS for JSON viewers
-#         response["Access-Control-Allow-Origin"] = "*"
-#         response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
-#         response["Cross-Origin-Resource-Policy"] = "cross-origin"
+    #     # CORS for JSON viewers
+    #     response["Access-Control-Allow-Origin"] = "*"
+    #     response["Access-Control-Expose-Headers"] = "Accept-Ranges, Content-Range, Content-Length"
+    #     response["Cross-Origin-Resource-Policy"] = "cross-origin"
         
-#         # Allow embedding with strict CSP for JSON
-#         frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
-#         response["Content-Security-Policy"] = f"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; frame-ancestors 'self' {frame_ancestors};"
+    #     # Allow embedding with strict CSP for JSON
+    #     frame_ancestors = " ".join(settings.CORS_ALLOWED_ORIGINS)
+    #     response["Content-Security-Policy"] = f"default-src 'none'; style-src 'unsafe-inline'; script-src 'none'; frame-ancestors 'self' {frame_ancestors};"
         
-#         return response
+    #     return response
 
-#     def _create_response(self, content, content_type, filename, streaming=False, 
-#                         range_support=False, start=0, end=None, total_size=None):
-#         """
-#         Unified response creator for all file types.
+    # def _create_response(self, content, content_type, filename, streaming=False, 
+    #                     range_support=False, start=0, end=None, total_size=None):
+    #     """
+    #     Unified response creator for all file types.
         
-#         Args:
-#             content: File bytes or generator for streaming
-#             content_type: MIME type
-#             filename: Original filename
-#             streaming: Whether to use StreamingHttpResponse
-#             range_support: Whether to add Range headers
-#             start: Start byte for range requests
-#             end: End byte for range requests
-#             total_size: Total file size for range requests
-#         """
-#         # Create appropriate response type
-#         if streaming:
-#             # For range requests, wrap bytes in FileWrapper
-#             if isinstance(content, bytes):
-#                 from wsgiref.util import FileWrapper
+    #     Args:
+    #         content: File bytes or generator for streaming
+    #         content_type: MIME type
+    #         filename: Original filename
+    #         streaming: Whether to use StreamingHttpResponse
+    #         range_support: Whether to add Range headers
+    #         start: Start byte for range requests
+    #         end: End byte for range requests
+    #         total_size: Total file size for range requests
+    #     """
+    #     # Create appropriate response type
+    #     if streaming:
+    #         # For range requests, wrap bytes in FileWrapper
+    #         if isinstance(content, bytes):
+    #             from wsgiref.util import FileWrapper
+
 #                 from io import BytesIO
 #                 content = FileWrapper(BytesIO(content), 8192)
             
@@ -4349,6 +4569,9 @@ SECRET = settings.SECRET_KEY.encode()
 #         else:
 #             # All other files (PDFs, images, documents, etc.)
 #             return self._create_response(file_bytes, content_type, filename)
+
+
+########################################################################################################################################################################################################################################################################################################################################################################################################################################################################################################
 
 class ServeTimeCapSoulMedia(SecuredView):
     """
@@ -4812,16 +5035,38 @@ class ServeTimeCapSoulMedia(SecuredView):
             return None
 
     def get(self, request, s3_key, media_file_id=None):
-        exp = request.GET.get("exp")
-        sig = request.GET.get("sig")
-        
-        
-        
-        if not exp or not sig:
-            return Response(status=status.HTTP_404_NOT_FOUND)
 
-        if int(exp) < int(time.time()):
-            return Response(status=status.HTTP_404_NOT_FOUND)
+
+        if '&' in s3_key and '?' not in request.get_full_path():
+            s3_key = s3_key.split('&')[0]
+
+        s3_key = s3_key.split('?')[0]
+
+        if settings.ENVIRONMENT_TYPE != "PROD":
+            exp = request.GET.get("exp")
+            sig = request.GET.get("sig")
+                        
+            if not exp or not sig:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            try:
+                exp_int = int(exp)
+
+                # if int(exp) < int(time.time()):
+                if exp_int < int(time.time()):
+                    # url_key = s3_key   # from URL param
+                    # expected_sig = generate_signature(url_key, exp_int)     #changedd 6 april
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+                
+                
+                # ✅ THIS IS THE FIX
+                expected_sig = generate_signature(s3_key, exp_int)
+
+                if not hmac.compare_digest(sig, expected_sig):
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+
+            except Exception:
+                return Response(status=status.HTTP_403_FORBIDDEN)
+
 
         user = self.get_current_user(request)
         if user is None:
@@ -4907,14 +5152,31 @@ class ServeTimeCapSoulMedia(SecuredView):
         if category in ['video', 'audio'] and not needs_conversion and not is_special:
             logger.info(f"Serving {category} via byte-range: {filename}")
 
-            # cache_key = f"media_bytes_{s3_key}"
             cache_key = media_cache_key('media_bytes_', s3_key)
             file_bytes = cache.get(cache_key)
 
             if not file_bytes:
+                # 🔹 Try S3 first (existing logic)
                 file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+
+                # 🔹 ✅ LOCAL FALLBACK (ADD THIS)
+                if not file_bytes:
+                    try:
+                        import os
+                        from django.conf import settings
+
+                        local_path = os.path.join(settings.MEDIA_ROOT, s3_key)
+
+                        if os.path.exists(local_path):
+                            with open(local_path, "rb") as f:
+                                file_bytes = f.read()
+                    except Exception as e:
+                        print("LOCAL FALLBACK ERROR:", e)
+
+                # 🔹 Existing fallback (keep this)
                 if not file_bytes:
                     file_bytes, _ = get_media_file_bytes_with_content_type(media_file, user)
+
                 if not file_bytes:
                     return Response(status=500)
 
@@ -4927,39 +5189,82 @@ class ServeTimeCapSoulMedia(SecuredView):
                 filename
             )
 
-        
-        # Route 2: Progressive streaming (images, no special handling)
+
+        # Route 2: IMAGES  #changedd 
         elif category == 'image' and not is_special:
+            if settings.ENVIRONMENT_TYPE != "PROD":
+                local_path = os.path.join(settings.MEDIA_ROOT, s3_key)
+                if os.path.exists(local_path):
+                    with open(local_path, "rb") as f:
+                        file_bytes = f.read()
+                    return self._create_response(file_bytes, content_type, filename)
+                return Response(status=status.HTTP_404_NOT_FOUND)
+
             file_size = self._get_file_size_from_metadata(s3_key)
             if not file_size:
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
             logger.info(f"Progressive image: {filename}")
             return self._create_response(
-                self._stream_chunked_decrypt(s3_key = s3_key, media_file=media_file, user=user),
+                self._stream_chunked_decrypt(s3_key=s3_key, media_file=media_file, user=user),
                 content_type, filename,
                 streaming=True, range_support=False
             )
+
+        
+        # Route 2: Progressive streaming (images, no special handling) #changedd 
+        # elif category == 'image' and not is_special:
+        #     file_size = self._get_file_size_from_metadata(s3_key)
+        #     if not file_size:
+        #         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        #     logger.info(f"Progressive image: {filename}")
+        #     return self._create_response(
+        #         self._stream_chunked_decrypt(s3_key = s3_key, media_file=media_file, user=user),
+        #         content_type, filename,
+        #         streaming=True, range_support=False
+        #     )
         
         # Route 3: Full file with conversions (everything else)
+        # else:
+        #     logger.info(f"Full decrypt for {category}: {filename}")
+            
+        #     # Get or decrypt full file
+        #     # bytes_cache_key = f"media_bytes_{s3_key}"
+        #     bytes_cache_key = media_cache_key('media_bytes_', s3_key)
+
+        #     cached_data = cache.get(bytes_cache_key)
+            
+        #     if cached_data:
+        #         file_bytes = cached_data
+        #     else:
+        #         file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+        #         if not file_bytes:
+        #             file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+
+        #         if not file_bytes:
+        #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        #         cache.set(bytes_cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+        #changedd route 3:
         else:
             logger.info(f"Full decrypt for {category}: {filename}")
-            
-            # Get or decrypt full file
-            # bytes_cache_key = f"media_bytes_{s3_key}"
             bytes_cache_key = media_cache_key('media_bytes_', s3_key)
-
             cached_data = cache.get(bytes_cache_key)
-            
             if cached_data:
                 file_bytes = cached_data
             else:
-                file_bytes, _ = decrypt_s3_file_chunked(s3_key)
-                if not file_bytes:
-                    file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
-
-                if not file_bytes:
-                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+                if settings.ENVIRONMENT_TYPE != "PROD":
+                    local_path = os.path.join(settings.MEDIA_ROOT, s3_key)
+                    if os.path.exists(local_path):
+                        with open(local_path, "rb") as f:
+                            file_bytes = f.read()
+                    else:
+                        return Response(status=status.HTTP_404_NOT_FOUND)
+                else:
+                    file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+                    if not file_bytes:
+                        file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
+                    if not file_bytes:
+                        return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 cache.set(bytes_cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
             
             # Check if PDF, CSV, or JSON after decryption
@@ -5060,63 +5365,14 @@ class ServeTimeCapSoulMedia(SecuredView):
                     filename.rsplit('.', 1)[0] + ".mp4"
                 )
             
-                # cache_key = f'{bytes_cache_key}_mp4'
-                # mp4_bytes = cache.get(cache_key)
-                
-                # if not mp4_bytes:
-                #     try:
-                #         logger.info(f"Converting {extension} to MP4 for {filename}")
-                #         mp4_bytes, _ = convert_video_to_mp4_bytes(
-                #             source_format=extension,
-                #             file_bytes=file_bytes
-                #         )
-                #         cache.set(cache_key, mp4_bytes, timeout=self.CACHE_TIMEOUT)
-                #     except Exception as e:
-                #         mp4_bytes = convert_mov_bytes_to_mp4_bytes(file_bytes)
-
-                #     except Exception as e:
-                #         logger.error(f"Conversion failed for {filename}: {e}")
-                #         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-                
-                # file_bytes = mp4_bytes
-                # content_type = "video/mp4"
-                # filename = filename.rsplit('.', 1)[0] + '.mp4'
-                
-                # # Now stream the converted MP4 with range support
-                # logger.info(f"Streaming converted MP4: {filename}")
-                # file_size = len(file_bytes)
-                
-                # # Parse range header
-                # start, end = 0, file_size
-                # range_header = request.headers.get("Range", "")
-                # if range_header:
-                #     import re
-                #     m = re.match(r"bytes=(\d+)-(\d*)", range_header)
-                #     if m:
-                #         start = int(m.group(1))
-                #         end = int(m.group(2)) + 1 if m.group(2) else file_size
-                #         end = min(end, file_size)
-                
-                # # Create generator for range
-                # def generate_range():
-                #     chunk_size = self.STREAMING_CHUNK_SIZE
-                #     pos = start
-                #     while pos < end:
-                #         chunk_end = min(pos + chunk_size, end)
-                #         yield file_bytes[pos:chunk_end]
-                #         pos = chunk_end
-                
-                # return self._create_response(
-                #     generate_range(),
-                #     content_type, filename,
-                #     streaming=True, range_support=True,
-                #     start=start, end=end, total_size=file_size
-                # )
-            
             # For non-converted files, return simple response
             return self._create_response(file_bytes, content_type, filename)
 
-            
+        
+
+        
+
+############################################################################################################################################################################################################################################            
 
 import math
 from memory_room.media_helper import decrypt_s3_file_chunked,decrypt_s3_file_chunked_range,ChunkedDecryptor,S3MediaDecryptor
@@ -5582,6 +5838,7 @@ class TimeCapsoulDuplicationApiView(SecuredView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+
 class ServeCoverTimecapsoulImages(SecuredView):
     """
     Securely serve decrypted images from S3 via Django.
@@ -5595,7 +5852,13 @@ class ServeCoverTimecapsoulImages(SecuredView):
     IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', 
                         '.heic', '.heif', '.svg', '.ico', '.raw', '.psd'}
     
+    from django.conf import settings
+    from django.http import FileResponse
+    from rest_framework.response import Response
+    from rest_framework import status
+    
     def _get_file_extension(self, filename):
+                
         """Extract file extension from filename."""
         return '.' + filename.lower().rsplit('.', 1)[-1] if '.' in filename else ''
     
@@ -5678,8 +5941,11 @@ class ServeCoverTimecapsoulImages(SecuredView):
                 if not full_plaintext:
                     full_plaintext, _ = get_file_bytes(s3_key)
                     media_file = TimeCapSoulMediaFile.objects.filter(s3_key = s3_key).first()
-                    if not full_plaintext and media_file and media_file.user:
-                        full_plaintext, _ = get_media_file_bytes_with_content_type(media_file, user)
+                    if not full_plaintext and media_file:
+                        # Pass the request user if available
+                        current_user = self.get_current_user(self.request) if hasattr(self, 'request') else None
+                        if media_file.user or current_user:
+                            full_plaintext, _ = get_media_file_bytes_with_content_type(media_file, current_user or media_file.user)
                     if full_plaintext:
                         cache.set(cache_key, full_plaintext, timeout=self.CACHE_TIMEOUT)
 
@@ -5746,6 +6012,65 @@ class ServeCoverTimecapsoulImages(SecuredView):
         except Assets.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
         
+        # LOCAL MODE - Serve local file directly without S3 decryption
+        if settings.ENVIRONMENT_TYPE != "PROD":
+            # SECURITY: Validate expiry and signature for local mode
+            exp = request.GET.get('exp')
+            sig = request.GET.get('sig')
+            
+            if exp and sig:
+                # Validate expiry timestamp and signature
+                try:
+                    exp_int = int(exp)
+                    current_time = int(time.time())
+                    
+                    # Check if URL has expired
+                    if current_time > exp_int:
+                        return Response(
+                            {'error': 'Media access expired'},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                    
+                    # Validate signature for extra security
+                    expected_sig = self._validate_signature(assets.s3_key, exp_int)
+                    if not hmac.compare_digest(sig, expected_sig):
+                        return Response(
+                            {'error': 'Invalid access signature'},
+                            status=status.HTTP_403_FORBIDDEN
+                        )
+                
+                except (ValueError, TypeError):
+                    return Response(
+                        {'error': 'Invalid expiry parameters'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                # No expiry parameters provided - block access in local mode for security
+                return Response(
+                    {'error': 'Expired or missing access token'},
+                    status=status.HTTP_403_FORBIDDEN
+                )
+            
+            # All validation passed - serve the file
+            if assets.image and hasattr(assets.image, 'url'):
+                # For local mode, read and serve the file directly
+                try:
+                    filename = assets.image.name.split('/')[-1]
+                    file_path = assets.image.path
+                    extension = self._get_file_extension(filename)
+                    content_type = self._guess_content_type(filename)
+                    
+                    with open(file_path, 'rb') as f:
+                        file_bytes = f.read()
+                    
+                    return self._create_response(file_bytes, content_type, filename)
+                except Exception as e:
+                    logger.error(f"Error serving local image: {e}")
+                    return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            else:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+        
+        # PRODUCTION MODE - S3 decryption logic (unchanged)
         # else:
         #     if user != media_file.user:
         #         time_capsoul = media_file.time_capsoul

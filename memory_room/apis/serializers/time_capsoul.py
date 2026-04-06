@@ -529,8 +529,9 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
                 "file": f"File size exceeds max limit of {max_file_size} bytes"
             })
         return attrs
+    
 
-
+    #changedd= for local testing 
     def create(self, validated_data):
         user = self.context['user']
         time_capsoul = self.context['time_capsoul']
@@ -540,7 +541,6 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
             progress_callback(4, "Initializing upload...")
 
         file = validated_data.pop('file')
-        # file_name = file.name
         iv = validated_data.pop('iv')
         file_type = validated_data.get('file_type')
         file_name = validated_data.pop('unique_file_name')
@@ -550,55 +550,58 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
 
         if progress_callback:
             progress_callback(5, "Initializing upload...")
-        
+
+        # ✅ IMPORTANT
+        import os
+        file_ext = os.path.splitext(file.name)[1].lower()
+
         try:
-            s3_key = generate_capsoul_media_s3_key(file_name, user.s3_storage_id, time_capsoul.id)
-            file_ext=os.path.splitext(file.name)[1].lower()
-            
-            if file_ext in (".jpg", ".jpeg"):
-                result = jpg_images_handler(
-                    s3_key=s3_key,
-                    encrypted_file=file,
-                    iv_str=iv,
-                    progress_callback=progress_callback,
-                    file_ext=os.path.splitext(file.name)[1].lower(),
-                )
+            if settings.ENVIRONMENT_TYPE == "PROD":
+                s3_key = generate_capsoul_media_s3_key(file_name, user.s3_storage_id, time_capsoul.id)
+
+                if file_ext in (".jpg", ".jpeg"):
+                    result = jpg_images_handler(
+                        s3_key=s3_key,
+                        encrypted_file=file,
+                        iv_str=iv,
+                        progress_callback=progress_callback,
+                        file_ext=file_ext,
+                    )
+                else:
+                    result = media_uploader(
+                        key=s3_key,
+                        encrypted_file=file,
+                        iv_str=iv,
+                        file_type=file_type,
+                        progress_callback=progress_callback,
+                        file_ext=file_ext,
+                    )
+
+                validated_data['s3_key'] = s3_key
+                validated_data['file_size'] = get_readable_file_size_from_bytes(result['uploaded_size'])
+                validated_data['media_type'] = 'original'
+
             else:
-                result = media_uploader(
-                    key=s3_key,
-                    encrypted_file=file,
-                    iv_str=iv,
-                    file_type = file_type,
-                    # content_type="audio/mpeg",
-                    progress_callback=progress_callback,
-                    file_ext=os.path.splitext(file.name)[1].lower(),
-                )
-            # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
-            #     file_type = file_type,
-            #     key=s3_key,
-            #     encrypted_file=file,
-            #     iv_str=iv,
-            #     # content_type="audio/mpeg",
-            #     progress_callback=progress_callback,
-            #     file_ext=os.path.splitext(file.name)[1].lower(),
-            # )
+                from django.core.files.storage import default_storage
+
+                file_path = default_storage.save(f"uploads/{file.name}", file)
+
+                validated_data['s3_key'] = file_path
+                validated_data['file_size'] = file.size
+                validated_data['media_type'] = 'original'
+
+                result = {}  #  prevent thumbnail crash
+
         except Exception as e:
             logger.error('Chunked Decrypt/Upload Error', exc_info=True)
-            # if progress_callback:
-            #     progress_callback(0, f"Chunked decryption/upload failed: {str(e)}")
-            raise serializers.ValidationError({'upload_error': f"Chunked decryption/upload failed: {str(e)}"})
-
+            raise serializers.ValidationError({'upload_error': f"Upload failed: {str(e)}"})
 
         validated_data['title'] = file_name
         validated_data['file_type'] = file_type
-        validated_data['s3_key'] = s3_key
-        validated_data['media_type'] = 'original'
-        validated_data['file_size'] = get_readable_file_size_from_bytes(result['uploaded_size'])
-        
 
-      
+        #  Thumbnail safe block
         try:
-            if  result.get('thumbnail_data'):
+            if result.get('thumbnail_data'):
                 from django.core.files.base import ContentFile
                 image_file = ContentFile(result['thumbnail_data'], name=f"thumbnail_{file.name}.jpg")
 
@@ -617,6 +620,91 @@ class TimeCapSoulMediaFileSerializer(serializers.ModelSerializer):
         return instance
 
 
+
+    # def create(self, validated_data):
+        # user = self.context['user']
+        # time_capsoul = self.context['time_capsoul']
+        # progress_callback = self.context.get('progress_callback')
+        
+        # if progress_callback:
+        #     progress_callback(4, "Initializing upload...")
+
+        # file = validated_data.pop('file')
+        # # file_name = file.name
+        # iv = validated_data.pop('iv')
+        # file_type = validated_data.get('file_type')
+        # file_name = validated_data.pop('unique_file_name')
+
+        # validated_data['user'] = user
+        # validated_data['time_capsoul'] = time_capsoul
+
+        # if progress_callback:
+        #     progress_callback(5, "Initializing upload...")
+        
+        # try:
+        #     s3_key = generate_capsoul_media_s3_key(file_name, user.s3_storage_id, time_capsoul.id)
+        #     file_ext=os.path.splitext(file.name)[1].lower()
+            
+        #     if file_ext in (".jpg", ".jpeg"):
+        #         result = jpg_images_handler(
+        #             s3_key=s3_key,
+        #             encrypted_file=file,
+        #             iv_str=iv,
+        #             progress_callback=progress_callback,
+        #             file_ext=os.path.splitext(file.name)[1].lower(),
+        #         )
+        #     else:
+        #         result = media_uploader(
+        #             key=s3_key,
+        #             encrypted_file=file,
+        #             iv_str=iv,
+        #             file_type = file_type,
+        #             # content_type="audio/mpeg",
+        #             progress_callback=progress_callback,
+        #             file_ext=os.path.splitext(file.name)[1].lower(),
+        #         )
+        #     # result = decrypt_upload_and_extract_audio_thumbnail_chunked(
+        #     #     file_type = file_type,
+        #     #     key=s3_key,
+        #     #     encrypted_file=file,
+        #     #     iv_str=iv,
+        #     #     # content_type="audio/mpeg",
+        #     #     progress_callback=progress_callback,
+        #     #     file_ext=os.path.splitext(file.name)[1].lower(),
+        #     # )
+        # except Exception as e:
+        #     logger.error('Chunked Decrypt/Upload Error', exc_info=True)
+        #     # if progress_callback:
+        #     #     progress_callback(0, f"Chunked decryption/upload failed: {str(e)}")
+        #     raise serializers.ValidationError({'upload_error': f"Chunked decryption/upload failed: {str(e)}"})
+
+
+        # validated_data['title'] = file_name
+        # validated_data['file_type'] = file_type
+        # validated_data['s3_key'] = s3_key
+        # validated_data['media_type'] = 'original'
+        # validated_data['file_size'] = get_readable_file_size_from_bytes(result['uploaded_size'])
+        
+
+      
+        # try:
+        #     if  result.get('thumbnail_data'):
+        #         from django.core.files.base import ContentFile
+        #         image_file = ContentFile(result['thumbnail_data'], name=f"thumbnail_{file.name}.jpg")
+
+        #         if image_file:
+        #             from userauth.models import Assets
+        #             asset = Assets.objects.create(image=image_file, asset_types='TimeCapsoul/Thubmnail/Audio')
+        #             validated_data['thumbnail'] = asset
+        # except Exception as e:
+        #     logger.exception('Exception while extracting thumbnail')
+
+        # instance = super().create(validated_data)
+
+        # if progress_callback:
+        #     progress_callback(91, "File processed successfully!")
+
+        # return instance
 
 def generate_signature(s3_key: str, exp: int) -> str:
     """
@@ -637,49 +725,64 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
     class Meta:
         model = TimeCapSoulMediaFile
         fields = ('id', 'is_cover_image', 'created_at', 'updated_at','file_size', 'file_type', 's3_url', 'title', 'description', 'thumbnail')
+    
+    #changedd for local testing s3.
+    def get_s3_url(self, obj):
+        if settings.ENVIRONMENT_TYPE == "PROD":
+            # S3 MODE logic
+            exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+            s3_key = obj.s3_key
+            sig = generate_signature(s3_key, exp)
 
+            served_key = s3_key[37:]       
+            if served_key.lower().endswith(".doc"):
+                served_key = served_key[:-4] + ".docx"
+
+            return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"       
+        else:
+            # LOCAL MODE - URL with expiry token for local file rotation
+            exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+            s3_key = obj.s3_key
+            sig = generate_signature(s3_key, exp)
+            
+            # Return local URL with expiry and signature params (optional validation)
+            url = f"{settings.MEDIA_URL}{obj.s3_key}?exp={exp}&sig={sig}"
+            return url
+          
+
+        #   return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{s3_key}/?exp={exp}&sig={sig}"  #changedd - 6april 
+
+    #changedd = 
     # def get_s3_url(self, obj):
-    #     import time
-    #     exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS 
-    #     s3_key = obj.s3_key 
+
+    #     # --- Compute expiry ---
+    #     exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+    #     s3_key = obj.s3_key
+    #     cache_key = f"time_capsoul_media{obj.id}"
+
+    #     # --- Try fetching from cache ---
+    #     cached_url = cache.get(cache_key)
+    #     if cached_url:
+    #         return cached_url
+
+    #     # --- Generate fresh signed URL ---
     #     sig = generate_signature(s3_key, exp)
 
+    #     # Handle .doc → .docx extension
     #     served_key = s3_key[37:]
     #     if served_key.lower().endswith(".doc"):
-    #         served_key = served_key[:-4] + ".docx"  # change extension
+    #         served_key = served_key[:-4] + ".docx"
 
-    #     return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
-    
-    def get_s3_url(self, obj):
+    #     # Build URL
+    #     url = f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
 
-        # --- Compute expiry ---
-        exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
-        s3_key = obj.s3_key
-        cache_key = f"time_capsoul_media{obj.id}"
+    #     # --- Cache the URL until just before it expires ---
+    #     now = int(time.time())
+    #     ttl = max(0, exp - now - 5)  # expire 5s before real expiration
+    #     if ttl > 0:
+    #         cache.set(cache_key, url, timeout=ttl)
 
-        # --- Try fetching from cache ---
-        cached_url = cache.get(cache_key)
-        if cached_url:
-            return cached_url
-
-        # --- Generate fresh signed URL ---
-        sig = generate_signature(s3_key, exp)
-
-        # Handle .doc → .docx extension
-        served_key = s3_key[37:]
-        if served_key.lower().endswith(".doc"):
-            served_key = served_key[:-4] + ".docx"
-
-        # Build URL
-        url = f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
-
-        # --- Cache the URL until just before it expires ---
-        now = int(time.time())
-        ttl = max(0, exp - now - 5)  # expire 5s before real expiration
-        if ttl > 0:
-            cache.set(cache_key, url, timeout=ttl)
-
-        return url
+    #     return url
 
     
     # def get_list_view_url(self, obj):

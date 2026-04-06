@@ -4,6 +4,7 @@ import json
 import time
 import mimetypes
 from rest_framework import serializers
+from memory_room.apis.serializers.time_capsoul import generate_signature
 from memory_room.signals import update_user_storage, update_users_storage
 from botocore.exceptions import ClientError
 from django.conf import settings
@@ -598,7 +599,7 @@ from pathlib import Path
 
 import math
 
-
+############################################################################################################################################################################################################################################################################################################
 class ChunkedMediaUploadView(SecuredView):
     CACHE_PREFIX = "chunked_upload"
     SESSION_TIMEOUT = 3600
@@ -697,15 +698,27 @@ class ChunkedMediaUploadView(SecuredView):
                 )
 
                 # Generate encryption key
-                key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
-                session.data_key_plain = key["Plaintext"]
-                session.data_key_encrypted = key["CiphertextBlob"]
-                session.aesgcm = AESGCM(session.data_key_plain)
+                #changedd 
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+                    session.data_key_plain = key["Plaintext"]
+                    session.data_key_encrypted = key["CiphertextBlob"]
+                    session.aesgcm = AESGCM(session.data_key_plain)
+                else:
+                    session.data_key_plain = b"dummy"
+                    session.data_key_encrypted = b"dummy"
+                    session.aesgcm = None
+
+                # key = kms.generate_data_key(KeyId=AWS_KMS_KEY_ID, KeySpec="AES_256")
+                # session.data_key_plain = key["Plaintext"]
+                # session.data_key_encrypted = key["CiphertextBlob"]
+                # session.aesgcm = AESGCM(session.data_key_plain)
+
                 
                 # Check if file is JPG/JPEG or small file
-                session.is_jpg = file_ext in ('.jpg', '.jpeg')
-                session.file_ext = file_ext
-                session.is_small_file = file_size < self.SMALL_FILE_THRESHOLD
+                # session.is_jpg = file_ext in ('.jpg', '.jpeg')
+                # session.file_ext = file_ext
+                # session.is_small_file = file_size < self.SMALL_FILE_THRESHOLD
                 
                 # Only JPG files need temporary storage for corruption checking
                 if session.is_jpg:
@@ -713,17 +726,32 @@ class ChunkedMediaUploadView(SecuredView):
                     cache.set(session.temp_chunks_key, json.dumps([]), self.SESSION_TIMEOUT)
 
                 # Start multipart upload
-                mp = s3.create_multipart_upload(
-                    Bucket=MEDIA_FILES_BUCKET,
-                    Key=s3_key,
-                    Metadata={
-                        "edk": base64.b64encode(session.data_key_encrypted).decode(),
-                        'chunk_size': str(chunk_size),
-                        'file_size': str(file_size),
-                        'totalChunks': str(total_chunks),
-                    },
-                )
-                session.s3_upload_id = mp["UploadId"]
+                #changedd for local 
+                # mp = s3.create_multipart_upload(
+                #     Bucket=MEDIA_FILES_BUCKET,
+                #     Key=s3_key,
+                #     Metadata={
+                #         "edk": base64.b64encode(session.data_key_encrypted).decode(),
+                #         'chunk_size': str(chunk_size),
+                #         'file_size': str(file_size),
+                #         'totalChunks': str(total_chunks),
+                #     },
+                # )
+                # session.s3_upload_id = mp["UploadId"]
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    mp = s3.create_multipart_upload(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=s3_key,
+                        Metadata={
+                            "edk": base64.b64encode(session.data_key_encrypted).decode(),
+                            'chunk_size': str(chunk_size),
+                            'file_size': str(file_size),
+                            'totalChunks': str(total_chunks),
+                        },
+                    )
+                    session.s3_upload_id = mp["UploadId"]
+                else:
+                    session.s3_upload_id = "local-upload"
 
                 self.save_session(session)
 
@@ -813,20 +841,32 @@ class ChunkedMediaUploadView(SecuredView):
                     return
 
                 # ---------- S3 UPLOAD ----------
-                encrypted = self._encrypt_for_s3(decrypted, session.aesgcm)
-                part_no = chunk_index + 1
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    encrypted = self._encrypt_for_s3(decrypted, session.aesgcm)
+                    part_no = chunk_index + 1
 
-                resp = s3.upload_part(
-                    Bucket=MEDIA_FILES_BUCKET,
-                    Key=session.s3_key,
-                    UploadId=session.s3_upload_id,
-                    PartNumber=part_no,
-                    Body=encrypted,
-                )
+                    resp = s3.upload_part(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=session.s3_key,
+                        UploadId=session.s3_upload_id,
+                        PartNumber=part_no,
+                        Body=encrypted,
+                    )
 
-                with session.lock:
-                    session.s3_parts[str(part_no)] = resp["ETag"]
-                    session.uploaded_chunks.add(chunk_index)
+                    with session.lock:
+                        session.s3_parts[str(part_no)] = resp["ETag"]
+                        session.uploaded_chunks.add(chunk_index)
+                # else:
+                #      with session.lock:
+                #         session.uploaded_chunks.add(chunk_index)
+                else:
+                    # LOCAL MODE — save bytes to cache
+                    chunk_cache_key = f"local_chunks:{upload_id}"
+                    existing = cache.get(chunk_cache_key) or {}
+                    existing[str(chunk_index)] = base64.b64encode(decrypted).decode()
+                    cache.set(chunk_cache_key, existing, timeout=3600)
+                    with session.lock:
+                        session.uploaded_chunks.add(chunk_index)
 
                 self.save_session(session)
 
@@ -941,7 +981,8 @@ class ChunkedMediaUploadView(SecuredView):
 
             # ---------- SMALL FILE FLOW ----------
             elif session.is_small_file:
-                if len(session.s3_parts) != session.total_chunks:
+                # changedd - skip S3 parts check in local mode
+                if settings.ENVIRONMENT_TYPE == "PROD" and len(session.s3_parts) != session.total_chunks:
                     yield {
                         "uploadId": upload_id,
                         "stage": "error",
@@ -959,12 +1000,22 @@ class ChunkedMediaUploadView(SecuredView):
                 ]
                 parts.sort(key=lambda x: x["PartNumber"])
 
-                s3.complete_multipart_upload(
-                    Bucket=MEDIA_FILES_BUCKET,
-                    Key=session.s3_key,
-                    UploadId=session.s3_upload_id,
-                    MultipartUpload={"Parts": parts},
-                )
+                # s3.complete_multipart_upload(
+                #     Bucket=MEDIA_FILES_BUCKET,
+                #     Key=session.s3_key,
+                #     UploadId=session.s3_upload_id,
+                #     MultipartUpload={"Parts": parts},
+                # )
+                #changedd 
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    s3.complete_multipart_upload(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=session.s3_key,
+                        UploadId=session.s3_upload_id,
+                        MultipartUpload={"Parts": parts},
+                    )
+                else:
+                    logger.info(f"[LOCAL MODE] Skipping S3 complete for {upload_id}")
 
                 yield {
                     "uploadId": upload_id,
@@ -974,7 +1025,8 @@ class ChunkedMediaUploadView(SecuredView):
 
             # ---------- LARGE FILE FLOW ----------
             else:
-                if len(session.s3_parts) != session.total_chunks:
+                # changedd - skip S3 parts check in local mode
+                if settings.ENVIRONMENT_TYPE == "PROD" and len(session.s3_parts) != session.total_chunks:
                     yield {
                         "uploadId": upload_id,
                         "stage": "error",
@@ -995,12 +1047,22 @@ class ChunkedMediaUploadView(SecuredView):
                 ]
                 parts.sort(key=lambda x: x["PartNumber"])
 
-                s3.complete_multipart_upload(
-                    Bucket=MEDIA_FILES_BUCKET,
-                    Key=session.s3_key,
-                    UploadId=session.s3_upload_id,
-                    MultipartUpload={"Parts": parts},
-                )
+                # s3.complete_multipart_upload(
+                #     Bucket=MEDIA_FILES_BUCKET,
+                #     Key=session.s3_key,
+                #     UploadId=session.s3_upload_id,
+                #     MultipartUpload={"Parts": parts},
+                # )
+                #changedd 
+                if settings.ENVIRONMENT_TYPE == "PROD":
+                    s3.complete_multipart_upload(
+                        Bucket=MEDIA_FILES_BUCKET,
+                        Key=session.s3_key,
+                        UploadId=session.s3_upload_id,
+                        MultipartUpload={"Parts": parts},
+                    )
+                else:
+                    logger.info(f"[LOCAL MODE] Skipping S3 complete for {upload_id}")
 
                 yield {
                     "uploadId": upload_id,
@@ -1013,6 +1075,27 @@ class ChunkedMediaUploadView(SecuredView):
                 "stage": "creating_record",
                 "percentage": 92 if session.file_type in ["video", "audio"] else 98
             }
+
+            # changedd - Assemble local chunks before creating media record
+            if not settings.ENVIRONMENT_TYPE == "PROD":
+                chunk_cache_key = f"local_chunks:{upload_id}"
+                chunks_data = cache.get(chunk_cache_key) or {}
+                
+                if chunks_data:
+                    # Sort chunks by index and assemble
+                    full_data = b""
+                    for i in range(session.total_chunks):
+                        if str(i) in chunks_data:
+                            full_data += base64.b64decode(chunks_data[str(i)])
+                    
+                    # Save assembled file to local storage
+                    file_path = os.path.join(settings.MEDIA_ROOT, session.s3_key)
+                    os.makedirs(os.path.dirname(file_path), exist_ok=True)
+                    with open(file_path, 'wb') as f:
+                        f.write(full_data)
+                    
+                    logger.info(f"[LOCAL MODE] Saved assembled file to {file_path}")
+                    cache.delete(chunk_cache_key)
 
             memory_room = MemoryRoom.objects.get(id=session.time_capsoul_id)
 
@@ -1210,6 +1293,18 @@ class ChunkedMediaUploadView(SecuredView):
         total_size = len(file_bytes)
         MIN_PART_SIZE = 5 * 1024 * 1024  # 5MB
 
+        #changedd 
+        if not settings.ENVIRONMENT_TYPE == "PROD":
+            from django.core.files.base import ContentFile
+            from django.core.files.storage import default_storage
+            file_path = default_storage.save(
+                f"uploads/{session.file_name}",
+                ContentFile(file_bytes)
+            )
+            session.s3_key = file_path
+            yield {"uploadId": upload_id, "stage": "upload_complete", "percentage": 90}
+            return
+
         # ---------- SMALL FILE → SINGLE PUT ----------
         if total_size < MIN_PART_SIZE:
             yield {"uploadId": upload_id, "stage": "encrypting", "percentage": 74}
@@ -1270,12 +1365,24 @@ class ChunkedMediaUploadView(SecuredView):
         ]
         parts.sort(key=lambda x: x["PartNumber"])
 
-        s3.complete_multipart_upload(
-            Bucket=MEDIA_FILES_BUCKET,
-            Key=session.s3_key,
-            UploadId=session.s3_upload_id,
-            MultipartUpload={"Parts": parts},
-        )
+        # s3.complete_multipart_upload(
+        #     Bucket=MEDIA_FILES_BUCKET,
+        #     Key=session.s3_key,
+        #     UploadId=session.s3_upload_id,
+        #     MultipartUpload={"Parts": parts},
+        # )
+        #changedd
+        if settings.ENVIRONMENT_TYPE == "PROD":
+            s3.complete_multipart_upload(
+                Bucket=MEDIA_FILES_BUCKET,
+                Key=session.s3_key,
+                UploadId=session.s3_upload_id,
+                MultipartUpload={"Parts": parts},
+            )
+        else:
+            logger.info(f"[LOCAL MODE] Skipping S3 complete for {upload_id}")
+
+        
 
         yield {"uploadId": upload_id, "stage": "upload_complete", "percentage": 93}
 
@@ -1407,14 +1514,32 @@ class ChunkedMediaUploadView(SecuredView):
             if session:
                 try:
                     # Abort S3 multipart upload
-                    s3.abort_multipart_upload(
-                        Bucket=MEDIA_FILES_BUCKET,
-                        Key=session.s3_key,
-                        UploadId=session.s3_upload_id,
-                    )
-                    logger.info(f"Aborted S3 multipart upload for {upload_id}")
+                    # s3.abort_multipart_upload(
+                    #     Bucket=MEDIA_FILES_BUCKET,
+                    #     Key=session.s3_key,
+                    #     UploadId=session.s3_upload_id,
+                    # )
+                    #changedd for local 
+                    if settings.ENVIRONMENT_TYPE == "PROD":
+                        try:
+                            s3.abort_multipart_upload(
+                                Bucket=MEDIA_FILES_BUCKET,
+                                Key=session.s3_key,
+                                UploadId=session.s3_upload_id,
+                            )
+                            logger.info(f"Aborted S3 multipart upload for {upload_id}")
+                        except Exception as e:
+                            logger.error(f"Failed to abort S3 upload {upload_id}: {e}")
+                            failed_aborts.append({
+                                "uploadId": upload_id,
+                                "error": str(e),
+                                "fileName": session.file_name
+                            })
+                    else:
+                        logger.info(f"[LOCAL MODE] Skipping S3 abort for {upload_id}")
+
                 except Exception as e:
-                    logger.error(f"Failed to abort S3 upload {upload_id}: {e}")
+                    logger.error(f"Failed to abort upload {upload_id}: {e}")
                     failed_aborts.append({
                         "uploadId": upload_id,
                         "error": str(e),
@@ -1482,8 +1607,9 @@ class ChunkedMediaUploadView(SecuredView):
 
     def _encrypt_for_s3(self, data, aesgcm):
         """Encrypt data for S3 storage using KMS key"""
-        if aesgcm is None:
-            raise RuntimeError("AESGCM is not initialized")
+        if aesgcm is None:     #changedd
+            return data
+            # raise RuntimeError("AESGCM is not initialized")
 
         nonce = os.urandom(12)
         ciphertext = aesgcm.encrypt(nonce, data, None)
@@ -1561,7 +1687,7 @@ class UpdateMediaFileDescriptionView(SecuredView):
 #         except Exception as e:
 #             return Response(status=status.HTTP_404_NOT_FOUND)
 
-
+#################################################################################################################################################################################################################################
 class MediaFileDownloadView(SecuredView):
     """
     Securely stream media file downloads from S3 without loading full file into memory.
@@ -3007,19 +3133,37 @@ class ServeMedia(SecuredView):
             return None
 
     def get(self, request, s3_key, media_file_id=None):
-        exp = request.GET.get("exp")
-        sig = request.GET.get("sig")
-        
-        
-        if not exp or not sig:
-            return Response(status=status.HTTP_404_NOT_FOUND)
 
-        if int(exp) < int(time.time()):
-            return Response(status=status.HTTP_404_NOT_FOUND)
+        if settings.ENVIRONMENT_TYPE != "PROD":
+            exp = request.GET.get("exp")
+            sig = request.GET.get("sig")
+        
+            if not exp or not sig:
+                return Response(status=status.HTTP_404_NOT_FOUND)
+            try:
+                exp_int = int(exp)
+                
+                # if int(exp) < int(time.time()):
+                if exp_int < int(time.time()):
+                # url_key = s3_key   # from URL param
+                # expected_sig = generate_signature(url_key, exp_int)  #changedd 6 april
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+                
+                # ✅ THIS IS THE FIX
+                expected_sig = generate_signature(s3_key, exp_int)
+
+                if not hmac.compare_digest(sig, expected_sig):
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+                
+            except Exception:
+                    return Response(status=status.HTTP_403_FORBIDDEN)
+            
+
 
         user = self.get_current_user(request)
         if user is None:
             return Response(status=status.HTTP_401_UNAUTHORIZED)
+
 
         media_file = MemoryRoomMediaFile.objects.only('id', 's3_key', 'user_id').get( id=media_file_id, user=user )
 
@@ -3064,16 +3208,26 @@ class ServeMedia(SecuredView):
 
             logger.info(f"Serving {category} via byte-range: {filename}")
 
-            # cache_key = f"media_bytes_{s3_key}"
-            cache_key = media_cache_key('media_bytes_', s3_key)
-            file_bytes = cache.get(cache_key)
+            # changedd - Check if local or S3
+            if not settings.ENVIRONMENT_TYPE == "PROD":
+                # LOCAL MODE - read from filesystem
+                file_path = os.path.join(settings.MEDIA_ROOT, s3_key)
+                try:
+                    with open(file_path, 'rb') as f:
+                        file_bytes = f.read()
+                except FileNotFoundError:
+                    return Response(status=status.HTTP_404_NOT_FOUND)
+            else:
+                # S3 MODE
+                cache_key = media_cache_key('media_bytes_', s3_key)
+                file_bytes = cache.get(cache_key)
 
-            if not file_bytes:
-                file_bytes, _ = decrypt_s3_file_chunked(s3_key)
                 if not file_bytes:
-                    file_bytes, _ = get_media_file_bytes_with_content_type(media_file, user)
-                if not file_bytes:
-                    return Response(status=500)
+                    file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+                    if not file_bytes:
+                        file_bytes, _ = get_media_file_bytes_with_content_type(media_file, user)
+                    if not file_bytes:
+                        return Response(status=500)
 
                 cache.set(cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
 
@@ -3084,12 +3238,20 @@ class ServeMedia(SecuredView):
                 filename
             )
         
-        # Route 2: Progressive streaming (images, no special handling)
+
+        # Route 2: IMAGES  #changedd 
         elif category == 'image' and not is_special:
+            if settings.ENVIRONMENT_TYPE != "PROD":
+                local_path = os.path.join(settings.MEDIA_ROOT, s3_key)
+                if os.path.exists(local_path):
+                    with open(local_path, "rb") as f:
+                        file_bytes = f.read()
+                    return self._create_response(file_bytes, content_type, filename)
+                return Response(status=status.HTTP_404_NOT_FOUND)
+
             file_size = self._get_file_size_from_metadata(s3_key)
             if not file_size:
                 return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-            
             logger.info(f"Progressive image: {filename}")
             return self._create_response(
                 self._stream_chunked_decrypt(s3_key=s3_key, media_file=media_file, user=user),
@@ -3097,22 +3259,67 @@ class ServeMedia(SecuredView):
                 streaming=True, range_support=False
             )
         
+        # # Route 2: Progressive streaming (images, no special handling)
+        # elif category == 'image' and not is_special:
+        #     file_size = self._get_file_size_from_metadata(s3_key)
+        #     if not file_size:
+        #         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            
+        #     logger.info(f"Progressive image: {filename}")
+        #     return self._create_response(
+        #         self._stream_chunked_decrypt(s3_key=s3_key, media_file=media_file, user=user),
+        #         content_type, filename,
+        #         streaming=True, range_support=False
+        #     )
+        
         # Route 3: Full file with conversions (everything else)
+        # else:
+        #     logger.info(f"Full decrypt for {category}: {filename}")
+            
+        #     # changedd - Check if local or S3
+        #     if not settings.ENVIRONMENT_TYPE == "PROD":
+        #         # LOCAL MODE - read from filesystem
+        #         file_path = os.path.join(settings.MEDIA_ROOT, s3_key)
+        #         try:
+        #             with open(file_path, 'rb') as f:
+        #                 file_bytes = f.read()
+        #         except FileNotFoundError:
+        #             return Response(status=status.HTTP_404_NOT_FOUND)
+        #     else:
+        #         # S3 MODE
+        #         bytes_cache_key = media_cache_key('media_bytes_', s3_key)
+
+        #         cached_data = cache.get(bytes_cache_key)
+                
+        #         if cached_data:
+        #             file_bytes= cached_data
+        #         else:
+        #             file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+        #             if not file_bytes:
+        #                 file_bytes, _ = get_media_file_bytes_with_content_type(media_file, user)
+        #                 if not file_bytes:
+        #                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        #             cache.set(bytes_cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)
+
+        #changedd route 3:
         else:
             logger.info(f"Full decrypt for {category}: {filename}")
-            
-            # Get or decrypt full file
-            # bytes_cache_key = f"media_bytes_{s3_key}"
             bytes_cache_key = media_cache_key('media_bytes_', s3_key)
-
             cached_data = cache.get(bytes_cache_key)
-            
             if cached_data:
-                file_bytes= cached_data
+                file_bytes = cached_data
             else:
-                file_bytes, _ = decrypt_s3_file_chunked(s3_key)
-                if not file_bytes:
-                    file_bytes, _ = get_media_file_bytes_with_content_type(media_file, user)
+                if settings.ENVIRONMENT_TYPE != "PROD":
+                    local_path = os.path.join(settings.MEDIA_ROOT, s3_key)
+                    if os.path.exists(local_path):
+                        with open(local_path, "rb") as f:
+                            file_bytes = f.read()
+                    else:
+                        return Response(status=status.HTTP_404_NOT_FOUND)
+                else:
+                    file_bytes, _ = decrypt_s3_file_chunked(s3_key)
+                    if not file_bytes:
+                        file_bytes, content_type = get_media_file_bytes_with_content_type(media_file, user)
                     if not file_bytes:
                         return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
                 cache.set(bytes_cache_key, file_bytes, timeout=self.CACHE_TIMEOUT)

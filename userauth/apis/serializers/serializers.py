@@ -618,8 +618,15 @@ class AssetSerializer(serializers.ModelSerializer):
         model = Assets
         fields = ["id", "title", "asset_types", "image_url", "s3_url", "s3_key"]
 
+    # def get_image_url(self, obj):
+    #     return obj.s3_url or obj.get_image_url()
+    #changedd for profile image 
     def get_image_url(self, obj):
-        return obj.s3_url or obj.get_image_url()
+        if settings.ENVIRONMENT_TYPE == "PROD":
+            return obj.s3_url
+        
+        # LOCAL → always go through secure API
+        return f"{settings.SITE_LIVE_URL}/api/v0/serve/profile-image/{obj.s3_key}/"
     
 
 class UserProfileDataSerializer(serializers.ModelSerializer):
@@ -710,15 +717,22 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
         ]
         read_only_fields = ["email",]
     
+    # def get_profile_image_url(self, obj):
+    #     prifile_url = None
+    #     user_profile = UserProfile.objects.filter(user  = obj).first()
+    #     if user_profile:
+    #         if user_profile.profile_image:
+    #             s3_key = user_profile.profile_image.s3_key.split('/')
+    #             if len(s3_key) >= 4:
+    #                 prifile_url = f'{settings.SITE_LIVE_URL}/api/v0/serve/profile-image/{s3_key[2]}/{s3_key[3]}'
+    #     return prifile_url
     def get_profile_image_url(self, obj):
-        prifile_url = None
-        user_profile = UserProfile.objects.filter(user  = obj).first()
-        if user_profile:
-            if user_profile.profile_image:
-                s3_key = user_profile.profile_image.s3_key.split('/')
-                if len(s3_key) >= 4:
-                    prifile_url = f'{settings.SITE_LIVE_URL}/api/v0/serve/profile-image/{s3_key[2]}/{s3_key[3]}'
-        return prifile_url
+        profile_url = None
+        user_profile = UserProfile.objects.filter(user=obj).first()
+        if user_profile and user_profile.profile_image:
+            s3_key = user_profile.profile_image.s3_key  # full key: media/{id}/profile_images/{filename}
+            profile_url = f'{settings.SITE_LIVE_URL}/api/v0/serve/profile-image/{s3_key}/'
+        return profile_url
             
     def validate_gender(self,value):
         allowed_values = ["male", "female", "other"]
@@ -856,32 +870,40 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
 
         # Update User fields
         profile, _ = UserProfile.objects.get_or_create(user=instance)
-
         profile_image_file = validated_data.get('profile_image')
         if profile_image_file:
-            s3_key  = profile_image_file.name
-            s3_key = f'media/{instance.s3_storage_id}/profile_images/{profile_image_file.name}'
-            res = s3_helper.upload_image_file_chunked(
-                key=s3_key,
-                file_obj=profile_image_file
-            )
-            asset = Assets.objects.create(
-                # image=profile_image_file,
-                asset_types='Profile Image',
-                title=profile_image_file.name,
-                s3_key = s3_key
-            )
-            profile.profile_image = asset
-            profile.save()
+            if settings.ENVIRONMENT_TYPE == 'PROD':
+                # --- PRODUCTION: S3 logic ---
+                s3_key = f'media/{instance.s3_storage_id}/profile_images/{profile_image_file.name}'
+                res = s3_helper.upload_image_file_chunked(
+                    key=s3_key,
+                    file_obj=profile_image_file
+                )
+                asset = Assets.objects.create(
+                    asset_types='Profile Image',
 
-        # Update or create related UserProfile
+                    title=profile_image_file.name,
+                    s3_key=s3_key
+                )
+                profile.profile_image = asset
+                profile.save()
+            else:
+                # --- LOCAL: no S3/KMS ---
+                asset = Assets.objects.create(
+                    image=profile_image_file,
+                    asset_types='Profile Image',
+                    title=profile_image_file.name,
+                    s3_key=f'media/{instance.s3_storage_id}/profile_images/{profile_image_file.name}'
+                )
+                profile.profile_image = asset
+                profile.save()
+
         if profile_data:
-            profile_instance= UserProfile.objects.get(user=instance)
+            profile_instance = UserProfile.objects.get(user=instance)
             for attr, value in profile_data.items():
                 setattr(profile_instance, attr, value)
             profile_instance.save()
 
-        # Update or create UserAddress
         if address_data:
             address_instance = instance.address.first()
             if address_instance:
@@ -890,9 +912,43 @@ class UserProfileUpdateSerializer(serializers.ModelSerializer):
                 address_instance.save()
             else:
                 UserAddress.objects.create(user=instance, **address_data)
-        instance.save()
 
+        instance.save()
         return instance
+        #     s3_key  = profile_image_file.name
+        #     s3_key = f'media/{instance.s3_storage_id}/profile_images/{profile_image_file.name}'
+        #     res = s3_helper.upload_image_file_chunked(
+        #         key=s3_key,
+        #         file_obj=profile_image_file
+        #     )
+        #     asset = Assets.objects.create(
+        #         # image=profile_image_file,
+        #         asset_types='Profile Image',
+        #         title=profile_image_file.name,
+        #         s3_key = s3_key
+        #     )
+        #     profile.profile_image = asset
+        #     profile.save()
+
+        # # Update or create related UserProfile
+        # if profile_data:
+        #     profile_instance= UserProfile.objects.get(user=instance)
+        #     for attr, value in profile_data.items():
+        #         setattr(profile_instance, attr, value)
+        #     profile_instance.save()
+
+        # # Update or create UserAddress
+        # if address_data:
+        #     address_instance = instance.address.first()
+        #     if address_instance:
+        #         for attr, value in address_data.items():
+        #             setattr(address_instance, attr, value)
+        #         address_instance.save()
+        #     else:
+        #         UserAddress.objects.create(user=instance, **address_data)
+        # instance.save()
+
+        # return instance
 
 
 
