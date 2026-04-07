@@ -56,27 +56,13 @@ class AssetSerializer(serializers.ModelSerializer):
                 image_url = f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
             return image_url
         
-        # For local mode - generate URL with exp/sig parameters for security
+        # changedd = LOCAL COVER IMAGE FIX:
         else:
-            # Check if image exists in local storage
-            if obj.image:
-                # Generate expiry and signature for local media access
-                exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
-                media_path = obj.image.name
-                sig = self._generate_signature(media_path, exp)
-                
-                # Return local absolute backend URL with expiry and signature params
-                base_media = settings.MEDIA_URL
-                if not base_media.startswith('/'):
-                    base_media = '/' + base_media.lstrip('/')
-                if not base_media.endswith('/'):
-                    base_media = f'{base_media}/'
-                # Avoid double slash if SITE_LIVE_URL ends with '/'
-                site_url = settings.SITE_LIVE_URL.rstrip('/')
-                return f"{site_url}{base_media}{media_path}?exp={exp}&sig={sig}"
-            
-            # Fallback to serve endpoint if image doesn't exist
-            return f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
+            exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+            # changedd= LOCAL COVER IMAGE FIX:
+            sign_key = obj.s3_key or getattr(obj.image, "name", "")
+            sig = self._generate_signature(sign_key, exp)
+            return f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/?exp={exp}&sig={sig}'
     
     @staticmethod
     def _generate_signature(media_path: str, exp: int) -> str:
@@ -553,20 +539,6 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
             'cover_image', 'description', 'is_cover_image','thumbnail_url','created_at', 'updated_at'
         ]
         read_only_fields = ['id', 'user',  'file_url', 'cover_image', 'file_title']
-
-
-    # def get_file_url(self, obj):
-    #     import time, base64, hmac, hashlib
-
-    #     exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS  
-    #     raw = f"{obj.s3_key}:{exp}"
-    #     sig = base64.urlsafe_b64encode(
-    #         hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
-    #     ).decode().rstrip("=")
-    #     # if obj.s3_key.lower().endswith(".doc"):
-    #     #     {obj.s3_key.split("/")[-1].replace(".doc", ".docx")}
-
-    #     return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{obj.s3_key[37:]}?exp={exp}&sig={sig}"
     
 
     def get_file_url(self, obj):
@@ -576,15 +548,18 @@ class MemoryRoomMediaFileSerializer(serializers.ModelSerializer):
         s3_key = obj.s3_key
         sig = generate_signature(s3_key, exp)
 
-        # PROD MODE - signed serve endpoint (S3 decryption)
+        # changedd= PROD MODE 
         if settings.ENVIRONMENT_TYPE == "PROD":
             served_key = s3_key[37:]
             if served_key.lower().endswith(".doc"):
                 served_key = served_key[:-4] + ".docx"
             return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{served_key}?exp={exp}&sig={sig}"
-        
-        # LOCAL MODE - serve file directly 
-        return f"{settings.MEDIA_URL}{obj.s3_key}?exp={exp}&sig={sig}"
+
+        # changedd = LOCAL MODE  
+        served_key = s3_key
+        if served_key.lower().endswith(".doc"):
+            served_key = served_key[:-4] + ".docx"
+        return f"/api/v0/memory-rooms/api/media/{obj.id}/serve/{served_key}?exp={exp}&sig={sig}"
 
 
     # def get_file_url(self, obj):

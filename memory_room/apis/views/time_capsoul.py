@@ -5159,12 +5159,9 @@ class ServeTimeCapSoulMedia(SecuredView):
                 # 🔹 Try S3 first (existing logic)
                 file_bytes, _ = decrypt_s3_file_chunked(s3_key)
 
-                # 🔹 ✅ LOCAL FALLBACK (ADD THIS)
+                # 🔹  LOCAL FALLBACK (ADD THIS)
                 if not file_bytes:
                     try:
-                        import os
-                        from django.conf import settings
-
                         local_path = os.path.join(settings.MEDIA_ROOT, s3_key)
 
                         if os.path.exists(local_path):
@@ -5851,11 +5848,15 @@ class ServeCoverTimecapsoulImages(SecuredView):
     # Image file extensions
     IMAGE_EXTENSIONS = {'.jpg', '.jpeg', '.png', '.gif', '.bmp', '.tiff', '.webp', 
                         '.heic', '.heif', '.svg', '.ico', '.raw', '.psd'}
-    
-    from django.conf import settings
-    from django.http import FileResponse
-    from rest_framework.response import Response
-    from rest_framework import status
+
+    def initial(self, request, *args, **kwargs):
+        # LOCAL COVER IMAGE FIX:
+        # Skip SecuredView cookie-auth gate in local mode so signed cover-image URLs
+        # can render in <img> tags without auth cookies.
+        # Keep existing SecuredView behavior unchanged in PROD.
+        if settings.ENVIRONMENT_TYPE != "PROD":
+            return APIView.initial(self, request, *args, **kwargs)
+        return super().initial(request, *args, **kwargs)
     
     def _get_file_extension(self, filename):
                 
@@ -5997,98 +5998,74 @@ class ServeCoverTimecapsoulImages(SecuredView):
             logger.error(f"Failed to calculate file size for {s3_key}: {e}")
             return None
 
-    def get(self, request, cover_image_id):
-        user = self.get_current_user(request)
-        if user is None:
-            return Response(status=status.HTTP_401_UNAUTHORIZED)
+    def _validate_signature(self, sign_key: str, exp: int) -> str:
+        # LOCAL COVER IMAGE FIX:
+        # Signature format must match serializer URL signing exactly.
+        raw = f"{sign_key}:{exp}"
+        digest = hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()
+        return base64.urlsafe_b64encode(digest).decode().rstrip("=")
 
-        # Optimize: Only get s3_key and file_type from DB (minimal data)
+    def get(self, request, cover_image_id):
         try:
-            # media_file = TimeCapSoulMediaFile.objects.only('s3_key', 'file_type', 'user_id', 'time_capsoul_id').select_related('time_capsoul').get(
-            #     id=media_file_id
-            # )
-            assets = Assets.objects.get(id = cover_image_id)
-            
+            assets = Assets.objects.get(id=cover_image_id)
         except Assets.DoesNotExist:
             return Response(status=status.HTTP_404_NOT_FOUND)
-        
-        # LOCAL MODE - Serve local file directly without S3 decryption
+
+        # LOCAL COVER IMAGE FIX:
         if settings.ENVIRONMENT_TYPE != "PROD":
-            # SECURITY: Validate expiry and signature for local mode
             exp = request.GET.get('exp')
             sig = request.GET.get('sig')
-            
+
             if exp and sig:
-                # Validate expiry timestamp and signature
                 try:
                     exp_int = int(exp)
                     current_time = int(time.time())
-                    
-                    # Check if URL has expired
+
                     if current_time > exp_int:
                         return Response(
                             {'error': 'Media access expired'},
                             status=status.HTTP_403_FORBIDDEN
                         )
-                    
-                    # Validate signature for extra security
-                    expected_sig = self._validate_signature(assets.s3_key, exp_int)
+
+                    sign_key = assets.s3_key or getattr(assets.image, "name", "")
+                    expected_sig = self._validate_signature(sign_key, exp_int)
                     if not hmac.compare_digest(sig, expected_sig):
                         return Response(
                             {'error': 'Invalid access signature'},
                             status=status.HTTP_403_FORBIDDEN
                         )
-                
+
                 except (ValueError, TypeError):
                     return Response(
                         {'error': 'Invalid expiry parameters'},
                         status=status.HTTP_400_BAD_REQUEST
                     )
             else:
-                # No expiry parameters provided - block access in local mode for security
                 return Response(
                     {'error': 'Expired or missing access token'},
                     status=status.HTTP_403_FORBIDDEN
                 )
-            
-            # All validation passed - serve the file
+
             if assets.image and hasattr(assets.image, 'url'):
-                # For local mode, read and serve the file directly
                 try:
                     filename = assets.image.name.split('/')[-1]
                     file_path = assets.image.path
-                    extension = self._get_file_extension(filename)
                     content_type = self._guess_content_type(filename)
-                    
+
                     with open(file_path, 'rb') as f:
                         file_bytes = f.read()
-                    
+
                     return self._create_response(file_bytes, content_type, filename)
                 except Exception as e:
                     logger.error(f"Error serving local image: {e}")
                     return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
             else:
                 return Response(status=status.HTTP_404_NOT_FOUND)
-        
-        # PRODUCTION MODE - S3 decryption logic (unchanged)
-        # else:
-        #     if user != media_file.user:
-        #         time_capsoul = media_file.time_capsoul
-        #         capsoul_recipients = TimeCapSoulRecipient.objects.filter(
-        #             time_capsoul=time_capsoul, email=user.email
-        #         ).first()
-            
-        #         if not capsoul_recipients:
-        #             return Response(status=status.HTTP_404_NOT_FOUND)
 
-        #         from django.utils import timezone
-        #         current_date = timezone.now()
-        #         is_unlocked = (
-        #             bool(time_capsoul.unlock_date) and current_date >= time_capsoul.unlock_date
-        #         )
-        #         if not is_unlocked:
-        #             logger.info("Recipient not found for tagged capsoul")
-        #             return Response(status=status.HTTP_404_NOT_FOUND)
+        # PROD MODE: Serve from S3 with streaming and secure access
+        user = self.get_current_user(request)
+        if user is None:
+            return Response(status=status.HTTP_401_UNAUTHORIZED)
 
         s3_key = assets.s3_key
         filename = s3_key.split("/")[-1]
@@ -6142,3 +6119,77 @@ class ServeCoverTimecapsoulImages(SecuredView):
             
             # Return simple response
             return self._create_response(file_bytes, content_type, filename)
+        
+
+
+
+    # def get(self, request, cover_image_id):
+        # Optimize: Only get asset once (used by both local/prod branches)
+        # try:
+        #     assets = Assets.objects.get(id = cover_image_id)
+        # except Assets.DoesNotExist:
+        #     return Response(status=status.HTTP_404_NOT_FOUND)
+
+        # # LOCAL COVER IMAGE FIX:
+        # # Allow signed cover-image URL access in local mode so frontend <img> renders
+        # # even when auth cookies are not attached to image requests.
+        # # This keeps PROD/S3 flow unchanged below.
+        # if settings.ENVIRONMENT_TYPE != "PROD":
+        #     # SECURITY: Validate expiry and signature for local mode
+        #     exp = request.GET.get('exp')
+        #     sig = request.GET.get('sig')
+            
+        #     if exp and sig:
+        #         # Validate expiry timestamp and signature
+        #         try:
+        #             exp_int = int(exp)
+        #             current_time = int(time.time())
+                    
+        #             # Check if URL has expired
+        #             if current_time > exp_int:
+        #                 return Response(
+        #                     {'error': 'Media access expired'},
+        #                     status=status.HTTP_403_FORBIDDEN
+        #                 )
+                    
+        #             # LOCAL COVER IMAGE FIX:
+        #             # Use stable key for signing in local (s3_key may be empty for some local assets).
+        #             sign_key = assets.s3_key or getattr(assets.image, "name", "")
+        #             expected_sig = self._validate_signature(sign_key, exp_int)
+        #             if not hmac.compare_digest(sig, expected_sig):
+        #                 return Response(
+        #                     {'error': 'Invalid access signature'},
+        #                     status=status.HTTP_403_FORBIDDEN
+        #                 )
+                
+        #         except (ValueError, TypeError):
+        #             return Response(
+        #                 {'error': 'Invalid expiry parameters'},
+        #                 status=status.HTTP_400_BAD_REQUEST
+        #             )
+        #     else:
+        #         # No expiry parameters provided - block access in local mode for security
+        #         return Response(
+        #             {'error': 'Expired or missing access token'},
+        #             status=status.HTTP_403_FORBIDDEN
+        #         )
+            
+        #     # All validation passed - serve the file
+        #     if assets.image and hasattr(assets.image, 'url'):
+        #         # For local mode, read and serve the file directly
+        #         try:
+        #             filename = assets.image.name.split('/')[-1]
+        #             file_path = assets.image.path
+        #             extension = self._get_file_extension(filename)
+        #             content_type = self._guess_content_type(filename)
+                    
+        #             with open(file_path, 'rb') as f:
+        #                 file_bytes = f.read()
+                    
+        #             return self._create_response(file_bytes, content_type, filename)
+        #         except Exception as e:
+        #             logger.error(f"Error serving local image: {e}")
+        #             return Response(status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        #     else:
+        #         return Response(status=status.HTTP_404_NOT_FOUND)
+

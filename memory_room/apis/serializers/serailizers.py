@@ -19,30 +19,20 @@ class AssetSerializer(serializers.ModelSerializer):
         fields = ['id', 'title','image_url']
 
     def get_image_url(self, obj):
-        # Production uses S3 URL directly
+        # changed = Production uses S3 URL 
         if settings.ENVIRONMENT_TYPE == "PROD":
-            image_url = obj.s3_url
+            image_url = obj.s3_urlcol
             if not image_url:
                 image_url = f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
             return image_url
 
-        # Local mode: generate signed image URL to match LocalMediaExpiryMiddleware
-        if obj.image:
-            exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
-            media_path = obj.image.name
-            raw = f"{media_path}:{exp}"
-            sig = base64.urlsafe_b64encode(hmac.new(settings.SECRET_KEY.encode(), raw.encode(), hashlib.sha256).digest()).decode().rstrip("=")
-
-            site_url = settings.SITE_LIVE_URL.rstrip('/')
-            base_media = settings.MEDIA_URL
-            if not base_media.startswith('/'):
-                base_media = '/' + base_media.lstrip('/')
-            if not base_media.endswith('/'):
-                base_media = base_media + '/'
-
-            return f"{site_url}{base_media}{media_path}?exp={exp}&sig={sig}"
-
-        return f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/'
+        # LOCAL COVER IMAGE FIX:
+        exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
+        sign_key = obj.s3_key or getattr(obj.image, "name", "")
+        sig = base64.urlsafe_b64encode(
+            hmac.new(settings.SECRET_KEY.encode(), str(f"{sign_key}:{exp}").encode(), hashlib.sha256).digest()
+        ).decode().rstrip("=")
+        return f'{settings.SITE_LIVE_URL}/api/v0/time-capsoul/api/serve/cover-image/{obj.id}/?exp={exp}&sig={sig}'
         
 class CustomMemoryRoomTemplateSerializer(serializers.ModelSerializer):
     cover_image = AssetSerializer()

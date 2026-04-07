@@ -740,14 +740,14 @@ class TimeCapSoulMediaFileReadOnlySerializer(serializers.ModelSerializer):
 
             return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"       
         else:
-            # LOCAL MODE - URL with expiry token for local file rotation
+            # changedd = LOCAL MODE 
             exp = int(time.time()) + settings.DECRYPT_LINK_TTL_SECONDS
             s3_key = obj.s3_key
             sig = generate_signature(s3_key, exp)
-            
-            # Return local URL with expiry and signature params (optional validation)
-            url = f"{settings.MEDIA_URL}{obj.s3_key}?exp={exp}&sig={sig}"
-            return url
+            served_key = s3_key
+            if served_key.lower().endswith(".doc"):
+                served_key = served_key[:-4] + ".docx"
+            return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{served_key}/?exp={exp}&sig={sig}"
           
 
         #   return f"/api/v0/time-capsoul/api/media/time-capsoul/{obj.id}/serve/{s3_key}/?exp={exp}&sig={sig}"  #changedd - 6april 

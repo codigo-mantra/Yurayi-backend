@@ -14,7 +14,7 @@ from datetime import timedelta
 from pathlib import Path
 
 
-from timecapsoul.utils import load_env, get_aws_secret
+from .utils import load_env, get_aws_secret
 import environ
 env = environ.Env()
 environ.Env.read_env()
@@ -40,7 +40,7 @@ if ENVIRONMENT_TYPE == 'PROD':
 else:
     DEBUG = True
 
-DEBUG = True
+# DEBUG = True
 
 ALLOWED_HOSTS = ["app.yurayi.com", "127.0.0.1", "localhost", "13.200.54.51",]
 
