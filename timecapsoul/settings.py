@@ -75,6 +75,8 @@ INSTALLED_APPS = [
     'userauth',
     'memory_room',
     'family_tree',
+    'memory_map',
+
 ]
 
 SITE_ID = 1

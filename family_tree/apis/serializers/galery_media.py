@@ -80,6 +80,7 @@ class GalleryUpdateSerializer(serializers.ModelSerializer):
             "description",
         )
 
+     # ---------------- VALIDATION ----------------
     def validate_title(self, value):
         value = value.strip()
         if len(value) < 3:
@@ -95,11 +96,10 @@ class GalleryUpdateSerializer(serializers.ModelSerializer):
                 "Description must be at least 3 characters long."
             )
         return value
-
+    
+    # ---------------- UPDATE ----------------
     def update(self, instance, validated_data):
-        """
-        Explicit update control (only title & description)
-        """
+
         instance.title = validated_data.get("title", instance.title)
         instance.description = validated_data.get(
             "description", instance.description
@@ -111,5 +111,6 @@ class GalleryUpdateSerializer(serializers.ModelSerializer):
                 "description",
                 "updated_at",
             ]
-        )
+)
         return instance
+    

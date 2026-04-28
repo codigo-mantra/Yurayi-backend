@@ -25,6 +25,8 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/v0/', include('userauth.urls')),
     path('api/v0/family-tree/', include('family_tree.urls')),
+    path('api/v0/memory-map/', include('memory_map.urls')),
+
 
 
     # api-docs urls
