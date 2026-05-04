@@ -11,6 +11,7 @@ class MemoryMediaDetailsSerializer(serializers.ModelSerializer):
     uploader_email = serializers.CharField(source="user.email", read_only=True)
     file_url        = serializers.SerializerMethodField()
     location_type   = serializers.SerializerMethodField()  # tells frontend: "pinned" or "bucket"
+    thumbnail_url = serializers.SerializerMethodField(method_name="generate_thumbnail_url")
 
     class Meta:
         model  = MemoryMediaDetails
@@ -26,6 +27,7 @@ class MemoryMediaDetailsSerializer(serializers.ModelSerializer):
             "title",
             "description",
             "file_url",           # signed URL = never expose raw file path
+            "thumbnail_url",
             "created_at",
             "updated_at",
         )
@@ -66,6 +68,15 @@ class MemoryMediaDetailsSerializer(serializers.ModelSerializer):
         if obj.bucket_item_id:
             return "bucket"
         return None
+    
+    def generate_thumbnail_url(self, obj):
+        request = self.context.get("request")
+
+        if obj.thumbnail:
+            return request.build_absolute_uri(obj.thumbnail.url)
+
+        return None
+
 
 
 
@@ -90,11 +101,11 @@ class MemoryMediaUpdateSerializer(serializers.ModelSerializer):
             "description",
         )
 
-        def validate_title(self, value):
-            value = value.strip()
-            if len(value) < 3:
-                raise serializers.ValidationError("Title must be at least 3 characters long.")
-            return value
+    def validate_title(self, value):
+        value = value.strip()
+        if len(value) < 3:
+            raise serializers.ValidationError("Title must be at least 3 characters long.")
+        return value
     
     def validate_description(self, value):
         value = value.strip()

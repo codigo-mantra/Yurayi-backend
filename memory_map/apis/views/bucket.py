@@ -4,6 +4,7 @@ from rest_framework import status
 from memory_map.models import MemoryMap , MemoryMapBucketInfo
 from memory_map.apis.serializers.bucket import BucketListCreateSerializer ,BucketListSerializer
 from userauth.apis.views.views import SecuredView
+from django.db.models import Count,Q
 
 
 class BucketListCreateAPIView(SecuredView):
@@ -37,8 +38,6 @@ class BucketListCreateAPIView(SecuredView):
         )
 
 
-
-
 class BucketListAPIView(SecuredView):
 
     def get(self, request):
@@ -49,6 +48,11 @@ class BucketListAPIView(SecuredView):
         bucket_items = MemoryMapBucketInfo.objects.filter(
             memory_map=memory_map,
             is_deleted=False
+        ).annotate(
+            media_count=Count(
+                "media_files",
+                filter=Q(media_files__is_deleted=False)
+            )
         )
 
         search = request.query_params.get("search", "").strip()

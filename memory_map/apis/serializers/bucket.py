@@ -31,10 +31,21 @@ class BucketListCreateSerializer(serializers.ModelSerializer):
             "longitude",
             "is_visited",
             "tagged_friends",
-            "media",
-            "media_files",
+            "files",  
             "created_at",
+
         ]
+        # fields = [
+        #     "id",
+        #     "location_name",
+        #     "latitude",
+        #     "longitude",
+        #     "is_visited",
+        #     "tagged_friends",
+        #     "media",
+        #     "media_files",
+        #     "created_at",
+        # ]
         read_only_fields = ["id","created_at"]
 
     def validate_location_name(self, value):
@@ -98,6 +109,8 @@ class BucketListCreateSerializer(serializers.ModelSerializer):
 
             
 class BucketListSerializer(serializers.ModelSerializer):
+    media_count = serializers.IntegerField(read_only=True)
+
     class Meta:
         model = MemoryMapBucketInfo
         fields = [
@@ -107,6 +120,7 @@ class BucketListSerializer(serializers.ModelSerializer):
             "longitude",
             "is_visited",
             "tagged_friends",
+            "media_count",
             "created_at",
         ]
 

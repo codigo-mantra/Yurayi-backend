@@ -178,18 +178,49 @@ class MemoryMapChunkedUploadView(SecuredView):
             return int(min(max(round(float(value)), 0), 100))
         except Exception:
             return 0
-
+        
     def get_session(self, upload_id):
         data = cache.get(self._key(upload_id))
-        return ChunkedUploadSession.from_dict(json.loads(data)) if data else None
+        if not data:
+            return None
 
+        parsed = json.loads(data)
+        session = ChunkedUploadSession.from_dict(parsed)
+
+        # restore custom field
+        session.location_type = parsed.get("location_type")
+        # session.received_bytes = parsed.get("received_bytes ", 0)
+        session.received_bytes = parsed.get("received_bytes", 0)
+
+        session.uploaded_chunks = set(parsed.get("uploaded_chunks", []))
+
+
+        return session
+    
     def save_session(self, session):
         session.last_activity = time.time()
+        data = session.to_dict()
+        data["location_type"] = getattr(session, "location_type", None)  # inject it
+
+        data["uploaded_chunks"] = list(session.uploaded_chunks)
+
         cache.set(
             self._key(str(session.upload_id)),
-            json.dumps(session.to_dict(), default=str),
+            json.dumps(data, default=str),
             self.SESSION_TIMEOUT
         )
+
+    # def get_session(self, upload_id):
+    #     data = cache.get(self._key(upload_id))
+    #     return ChunkedUploadSession.from_dict(json.loads(data)) if data else None
+
+    # def save_session(self, session):
+    #     session.last_activity = time.time()
+    #     cache.set(
+    #         self._key(str(session.upload_id)),
+    #         json.dumps(session.to_dict(), default=str),
+    #         self.SESSION_TIMEOUT
+    #     )
 
     def delete_session(self, upload_id):
         cache.delete(self._key(str(upload_id)))
@@ -201,7 +232,14 @@ class MemoryMapChunkedUploadView(SecuredView):
     def post(self, request, location_id, action):
         user = self.get_current_user(request)
 
-        location_type = request.POST.get("location_type", "pinned")  # required from frontend
+        # location_type = request.POST.get("location_type", "pinned")  # required from frontend
+        location_type = request.POST.get("location_type")
+
+        if location_type not in ["pinned", "bucket"]:
+            return Response(
+                {"error": "location_type is required and must be 'pinned' or 'bucket'"},
+                status=400
+        )
 
         location_obj = resolve_location(location_type, location_id)
         if location_obj is None:
@@ -270,7 +308,8 @@ class MemoryMapChunkedUploadView(SecuredView):
                 total_chunks     = total_chunks,
                 chunk_size       = chunk_size,
             )
-
+             
+            session.location_type = location_type
             session.local_path     = local_path
             session.temp_file_path = f"{local_path}.part"  # chunks land in .part until complete
             session.is_small_file  = file_size < (5 * 1024 * 1024)
@@ -336,11 +375,11 @@ class MemoryMapChunkedUploadView(SecuredView):
                 return
             
             #check chunk itegrity , last chunk can be smaller =  no check needed
-            expected_size =session.chunk_size 
-            if chunk_index != session.total_chunks - 1:
-                if chunk_size != expected_size:
-                    yield self._event(upload_id, "error", 0, "Invalid chunk size")
-                    return
+            # expected_size =session.chunk_size 
+            # if chunk_index != session.total_chunks - 1:
+            #     print(" RECEIVED CHUNK:", chunk_index)
+            #     yield self._event(upload_id, "error", 0, "Invalid chunk size")
+            #     return
 
             # IV is mandatory — AES-GCM cannot decrypt without it
             if not iv:
@@ -391,7 +430,7 @@ class MemoryMapChunkedUploadView(SecuredView):
             # if percent > session.last_percent:                             # only send update if percent increased to reduce redundant messages on very large files with many small chunks
                 # session.last_percent = percent
                 # self.save_session(session) 
-                # yield self._event(upload_id, "uploaded", self._percent(percent))
+            yield self._event(upload_id, "uploaded", self._percent(percent))
 
 
         return StreamingHttpResponse(
@@ -413,6 +452,19 @@ class MemoryMapChunkedUploadView(SecuredView):
 
                 if not session:
                     yield self._event(upload_id, "error", 0, "Session not found")
+                    continue
+
+                #new
+                # location_type = getattr(session, "location_type", None)
+                location_type = getattr(session, "location_type", None)
+                location_obj = resolve_location(location_type, session.gallery_media_id) #loc object 
+
+                if not location_obj:
+                    yield self._event(upload_id, "error", 0, "Invalid location")
+                    continue
+
+                if location_type not in ["pinned", "bucket"]:
+                    yield self._event(upload_id, "error", 0, "Invalid location_type in session")
                     continue
 
                 # Ensure every single chunk arrived before finalizing
@@ -463,14 +515,37 @@ class MemoryMapChunkedUploadView(SecuredView):
                 
 
                 #thumbnail generation for media files , keep it non-blocking and best effort..if it fails, we log but don't fail the whole upload since user got their file saved successfully
+                # try:
+                #     ext = os.path.splitext(session.file_name)[-1].lower()
+                #     if session.file_type in ('image', 'video', 'audio'):
+                #         thumb_bytes = UniversalThumbnailService.generate(
+                #             encrypted_file_path=media.file.path,
+                #             decrypt_func=lambda path: self._decrypt_stream(path),
+                #             extension=ext
+                #         )
+                #         if thumb_bytes:
+                #             from django.core.files.base import ContentFile
+                #             media.thumbnail.save(
+                #                 f"thumb_{media.id}.jpg",
+                #                 ContentFile(thumb_bytes),
+                #                 save=True
+                #             )
+                # except Exception as e:
+                #     logger.error(f"Thumbnail generation failed for media {media.id}: {e}")
+                #     # Non-fatal — media is saved, user gets their file, just no thumbnail
                 try:
                     ext = os.path.splitext(session.file_name)[-1].lower()
+
                     if session.file_type in ('image', 'video', 'audio'):
+
+                        decryptor = ServeMemoryMapMedia()
+
                         thumb_bytes = UniversalThumbnailService.generate(
                             encrypted_file_path=media.file.path,
-                            decrypt_func=lambda path: self._decrypt_stream(path),
+                            decrypt_func=lambda path: decryptor._decrypt_stream(path),
                             extension=ext
                         )
+
                         if thumb_bytes:
                             from django.core.files.base import ContentFile
                             media.thumbnail.save(
@@ -478,9 +553,9 @@ class MemoryMapChunkedUploadView(SecuredView):
                                 ContentFile(thumb_bytes),
                                 save=True
                             )
+
                 except Exception as e:
                     logger.error(f"Thumbnail generation failed for media {media.id}: {e}")
-                    # Non-fatal — media is saved, user gets their file, just no thumbnail
 
                 self.delete_session(upload_id)               #clean up cache session
                 yield self._event(upload_id, "complete", 100)
@@ -528,7 +603,11 @@ class MemoryMapMediaListView(SecuredView):
     def get(self, request, location_id):
         user = self.get_current_user(request)
 
-        location_type = request.GET.get("location_type", "pinned")    # required from frontend to know which FK to check and which media to list
+        # location_type = request.GET.get("location_type", "pinned")    # required from frontend to know which FK to check and which media to list
+        #new
+        location_type = request.GET.get("location_type")
+        if location_type not in ["pinned", "bucket"]:
+            return Response({"error": "location_type required"}, status=400)
         
         location_obj = resolve_location(location_type, location_id)
         if location_obj is None:
@@ -549,7 +628,12 @@ class MemoryMapMediaListView(SecuredView):
         paginator = self.pagination_class()
         page = paginator.paginate_queryset(queryset, request)
 
-        serializer = MemoryMediaDetailsSerializer(page, many=True)
+        # serializer = MemoryMediaDetailsSerializer(page, many=True)
+        serializer = MemoryMediaDetailsSerializer(
+            page,
+            many=True,
+            context={"request": request}
+        )
 
         return paginator.get_paginated_response(serializer.data)
 
@@ -561,9 +645,23 @@ class MemoryMapMediaEditDeleteView(SecuredView):
     def delete(self, request, location_id, media_id):
         user = self.get_current_user(request)
 
-        location_obj, error = self._get_location(request, location_id)
-        if error:
-            return error
+
+        # location_type = request.query_params.get("location_type", "pinned")
+        location_type = request.query_params.get("location_type")
+        if location_type not in ["pinned", "bucket"]:
+            return Response({"error": "location_type required"}, status=400)
+        
+        location_obj = resolve_location(location_type, location_id)
+
+        if location_obj is None:
+            return Response(
+                {"error": "Invalid location_type. Must be 'pinned' or 'bucket'."},
+                status=400
+            )
+
+        # location_obj, error = self._get_location(request, location_id)
+        # if error:
+        #     return error
         
         if not user_has_location_access(user, location_obj, "edit"):
             return Response({"detail":"You do not have permission to delete this media."}, status=403)
@@ -580,9 +678,23 @@ class MemoryMapMediaEditDeleteView(SecuredView):
     def patch(self, request, location_id, media_id):
         user = self.get_current_user(request)
 
-        location_obj, error = self._get_location(request, location_id)
-        if error:
-            return error
+
+        # location_type = request.query_params.get("location_type", "pinned")
+        location_type = request.query_params.get("location_type")
+        if location_type not in ["pinned", "bucket"]:
+            return Response({"error": "location_type required"}, status=400)
+        
+        location_obj = resolve_location(location_type, location_id)
+
+        if location_obj is None:
+            return Response(
+                {"error": "Invalid location_type. Must be 'pinned' or 'bucket'."},
+                status=400
+            )
+
+        # location_obj, error = self._get_location(request, location_id)
+        # if error:
+        #     return error
         
         if not user_has_location_access(user, location_obj, "edit"):
             return Response({"detail": "You do not have permission to edit this media"}, status=403)
@@ -1180,6 +1292,77 @@ class MemoryMapMediaDownloadAPIView(SecuredView):
         response["X-Content-Type-Options"] = "nosniff"
 
         return response
+    
+#---------------------FILTER MEDIA -------------------------------------------------------
+class MemoryMapAllMediaView(SecuredView):
+    pagination_class = MemoryMapMediaPagination
+
+    def get(self, request):
+        user = self.get_current_user(request)
+
+        # Owned memory maps
+        owned_maps = MemoryMap.objects.filter(
+            user=user,
+            is_deleted=False
+        )
+
+        # Shared memory maps
+        shared_map_ids = MemoryMapRecipients.objects.filter(
+            email=user.email,
+            is_deleted=False
+        ).values_list("memory_map_id", flat=True)
+        
+        #merge both media's
+        all_map_ids = list(owned_maps.values_list("id", flat=True)) + list(shared_map_ids)
+
+        queryset = MemoryMediaDetails.objects.filter(
+            is_deleted=False
+        ).filter(
+            Q(memory_place__memory_map_id__in=all_map_ids) |
+            Q(bucket_item__memory_map_id__in=all_map_ids)
+        )
+
+        # Filter by file type (image/video/audio/other)
+        file_type = request.query_params.get("file_type")
+        if file_type:
+            queryset = queryset.filter(file_type__iexact=file_type)
+            
+        # Search (title + description)
+        search = request.query_params.get("search")
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) |
+                Q(description__icontains=search)
+            )
+        
+        queryset = queryset.order_by("-created_at")
+
+        paginator = self.pagination_class()
+        page = paginator.paginate_queryset(queryset, request)
+        serializer = MemoryMediaDetailsSerializer(
+            page,
+            many=True,
+            context={"request": request}
+        )
+        return paginator.get_paginated_response(serializer.data)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         
 
