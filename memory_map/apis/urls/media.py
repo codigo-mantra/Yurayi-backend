@@ -14,7 +14,7 @@ urlpatterns = [
         name="memory-map-media-list"
     ),
 
-    path("memory-map/media/<int:location_id>/<int:media_id>/",
+    path("media/<int:location_id>/<int:media_id>/",
         MemoryMapMediaEditDeleteView.as_view(),
         name="memory-map-media-edit-delete"
     ),

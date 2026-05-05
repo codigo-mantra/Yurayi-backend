@@ -67,36 +67,71 @@ class RecipientBulkSerializer(serializers.Serializer):
             item["name"] = name
 
         return value
+    
 
     def save(self):
         memory_map = self.context["memory_map"]
         recipients_data = self.validated_data["recipients"]
+        
+        incoming_emails = {item["email"] for item in recipients_data}
 
-        # 1. soft delete all existing
+        # Soft-delete removed recipients
         MemoryMapRecipients.objects.filter(
             memory_map=memory_map
-        ).update(is_deleted=True)
+        ).exclude(email__in=incoming_emails).update(is_deleted=True)
 
-        new_objects = []
+        # Pre-fetch all matching users in one query
+        user_map = {
+            u.email: u 
+            for u in User.objects.filter(email__in=incoming_emails)
+        }
+
+        saved = []
         for item in recipients_data:
             email = item["email"]
-
-            linked_user = User.objects.filter(email=email).first()
-
-            new_objects.append(
-                MemoryMapRecipients(
-                    memory_map=memory_map,
-                    user=linked_user,
-                    name=item["name"],
-                    email=email,
-                    permission=item.get("permission", "view"),
-                )
+            obj, _ = MemoryMapRecipients.objects.update_or_create(
+                memory_map=memory_map,
+                email=email,
+                defaults={
+                    "user": user_map.get(email),  # None if not registered
+                    "name": item["name"],
+                    "permission": item.get("permission", "view"),
+                    "is_deleted": False,
+                }
             )
+            saved.append(obj)
 
-        # 2. bulk create
-        MemoryMapRecipients.objects.bulk_create(new_objects)
+        return saved
 
-        return new_objects
+    # def save(self):
+    #     memory_map = self.context["memory_map"]
+    #     recipients_data = self.validated_data["recipients"]
+
+    #     # 1. soft delete all existing
+    #     MemoryMapRecipients.objects.filter(
+    #         memory_map=memory_map
+    #     ).update(is_deleted=True)
+
+    #     new_objects = []
+    #     for item in recipients_data:
+    #         email = item["email"]
+
+    #         linked_user = User.objects.filter(email=email).first()
+
+    #         new_objects.append(
+    #             MemoryMapRecipients(
+    #                 memory_map=memory_map,
+    #                 user=linked_user,
+    #                 name=item["name"],
+    #                 email=email,
+    #                 permission=item.get("permission", "view"),
+    #             )
+    #         )
+
+    #     # 2. bulk create
+    #     MemoryMapRecipients.objects.bulk_create(new_objects)
+
+    #     return new_objects
 
 
 
